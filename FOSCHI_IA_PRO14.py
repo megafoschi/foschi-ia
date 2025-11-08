@@ -172,15 +172,15 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
             prompt_messages.append({"role":"user","content": mensaje})
 
             # Llamada segura al API - usando ChatCompletion (compatible con versiones estables)
-            resp = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=prompt_messages,
-                max_tokens=800,
-            )
+            resp = client.chat.completions.create(
+    model="gpt-3.5-turbo",
+    messages=prompt_messages,
+    max_tokens=800,
+)
 
             # Extraer texto de forma robusta
             try:
-                texto = resp['choices'][0]['message']['content'].strip()
+                texto = resp.choices[0].message.content.strip()
             except Exception:
                 # Fallback a estructura alternativa
                 try:
