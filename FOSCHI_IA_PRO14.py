@@ -116,7 +116,10 @@ def buscar_info_actual(query, max_results=3):
     return resultados
 
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
-    mensaje_lower = (mensaje or "").lower().strip()
+    from openai import OpenAI
+    client = OpenAI(api_key=OPENAI_API_KEY)
+
+    mensaje_lower = mensaje.lower().strip()
 
     # ------------------- BORRAR HISTORIAL -------------------
     if any(phrase in mensaje_lower for phrase in ["borrar historial", "limpiar historial", "reset historial"]):
@@ -160,33 +163,22 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
 
     # ------------------- RESPUESTA IA NORMAL -------------------
     try:
-        if not openai.api_key:
-            texto = "El motor de IA no está configurado (falta OPENAI_API_KEY)."
-        else:
-            memoria = load_json(MEMORY_FILE)
-            historial = memoria.get(usuario, {}).get("mensajes", [])
-            prompt_messages = []
-            for m in historial[-max_hist:]:
-                prompt_messages.append({"role":"user","content": m["usuario"]})
-                prompt_messages.append({"role":"assistant","content": m["foschi"]})
-            prompt_messages.append({"role":"user","content": mensaje})
+        memoria = load_json(MEMORY_FILE)
+        historial = memoria.get(usuario, {}).get("mensajes", [])
+        prompt_messages = []
+        for m in historial[-max_hist:]:
+            prompt_messages.append({"role": "user", "content": m["usuario"]})
+            prompt_messages.append({"role": "assistant", "content": m["foschi"]})
+        prompt_messages.append({"role": "user", "content": mensaje})
 
-            # Llamada segura al API - usando ChatCompletion (compatible con versiones estables)
-            resp = client.chat.completions.create(
-    model="gpt-3.5-turbo",
-    messages=prompt_messages,
-    max_tokens=800,
-)
+        resp = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=prompt_messages,
+            max_tokens=800,
+        )
 
-            # Extraer texto de forma robusta
-            try:
-                texto = resp.choices[0].message.content.strip()
-            except Exception:
-                # Fallback a estructura alternativa
-                try:
-                    texto = resp['choices'][0]['text'].strip()
-                except Exception:
-                    texto = str(resp)
+        texto = resp.choices[0].message.content.strip()
+
     except Exception as e:
         texto = f"No pude generar respuesta: {e}"
 
@@ -195,6 +187,10 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         links = buscar_google_youtube(mensaje)
         if links:
             texto += "\n\nResultados sugeridos:\n" + "\n".join(links)
+
+    texto = hacer_links_clicleables(texto)
+    learn_from_message(usuario, mensaje, texto)
+    return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
     # ------------------- FORMATEO FINAL -------------------
     texto = hacer_links_clicleables(texto)
