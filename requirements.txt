@@ -1,0 +1,8 @@
+flask
+Flask-Session
+gunicorn
+requests
+openai==1.51.0
+pygame
+gtts
+pytz

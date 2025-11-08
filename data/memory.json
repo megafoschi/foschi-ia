@@ -1,0 +1,18 @@
+{
+  "4be50778-5bee-4a8f-b257-581333da2913": {
+    "temas": {
+      "hace": 1,
+      "nota": 1,
+      "para": 1,
+      "pedido": 1,
+      "materiales": 1
+    },
+    "mensajes": [
+      {
+        "usuario": "hace una nota para pedido de materiales",
+        "foschi": "Estimado/a proveedor/a,\n\nPor la presente, nos dirigimos a ustedes para realizar un pedido de materiales para nuestra empresa. Necesitamos los siguientes artículos con urgencia:\n\n- 100 unidades de papel A4\n- 50 cajas de cartón para envíos\n- 20 rollos de cinta adhesiva\n- 10 paquetes de bolígrafos de color azul\n\nPor favor, indicar el precio unitario de cada artículo y el plazo de entrega estimado. Agradeceríamos que nos envíen una cotización detallada lo antes posible para proceder con la compra.\n\nQuedamos a la espera de su pronta respuesta y agradecemos de antemano su atención y colaboración.\n\nAtentamente,\n\n[Nombre de la empresa]\n[Nombre del solicitante]\n[Fecha]"
+      }
+    ],
+    "ultima_interaccion": "04/11/2025 22:49:00"
+  }
+}
