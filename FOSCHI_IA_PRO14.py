@@ -73,9 +73,6 @@ def hacer_links_clicleables(texto):
 
 # ---------------- RESPUESTA ----------------
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
-    from openai import OpenAI
-    client = OpenAI(api_key=OPENAI_API_KEY)
-
     mensaje_lower = mensaje.lower().strip()
 
     # ------------------- BORRAR HISTORIAL -------------------
@@ -109,13 +106,12 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
     # ------------------- INFORMACIÓN ACTUAL -------------------
-    palabras_actualidad = ["presidente","noticias","actualidad","últimas noticias","evento actual","quién es","quien es","hechos recientes","información actual"]
-    if any(word in mensaje_lower for word in palabras_actualidad):
-        resultados = buscar_info_actual(mensaje, max_results=5)
+    if any(word in mensaje_lower for word in ["presidente", "actualidad", "noticias", "quién es", "últimas noticias", "evento actual"]):
+        resultados = buscar_info_actual(mensaje)
         if resultados:
-            texto = "🔎 Aquí tienes información actualizada:\n" + "\n".join(resultados)
+            texto = "Aquí tienes información actual:\n" + "\n".join(resultados)
         else:
-            texto = "No pude obtener información actualizada en este momento."
+            texto = "No pude obtener información actual en este momento."
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
@@ -129,13 +125,18 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
             prompt_messages.append({"role": "assistant", "content": m["foschi"]})
         prompt_messages.append({"role": "user", "content": mensaje})
 
-        resp = client.chat.completions.create(
+        # ------------------- OPENAI CLÁSICO -------------------
+        import openai
+        openai.api_key = OPENAI_API_KEY
+
+        resp = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=prompt_messages,
-            max_completion_tokens=800
+            max_tokens=800
         )
 
         texto = resp.choices[0].message.content.strip()
+
     except Exception as e:
         texto = f"No pude generar respuesta: {e}"
 
@@ -145,6 +146,7 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         if links:
             texto += "\n\nResultados sugeridos:\n" + "\n".join(links)
 
+    # ------------------- FORMATEO FINAL -------------------
     texto = hacer_links_clicleables(texto)
     learn_from_message(usuario, mensaje, texto)
     return {"texto": texto, "imagenes": [], "borrar_historial": False}
