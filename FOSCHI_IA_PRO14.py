@@ -2,13 +2,14 @@ from flask import Flask, render_template_string, request, jsonify, session, send
 from flask_session import Session
 import os, uuid, json, io
 from datetime import datetime
+import pytz
 from gtts import gTTS
 import requests
-import pytz
 import urllib.parse
 
 # ---------------- CONFIG ----------------
 APP_NAME = "FOSCHI IA WEB"
+CREADOR = "Gustavo Enrique Foschi"
 DATA_DIR = "data"
 STATIC_DIR = "static"
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -20,10 +21,6 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID")
 OWM_API_KEY = os.getenv("OWM_API_KEY")
 
-if OPENAI_API_KEY:
-    import openai
-    openai.api_key = OPENAI_API_KEY
-
 # ---------------- APP ----------------
 app = Flask(__name__)
 app.secret_key = "FoschiWebKey"
@@ -32,6 +29,7 @@ Session(app)
 
 # ---------------- MEMORIA ----------------
 MEMORY_FILE = os.path.join(DATA_DIR, "memory.json")
+
 def load_json(path):
     if not os.path.exists(path): return {}
     try:
@@ -39,16 +37,13 @@ def load_json(path):
             return json.load(f)
     except:
         return {}
+
 def save_json(path, data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-# ---------------- UTILIDADES ----------------
-def fecha_hora_en_es(tz_name=None):
-    try:
-        tz = pytz.timezone(tz_name) if tz_name else pytz.timezone("America/Argentina/Buenos_Aires")
-    except:
-        tz = pytz.timezone("America/Argentina/Buenos_Aires")
+def fecha_hora_en_es():
+    tz = pytz.timezone("America/Argentina/Buenos_Aires")
     ahora = datetime.now(tz)
     meses = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"]
     dias = ["lunes","martes","miércoles","jueves","viernes","sábado","domingo"]
@@ -71,106 +66,41 @@ def hacer_links_clicleables(texto):
     import re
     return re.sub(r'(https?://[^\s]+)', r'<a href="\1" target="_blank" style="color:#ff0000;">\1</a>', texto)
 
-# ---------------- RESPUESTA ----------------
-def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
-    mensaje_lower = mensaje.lower().strip()
-
-    # ------------------- BORRAR HISTORIAL -------------------
-    if any(phrase in mensaje_lower for phrase in ["borrar historial", "limpiar historial", "reset historial"]):
-        path = os.path.join(DATA_DIR, f"{usuario}.json")
-        if os.path.exists(path):
-            os.remove(path)
-        memory = load_json(MEMORY_FILE)
-        if usuario in memory:
-            memory[usuario]["mensajes"] = []
-            save_json(MEMORY_FILE, memory)
-        texto = "✅ Historial borrado correctamente."
-        return {"texto": texto, "imagenes": [], "borrar_historial": True}
-
-    # ------------------- FECHA/HORA -------------------
-    if any(phrase in mensaje_lower for phrase in ["qué día", "que día", "qué fecha", "que fecha", "qué hora", "que hora", "día es hoy", "fecha hoy"]):
-        texto = fecha_hora_en_es(tz_name=tz)
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
-
-    # ------------------- CLIMA -------------------
-    if "clima" in mensaje_lower:
-        import re
-        ciudad_match = re.search(r"clima en ([a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+)", mensaje_lower)
-        ciudad = ciudad_match.group(1).strip() if ciudad_match else None
-        if not ciudad and lat and lon:
-            texto = obtener_clima(lat=lat, lon=lon)
-        else:
-            texto = obtener_clima(ciudad=ciudad)
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
-
-    # ------------------- INFORMACIÓN ACTUAL -------------------
-    if any(word in mensaje_lower for word in ["presidente", "actualidad", "noticias", "quién es", "últimas noticias", "evento actual"]):
-        resultados = buscar_info_actual(mensaje)
-        if resultados:
-            texto = "Aquí tienes información actual:\n" + "\n".join(resultados)
-        else:
-            texto = "No pude obtener información actual en este momento."
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
-
-    # ------------------- RESPUESTA IA NORMAL -------------------
+def buscar_google_youtube(query, max_results=3):
+    links = []
+    if GOOGLE_API_KEY and GOOGLE_CSE_ID:
+        try:
+            url = f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}&q={urllib.parse.quote(query)}"
+            r = requests.get(url, timeout=5)
+            data = r.json()
+            for item in data.get("items", [])[:max_results]:
+                links.append(f"{item.get('title','')} - {item.get('link')}")
+        except:
+            pass
     try:
-        memoria = load_json(MEMORY_FILE)
-        historial = memoria.get(usuario, {}).get("mensajes", [])
-        prompt_messages = []
-        for m in historial[-max_hist:]:
-            prompt_messages.append({"role": "user", "content": m["usuario"]})
-            prompt_messages.append({"role": "assistant", "content": m["foschi"]})
-        prompt_messages.append({"role": "user", "content": mensaje})
+        yt_query = urllib.parse.quote(query)
+        yt_url = f"https://www.youtube.com/results?search_query={yt_query}"
+        links.append(f"Videos de YouTube: {yt_url}")
+    except:
+        pass
+    return links
 
-        # ------------------- OPENAI CLÁSICO -------------------
-        import openai
-        openai.api_key = OPENAI_API_KEY
+def buscar_info_actual(query, max_results=3):
+    resultados = []
+    if GOOGLE_API_KEY and GOOGLE_CSE_ID:
+        try:
+            url = f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}&q={urllib.parse.quote(query)}&sort=date"
+            r = requests.get(url, timeout=5)
+            data = r.json()
+            for item in data.get("items", [])[:max_results]:
+                title = item.get("title", "")
+                link = item.get("link", "")
+                snippet = item.get("snippet", "")
+                resultados.append(f"{title} - {snippet} ({link})")
+        except Exception as e:
+            resultados.append(f"No se pudo obtener información actual: {e}")
+    return resultados
 
-        resp = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=prompt_messages,
-            max_tokens=800
-        )
-
-        texto = resp.choices[0].message.content.strip()
-
-    except Exception as e:
-        texto = f"No pude generar respuesta: {e}"
-
-    # ------------------- LINKS ADICIONALES -------------------
-    if any(palabra in mensaje_lower for palabra in ["fuentes", "links", "paginas web", "videos", "referencias"]):
-        links = buscar_google_youtube(mensaje)
-        if links:
-            texto += "\n\nResultados sugeridos:\n" + "\n".join(links)
-
-    # ------------------- FORMATEO FINAL -------------------
-    texto = hacer_links_clicleables(texto)
-    learn_from_message(usuario, mensaje, texto)
-    return {"texto": texto, "imagenes": [], "borrar_historial": False}
-
-# ---------------- HISTORIAL ----------------
-def guardar_en_historial(usuario, entrada, respuesta):
-    path = os.path.join(DATA_DIR, f"{usuario}.json")
-    datos = []
-    if os.path.exists(path):
-        with open(path,"r",encoding="utf-8") as f:
-            try: datos = json.load(f)
-            except: datos = []
-    datos.append({"fecha":datetime.now(pytz.timezone("America/Argentina/Buenos_Aires")).strftime("%d/%m/%Y %H:%M:%S"),"usuario":entrada,"foschi":respuesta})
-    with open(path,"w",encoding="utf-8") as f:
-        json.dump(datos,f,ensure_ascii=False,indent=2)
-
-def cargar_historial(usuario):
-    path = os.path.join(DATA_DIR, f"{usuario}.json")
-    if not os.path.exists(path): return []
-    with open(path,"r",encoding="utf-8") as f:
-        try: return json.load(f)
-        except: return []
-
-# ---------------- CLIMA ----------------
 def obtener_clima(ciudad=None, lat=None, lon=None):
     if not OWM_API_KEY:
         return "No está configurada la API de clima (OWM_API_KEY)."
@@ -183,17 +113,145 @@ def obtener_clima(ciudad=None, lat=None, lon=None):
         r = requests.get(url, timeout=6)
         data = r.json()
         if r.status_code != 200:
-            msg = data.get("message","Error OpenWeather")
+            msg = data.get("message", "Respuesta no OK de OpenWeatherMap.")
             return f"No pude obtener el clima: {r.status_code} - {msg}"
-        desc = data.get("weather",[{}])[0].get("description","Sin descripción").capitalize()
-        temp = data.get("main",{}).get("temp")
-        hum = data.get("main",{}).get("humidity")
+        desc = data.get("weather", [{}])[0].get("description", "Sin descripción").capitalize()
+        temp = data.get("main", {}).get("temp")
+        hum = data.get("main", {}).get("humidity")
         name = data.get("name", ciudad if ciudad else "la ubicación")
         parts = [f"El clima en {name} es {desc}"]
-        if temp is not None: parts.append(f"temperatura {round(temp)}°C")
-        if hum is not None: parts.append(f"humedad {hum}%")
-        return ", ".join(parts)+"."
-    except: return "No pude obtener el clima."
+        if temp is not None:
+            parts.append(f"temperatura {round(temp)}°C")
+        if hum is not None:
+            parts.append(f"humedad {hum}%")
+        return ", ".join(parts) + "."
+    except:
+        return "No pude obtener el clima."
+
+def guardar_en_historial(usuario, entrada, respuesta):
+    path = os.path.join(DATA_DIR, f"{usuario}.json")
+    datos = []
+    if os.path.exists(path):
+        with open(path,"r",encoding="utf-8") as f:
+            try: datos = json.load(f)
+            except: datos = []
+    datos.append({"fecha":datetime.now(pytz.timezone("America/Argentina/Buenos_Aires")).strftime("%d/%m/%Y %H:%M:%S"),
+                  "usuario":entrada,"foschi":respuesta})
+    with open(path,"w",encoding="utf-8") as f:
+        json.dump(datos,f,ensure_ascii=False,indent=2)
+
+def cargar_historial(usuario):
+    path = os.path.join(DATA_DIR, f"{usuario}.json")
+    if not os.path.exists(path): return []
+    with open(path,"r",encoding="utf-8") as f:
+        try: return json.load(f)
+        except: return []
+
+# ---------------- RESPUESTA IA ----------------
+def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
+    mensaje_lower = mensaje.lower().strip()
+
+    # BORRAR HISTORIAL
+    if any(phrase in mensaje_lower for phrase in ["borrar historial", "limpiar historial", "reset historial"]):
+        path = os.path.join(DATA_DIR, f"{usuario}.json")
+        if os.path.exists(path): os.remove(path)
+        memory = load_json(MEMORY_FILE)
+        if usuario in memory: memory[usuario]["mensajes"] = []; save_json(MEMORY_FILE, memory)
+        return {"texto":"✅ Historial borrado correctamente.","imagenes":[],"borrar_historial":True}
+
+    # FECHA/HORA
+    if any(phrase in mensaje_lower for phrase in ["qué día", "que día", "qué fecha", "que fecha", "qué hora", "que hora", "día es hoy", "fecha hoy"]):
+        texto = fecha_hora_en_es()
+        learn_from_message(usuario,mensaje,texto)
+        return {"texto":texto,"imagenes":[],"borrar_historial":False}
+
+    # CLIMA
+    if "clima" in mensaje_lower:
+        import re
+        ciudad_match = re.search(r"clima en ([a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+)", mensaje_lower)
+        ciudad = ciudad_match.group(1).strip() if ciudad_match else None
+        texto = obtener_clima(ciudad=ciudad, lat=lat, lon=lon)
+        learn_from_message(usuario,mensaje,texto)
+        return {"texto":texto,"imagenes":[],"borrar_historial":False}
+
+    # INFORMACIÓN ACTUAL
+    if any(word in mensaje_lower for word in ["presidente","actualidad","noticias","quién es","últimas noticias","evento actual"]):
+        resultados = buscar_info_actual(mensaje)
+        texto = "Aquí tienes información actual:\n" + "\n".join(resultados) if resultados else "No pude obtener información actual en este momento."
+        learn_from_message(usuario,mensaje,texto)
+        return {"texto":texto,"imagenes":[],"borrar_historial":False}
+
+    # RESPUESTA IA NORMAL
+    try:
+        memoria = load_json(MEMORY_FILE)
+        historial = memoria.get(usuario,{}).get("mensajes",[])
+        prompt_messages = []
+        for m in historial[-max_hist:]:
+            prompt_messages.append({"role":"user","content":m["usuario"]})
+            prompt_messages.append({"role":"assistant","content":m["foschi"]})
+        prompt_messages.append({"role":"user","content":mensaje})
+
+        import openai
+        openai.api_key = OPENAI_API_KEY
+        resp = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=prompt_messages,
+            max_tokens=800
+        )
+        texto = resp.choices[0].message.content.strip()
+    except Exception as e:
+        texto = f"No pude generar respuesta: {e}"
+
+    # LINKS ADICIONALES
+    if any(palabra in mensaje_lower for palabra in ["fuentes","links","paginas web","videos","referencias"]):
+        links = buscar_google_youtube(mensaje)
+        if links: texto += "\n\nResultados sugeridos:\n" + "\n".join(links)
+
+    texto = hacer_links_clicleables(texto)
+    learn_from_message(usuario,mensaje,texto)
+    return {"texto":texto,"imagenes":[],"borrar_historial":False}
+
+# ---------------- RUTAS ----------------
+@app.route("/")
+def index():
+    if "usuario_id" not in session: session["usuario_id"]=str(uuid.uuid4())
+    return render_template_string(HTML_TEMPLATE, APP_NAME=APP_NAME, usuario_id=session["usuario_id"])
+
+@app.route("/preguntar", methods=["POST"])
+def preguntar():
+    data = request.get_json()
+    mensaje = data.get("mensaje","")
+    usuario_id = data.get("usuario_id", str(uuid.uuid4()))
+    lat = data.get("lat")
+    lon = data.get("lon")
+    tz = data.get("timeZone") or data.get("time_zone") or None
+    respuesta = generar_respuesta(mensaje, usuario_id, lat=lat, lon=lon, tz=tz)
+    guardar_en_historial(usuario_id, mensaje, respuesta["texto"])
+    return jsonify(respuesta)
+
+@app.route("/historial/<usuario_id>")
+def historial(usuario_id):
+    return jsonify(cargar_historial(usuario_id))
+
+@app.route("/tts")
+def tts():
+    texto = request.args.get("texto","")
+    tts_obj = gTTS(text=texto, lang="es", slow=False, tld="com.mx")
+    archivo = io.BytesIO()
+    tts_obj.write_to_fp(archivo)
+    archivo.seek(0)
+    return send_file(archivo, mimetype="audio/mpeg")
+
+@app.route("/clima")
+def clima():
+    lat = request.args.get("lat")
+    lon = request.args.get("lon")
+    ciudad = request.args.get("ciudad")
+    return obtener_clima(ciudad=ciudad, lat=lat, lon=lon)
+
+@app.route('/favicon.ico')
+def favicon():
+    return send_file(os.path.join(STATIC_DIR, 'favicon.ico'))
 
 # ---------------- HTML ----------------
 HTML_TEMPLATE = """  
@@ -331,49 +389,7 @@ window.onload=function(){
 </html>
 """
 
-# ---------------- RUTAS ----------------
-@app.route("/")
-def index():
-    if "usuario_id" not in session:
-        session["usuario_id"] = str(uuid.uuid4())
-    return render_template_string(HTML_TEMPLATE, APP_NAME=APP_NAME, usuario_id=session["usuario_id"])
-
-@app.route("/preguntar", methods=["POST"])
-def preguntar():
-    try:
-        data = request.get_json()
-        mensaje = data.get("mensaje","")
-        usuario_id = data.get("usuario_id", str(uuid.uuid4()))
-        respuesta = generar_respuesta(mensaje, usuario_id)
-        guardar_en_historial(usuario_id, mensaje, respuesta["texto"])
-        return jsonify(respuesta)
-    except Exception as e:
-        return jsonify({"texto": f"Error interno del servidor: {e}", "imagenes": [], "borrar_historial": False})
-
-@app.route("/historial/<usuario_id>")
-def historial(usuario_id):
-    return jsonify(cargar_historial(usuario_id))
-
-@app.route("/tts")
-def tts():
-    texto = request.args.get("texto","")
-    try:
-        tts_obj = gTTS(text=texto, lang="es", slow=False, tld="com.mx")
-        archivo = io.BytesIO()
-        tts_obj.write_to_fp(archivo)
-        archivo.seek(0)
-        return send_file(archivo, mimetype="audio/mpeg")
-    except Exception as e:
-        return jsonify({"error": f"No se pudo generar TTS: {e}"})
-
-@app.route("/clima")
-def clima():
-    lat = request.args.get("lat")
-    lon = request.args.get("lon")
-    texto = obtener_clima(lat=lat, lon=lon)
-    return texto
-
-# ---------------- MAIN ----------------
 if __name__ == "__main__":
+    import os
     port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host="0.0.0.0", port=port)
