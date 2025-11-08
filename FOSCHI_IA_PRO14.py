@@ -73,8 +73,11 @@ def hacer_links_clicleables(texto):
 
 # ---------------- RESPUESTA ----------------
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
+    from openai import OpenAI
+    client = OpenAI(api_key=OPENAI_API_KEY)
+
     mensaje_lower = mensaje.lower().strip()
-    
+
     # ------------------- BORRAR HISTORIAL -------------------
     if any(phrase in mensaje_lower for phrase in ["borrar historial", "limpiar historial", "reset historial"]):
         path = os.path.join(DATA_DIR, f"{usuario}.json")
@@ -88,7 +91,7 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         return {"texto": texto, "imagenes": [], "borrar_historial": True}
 
     # ------------------- FECHA/HORA -------------------
-    if any(phrase in mensaje_lower for phrase in ["qué día", "que día", "qué fecha", "que fecha", "qué hora", "que hora"]):
+    if any(phrase in mensaje_lower for phrase in ["qué día", "que día", "qué fecha", "que fecha", "qué hora", "que hora", "día es hoy", "fecha hoy"]):
         texto = fecha_hora_en_es(tz_name=tz)
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
@@ -105,25 +108,42 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
+    # ------------------- INFORMACIÓN ACTUAL -------------------
+    palabras_actualidad = ["presidente","noticias","actualidad","últimas noticias","evento actual","quién es","quien es","hechos recientes","información actual"]
+    if any(word in mensaje_lower for word in palabras_actualidad):
+        resultados = buscar_info_actual(mensaje, max_results=5)
+        if resultados:
+            texto = "🔎 Aquí tienes información actualizada:\n" + "\n".join(resultados)
+        else:
+            texto = "No pude obtener información actualizada en este momento."
+        learn_from_message(usuario, mensaje, texto)
+        return {"texto": texto, "imagenes": [], "borrar_historial": False}
+
     # ------------------- RESPUESTA IA NORMAL -------------------
-    texto = "No se pudo generar respuesta (OpenAI API no configurada)." 
-    if OPENAI_API_KEY:
-        try:
-            memoria = load_json(MEMORY_FILE)
-            historial = memoria.get(usuario, {}).get("mensajes", [])
-            prompt_messages = []
-            for m in historial[-max_hist:]:
-                prompt_messages.append({"role": "user", "content": m["usuario"]})
-                prompt_messages.append({"role": "assistant", "content": m["foschi"]})
-            prompt_messages.append({"role": "user", "content": mensaje})
-            resp = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=prompt_messages,
-                max_tokens=800
-            )
-            texto = resp.choices[0].message.content.strip()
-        except Exception as e:
-            texto = f"No pude generar respuesta: {e}"
+    try:
+        memoria = load_json(MEMORY_FILE)
+        historial = memoria.get(usuario, {}).get("mensajes", [])
+        prompt_messages = []
+        for m in historial[-max_hist:]:
+            prompt_messages.append({"role": "user", "content": m["usuario"]})
+            prompt_messages.append({"role": "assistant", "content": m["foschi"]})
+        prompt_messages.append({"role": "user", "content": mensaje})
+
+        resp = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=prompt_messages,
+            max_completion_tokens=800
+        )
+
+        texto = resp.choices[0].message.content.strip()
+    except Exception as e:
+        texto = f"No pude generar respuesta: {e}"
+
+    # ------------------- LINKS ADICIONALES -------------------
+    if any(palabra in mensaje_lower for palabra in ["fuentes", "links", "paginas web", "videos", "referencias"]):
+        links = buscar_google_youtube(mensaje)
+        if links:
+            texto += "\n\nResultados sugeridos:\n" + "\n".join(links)
 
     texto = hacer_links_clicleables(texto)
     learn_from_message(usuario, mensaje, texto)
