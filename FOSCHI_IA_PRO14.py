@@ -23,7 +23,9 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "AQ.Ab8RN6LMlOvrcOwGnb0TZfJ1n7CMd4V
 GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID", "439f73f186e4f4377")
 OWM_API_KEY = os.getenv("OWM_API_KEY", "99b04c1da1ea2529c81c354386044803")
 
-client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+import openai
+openai.api_key = OPENAI_API_KEY
+client = openai
 
 app = Flask(__name__)
 app.secret_key = "FoschiWebKey"
@@ -168,7 +170,7 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
             resp = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=prompt_messages,
-                max_completion_tokens=800
+                max_tokens=800
             )
             texto = resp.choices[0].message.content.strip()
     except Exception as e:
