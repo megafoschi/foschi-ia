@@ -1,4 +1,3 @@
-# FOSCHI_IA_PRO_FINAL.py
 from flask import Flask, render_template_string, request, jsonify, session, send_file
 from flask_session import Session
 import os, uuid, json, io
@@ -7,12 +6,6 @@ import pytz
 from gtts import gTTS
 import requests
 import urllib.parse
-
-# OpenAI modern client
-try:
-    from openai import OpenAI
-except Exception:
-    OpenAI = None
 
 # ---------------- CONFIG ----------------
 APP_NAME = "FOSCHI IA WEB"
@@ -28,14 +21,6 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID")
 OWM_API_KEY = os.getenv("OWM_API_KEY")
 
-# ---------------- OPENAI CLIENT ----------------
-client = None
-if OpenAI is not None and OPENAI_API_KEY:
-    try:
-        client = OpenAI(api_key=OPENAI_API_KEY)
-    except Exception:
-        client = None
-
 # ---------------- APP ----------------
 app = Flask(__name__)
 app.secret_key = "FoschiWebKey"
@@ -46,8 +31,7 @@ Session(app)
 MEMORY_FILE = os.path.join(DATA_DIR, "memory.json")
 
 def load_json(path):
-    if not os.path.exists(path):
-        return {}
+    if not os.path.exists(path): return {}
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -74,94 +58,49 @@ def learn_from_message(usuario, mensaje, respuesta):
     memory[usuario]["mensajes"].append({"usuario": mensaje, "foschi": respuesta})
     ahora = datetime.now(pytz.timezone("America/Argentina/Buenos_Aires"))
     memory[usuario]["ultima_interaccion"] = ahora.strftime("%d/%m/%Y %H:%M:%S")
-    for palabra in mensaje.lower().split():
-        if len(palabra) > 3:
-            memory[usuario]["temas"][palabra] = memory[usuario]["temas"].get(palabra, 0) + 1
+    memory[usuario]["temas"].update({palabra: memory[usuario]["temas"].get(palabra,0)+1
+                                     for palabra in mensaje.lower().split() if len(palabra)>3})
     save_json(MEMORY_FILE, memory)
-
-def save_last_sources(usuario, fuentes_list):
-    memory = load_json(MEMORY_FILE)
-    if usuario not in memory:
-        memory[usuario] = {"temas": {}, "mensajes": [], "ultima_interaccion": None}
-    memory[usuario]["ultimas_fuentes"] = fuentes_list
-    save_json(MEMORY_FILE, memory)
-
-def get_last_sources(usuario):
-    memory = load_json(MEMORY_FILE)
-    return memory.get(usuario, {}).get("ultimas_fuentes", [])
 
 def hacer_links_clicleables(texto):
     import re
     return re.sub(r'(https?://[^\s]+)', r'<a href="\1" target="_blank" style="color:#ff0000;">\1</a>', texto)
 
-# ---------------- BÚSQUEDAS ----------------
-def buscar_google_con_links(query, max_results=3):
-    """
-    Devuelve (snippets, links) usando Google Custom Search.
-    snippets: lista de textos (sin títulos ni links)
-    links: lista de URLs (strings) o strings con título + url para mostrar si se piden fuentes.
-    """
-    snippets = []
+def buscar_google_youtube(query, max_results=3):
     links = []
     if GOOGLE_API_KEY and GOOGLE_CSE_ID:
         try:
-            url = f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}&q={urllib.parse.quote(query)}&sort=date"
-            r = requests.get(url, timeout=6)
+            url = f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}&q={urllib.parse.quote(query)}"
+            r = requests.get(url, timeout=5)
             data = r.json()
             for item in data.get("items", [])[:max_results]:
-                snippet = item.get("snippet", "").strip()
-                link = item.get("link", "").strip()
-                title = item.get("title", "").strip()
-                if snippet:
-                    snippets.append(snippet)
-                if link:
-                    # guardamos texto amigable + url para mostrar cuando se pida
-                    if title:
-                        links.append(f"{title} — {link}")
-                    else:
-                        links.append(link)
-        except Exception:
+                links.append(f"{item.get('title','')} - {item.get('link')}")
+        except:
             pass
-    return snippets, links
-
-# Respaldos simples (Bing RSS + DuckDuckGo scraping ligero) para cuando Google no devuelva nada
-import re
-def buscar_respaldo(query, max_results=4):
-    resultados = []
-    links = []
     try:
-        # Bing News RSS (puede devolver títulos)
-        url_bing = f"https://www.bing.com/news/search?q={urllib.parse.quote(query)}&format=rss"
-        r_bing = requests.get(url_bing, timeout=6)
-        titles = re.findall(r"<title>(.*?)</title>", r_bing.text)
-        # ignorar los primeros 1-2 que son encabezados
-        for t in titles[2:2+max_results]:
-            resultados.append(t)
-        # DuckDuckGo (HTML)
-        url_duck = f"https://duckduckgo.com/html/?q={urllib.parse.quote(query)}"
-        r_duck = requests.get(url_duck, timeout=6, headers={"User-Agent": "Mozilla/5.0"})
-        matches = re.findall(r'<a rel="nofollow" class="result__a" href="([^"]+)">([^<]+)</a>', r_duck.text)
-        for href, text in matches[:max_results]:
-            resultados.append(text)
-            links.append(href)
-    except Exception:
+        yt_query = urllib.parse.quote(query)
+        yt_url = f"https://www.youtube.com/results?search_query={yt_query}"
+        links.append(f"Videos de YouTube: {yt_url}")
+    except:
         pass
-    return resultados[:max_results], links
+    return links
 
 def buscar_info_actual(query, max_results=3):
-    """
-    Devuelve (snippets, links). Por defecto intenta Google Custom Search; si no hay resultados
-    usa buscadores de respaldo. Los 'snippets' son solo texto para resumir; los 'links' se
-    guardan en memoria y se muestran solo si el usuario lo pide.
-    """
-    snippets, links = buscar_google_con_links(query, max_results=max_results)
-    if not snippets:
-        snippets, links = buscar_respaldo(query, max_results=max_results)
-    if not snippets:
-        snippets = ["No se encontró información reciente sobre ese tema."]
-    return snippets, links
+    resultados = []
+    if GOOGLE_API_KEY and GOOGLE_CSE_ID:
+        try:
+            url = f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}&q={urllib.parse.quote(query)}&sort=date"
+            r = requests.get(url, timeout=5)
+            data = r.json()
+            for item in data.get("items", [])[:max_results]:
+                title = item.get("title", "")
+                link = item.get("link", "")
+                snippet = item.get("snippet", "")
+                resultados.append(f"{title} - {snippet} ({link})")
+        except Exception as e:
+            resultados.append(f"No se pudo obtener información actual: {e}")
+    return resultados
 
-# ---------------- CLIMA ----------------
 def obtener_clima(ciudad=None, lat=None, lon=None):
     if not OWM_API_KEY:
         return "No está configurada la API de clima (OWM_API_KEY)."
@@ -174,51 +113,56 @@ def obtener_clima(ciudad=None, lat=None, lon=None):
         r = requests.get(url, timeout=6)
         data = r.json()
         if r.status_code != 200:
-            return "No pude obtener el clima en este momento."
+            msg = data.get("message", "Respuesta no OK de OpenWeatherMap.")
+            return f"No pude obtener el clima: {r.status_code} - {msg}"
         desc = data.get("weather", [{}])[0].get("description", "Sin descripción").capitalize()
         temp = data.get("main", {}).get("temp")
         hum = data.get("main", {}).get("humidity")
-        parts = [f"{desc}"]
+        name = data.get("name", ciudad if ciudad else "la ubicación")
+        parts = [f"El clima en {name} es {desc}"]
         if temp is not None:
-            parts.append(f"Temperatura {round(temp)}°C")
+            parts.append(f"temperatura {round(temp)}°C")
         if hum is not None:
-            parts.append(f"Humedad {hum}%")
+            parts.append(f"humedad {hum}%")
         return ", ".join(parts) + "."
     except:
         return "No pude obtener el clima."
+
+def guardar_en_historial(usuario, entrada, respuesta):
+    path = os.path.join(DATA_DIR, f"{usuario}.json")
+    datos = []
+    if os.path.exists(path):
+        with open(path,"r",encoding="utf-8") as f:
+            try: datos = json.load(f)
+            except: datos = []
+    datos.append({"fecha":datetime.now(pytz.timezone("America/Argentina/Buenos_Aires")).strftime("%d/%m/%Y %H:%M:%S"),
+                  "usuario":entrada,"foschi":respuesta})
+    with open(path,"w",encoding="utf-8") as f:
+        json.dump(datos,f,ensure_ascii=False,indent=2)
+
+def cargar_historial(usuario):
+    path = os.path.join(DATA_DIR, f"{usuario}.json")
+    if not os.path.exists(path): return []
+    with open(path,"r",encoding="utf-8") as f:
+        try: return json.load(f)
+        except: return []
 
 # ---------------- RESPUESTA IA ----------------
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
     mensaje_lower = mensaje.lower().strip()
 
-    # Pedir fuentes explícitamente
-    if any(w in mensaje_lower for w in ["fuentes", "links", "páginas", "páginas web", "paginas", "referencias", "de dónde", "de donde"]):
-        fuentes = get_last_sources(usuario)
-        if not fuentes:
-            # si no hay guardadas, hacemos una búsqueda rápida (sin resumir) para devolver links
-            _, enlaces = buscar_info_actual(mensaje, max_results=5)
-            fuentes = enlaces
-        if not fuentes:
-            return {"texto": "No tengo fuentes guardadas para esta conversación.", "imagenes": []}
-        # formatear clickeables
-        texto_links = "\n".join([hacer_links_clicleables(e) for e in fuentes])
-        return {"texto": "Aquí están las fuentes:\n" + texto_links, "imagenes": []}
-
     # BORRAR HISTORIAL
     if any(phrase in mensaje_lower for phrase in ["borrar historial", "limpiar historial", "reset historial"]):
         path = os.path.join(DATA_DIR, f"{usuario}.json")
-        if os.path.exists(path):
-            os.remove(path)
+        if os.path.exists(path): os.remove(path)
         memory = load_json(MEMORY_FILE)
-        if usuario in memory:
-            memory[usuario]["mensajes"] = []
-            save_json(MEMORY_FILE, memory)
+        if usuario in memory: memory[usuario]["mensajes"] = []; save_json(MEMORY_FILE, memory)
         return {"texto":"✅ Historial borrado correctamente.","imagenes":[],"borrar_historial":True}
 
     # FECHA/HORA
     if any(phrase in mensaje_lower for phrase in ["qué día", "que día", "qué fecha", "que fecha", "qué hora", "que hora", "día es hoy", "fecha hoy"]):
         texto = fecha_hora_en_es()
-        learn_from_message(usuario, mensaje, texto)
+        learn_from_message(usuario,mensaje,texto)
         return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
     # CLIMA
@@ -227,77 +171,50 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         ciudad_match = re.search(r"clima en ([a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+)", mensaje_lower)
         ciudad = ciudad_match.group(1).strip() if ciudad_match else None
         texto = obtener_clima(ciudad=ciudad, lat=lat, lon=lon)
-        learn_from_message(usuario, mensaje, texto)
+        learn_from_message(usuario,mensaje,texto)
         return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
-    # INFORMACIÓN ACTUAL (resumida y SIN mostrar enlaces)
-    if any(word in mensaje_lower for word in ["presidente","actualidad","noticias","quién es","quien es","últimas noticias","evento actual"]):
-        snippets, links = buscar_info_actual(mensaje, max_results=3)
-        combined = " ".join(snippets)
-        # Guardar las fuentes para si el usuario las pide después
-        if links:
-            save_last_sources(usuario, links)
-        # Reescribir naturalmente con OpenAI (si está disponible)
-        if client:
-            try:
-                system_prompt = "Eres Foschi IA, un asistente que resume información actual para el usuario. No menciones ni muestres las fuentes a menos que el usuario lo pida."
-                user_prompt = f"Resume brevemente y con lenguaje natural esta información: {combined}. No menciones ni incluyas enlaces o nombres de sitios; solo da el resumen."
-                resp = client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[{"role":"system","content": system_prompt},
-                              {"role":"user","content": user_prompt}],
-                    max_tokens=300
-                )
-                texto = resp.choices[0].message.content.strip()
-            except Exception as e:
-                texto = combined if combined else "No pude obtener información actual en este momento."
-        else:
-            texto = combined if combined else "No pude obtener información actual en este momento."
-        learn_from_message(usuario, mensaje, texto)
+    # INFORMACIÓN ACTUAL
+    if any(word in mensaje_lower for word in ["presidente","actualidad","noticias","quién es","últimas noticias","evento actual"]):
+        resultados = buscar_info_actual(mensaje)
+        texto = "Aquí tienes información actual:\n" + "\n".join(resultados) if resultados else "No pude obtener información actual en este momento."
+        learn_from_message(usuario,mensaje,texto)
         return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
-    # RESPUESTA IA NORMAL (con contexto)
+    # RESPUESTA IA NORMAL
     try:
         memoria = load_json(MEMORY_FILE)
-        historial = memoria.get(usuario, {}).get("mensajes", [])
+        historial = memoria.get(usuario,{}).get("mensajes",[])
         prompt_messages = []
         for m in historial[-max_hist:]:
-            prompt_messages.append({"role":"user","content": m["usuario"]})
-            prompt_messages.append({"role":"assistant","content": m["foschi"]})
-        prompt_messages.append({"role":"user","content": mensaje})
+            prompt_messages.append({"role":"user","content":m["usuario"]})
+            prompt_messages.append({"role":"assistant","content":m["foschi"]})
+        prompt_messages.append({"role":"user","content":mensaje})
 
-        if client:
-            resp = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=prompt_messages,
-                max_tokens=800
-            )
-            texto = resp.choices[0].message.content.strip()
-        else:
-            texto = "El motor de IA no está configurado (falta OPENAI_API_KEY)."
+        import openai
+        openai.api_key = OPENAI_API_KEY
+        resp = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=prompt_messages,
+            max_tokens=800
+        )
+        texto = resp.choices[0].message.content.strip()
     except Exception as e:
         texto = f"No pude generar respuesta: {e}"
 
-    # Si el usuario pidió "fuentes" en la misma consulta, añadir enlaces (redundancia)
+    # LINKS ADICIONALES
     if any(palabra in mensaje_lower for palabra in ["fuentes","links","paginas web","videos","referencias"]):
-        enlaces = get_last_sources(usuario)
-        if enlaces:
-            texto += "\n\n🔗 Fuentes:\n" + "\n".join([hacer_links_clicleables(e) for e in enlaces])
-        else:
-            # generar links rápidos si no existen
-            _, quick_links = buscar_info_actual(mensaje, max_results=5)
-            if quick_links:
-                save_last_sources(usuario, quick_links)
-                texto += "\n\n🔗 Fuentes:\n" + "\n".join([hacer_links_clicleables(e) for e in quick_links])
+        links = buscar_google_youtube(mensaje)
+        if links: texto += "\n\nResultados sugeridos:\n" + "\n".join(links)
 
-    learn_from_message(usuario, mensaje, texto)
+    texto = hacer_links_clicleables(texto)
+    learn_from_message(usuario,mensaje,texto)
     return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
 # ---------------- RUTAS ----------------
 @app.route("/")
 def index():
-    if "usuario_id" not in session:
-        session["usuario_id"] = str(uuid.uuid4())
+    if "usuario_id" not in session: session["usuario_id"]=str(uuid.uuid4())
     return render_template_string(HTML_TEMPLATE, APP_NAME=APP_NAME, usuario_id=session["usuario_id"])
 
 @app.route("/preguntar", methods=["POST"])
@@ -357,7 +274,7 @@ input[type=text]{width:70%;background:#222;color:#fff;}
 button{background:#333;color:#fff;cursor:pointer;}
 button:hover{background:#555;}
 #vozBtn,#borrarBtn,#musicaBtn{float:right;margin-right:20px;}
-#logo{width:50px;vertical-align:middle;cursor:pointer;transition:transform 0.5s;}
+#logo{width:50px;vertical-align:middle;cursor:pointer;transition: transform 0.5s;}
 #logo:hover{transform:scale(1.15) rotate(6deg);}
 #nombre{font-weight:bold;margin-left:10px;cursor:pointer;}
 small{color:#aaa;}
@@ -473,5 +390,6 @@ window.onload=function(){
 """
 
 if __name__ == "__main__":
+    import os
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
