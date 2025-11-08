@@ -4,7 +4,8 @@ import os, uuid, json, io
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from gtts import gTTS
-from openai import OpenAI
+import openai
+openai.api_key = os.getenv("OPENAI_API_KEY")
 import requests
 import pytz
 import urllib.parse
@@ -167,11 +168,11 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
                 prompt_messages.append({"role":"user","content": m["usuario"]})
                 prompt_messages.append({"role":"assistant","content": m["foschi"]})
             prompt_messages.append({"role":"user","content": mensaje})
-            resp = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=prompt_messages,
-                max_tokens=800
-            )
+            resp = openai.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=prompt_messages,
+        max_tokens=800,
+    )
             texto = resp.choices[0].message.content.strip()
     except Exception as e:
         texto = f"No pude generar respuesta: {e}"
