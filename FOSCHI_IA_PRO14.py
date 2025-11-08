@@ -5,7 +5,6 @@ from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from gtts import gTTS
 import openai
-openai.api_key = os.getenv("OPENAI_API_KEY")
 import requests
 import pytz
 import urllib.parse
@@ -19,14 +18,17 @@ os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(STATIC_DIR, exist_ok=True)
 
 # --- LEER KEYS DESDE VARIABLES DE ENTORNO ---
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "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")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "AQ.Ab8RN6LMlOvrcOwGnb0TZfJ1n7CMd4VkH0Ne2zSvTdLJoiyBVA")
-GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID", "439f73f186e4f4377")
-OWM_API_KEY = os.getenv("OWM_API_KEY", "99b04c1da1ea2529c81c354386044803")
+# IMPORTANT: evita dejar keys por defecto en el código (rotalas si las pusiste)
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # <- toma la key desde env vars (Render)
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID")
+OWM_API_KEY = os.getenv("OWM_API_KEY")
 
-import openai
-openai.api_key = OPENAI_API_KEY
-client = openai
+# Configuro openai con la API key (si está)
+if OPENAI_API_KEY:
+    openai.api_key = OPENAI_API_KEY
+else:
+    openai.api_key = None
 
 app = Flask(__name__)
 app.secret_key = "FoschiWebKey"
@@ -114,7 +116,7 @@ def buscar_info_actual(query, max_results=3):
     return resultados
 
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
-    mensaje_lower = mensaje.lower().strip()
+    mensaje_lower = (mensaje or "").lower().strip()
 
     # ------------------- BORRAR HISTORIAL -------------------
     if any(phrase in mensaje_lower for phrase in ["borrar historial", "limpiar historial", "reset historial"]):
@@ -158,7 +160,7 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
 
     # ------------------- RESPUESTA IA NORMAL -------------------
     try:
-        if client is None:
+        if not openai.api_key:
             texto = "El motor de IA no está configurado (falta OPENAI_API_KEY)."
         else:
             memoria = load_json(MEMORY_FILE)
@@ -168,12 +170,23 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
                 prompt_messages.append({"role":"user","content": m["usuario"]})
                 prompt_messages.append({"role":"assistant","content": m["foschi"]})
             prompt_messages.append({"role":"user","content": mensaje})
-            resp = openai.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=prompt_messages,
-        max_tokens=800,
-    )
-            texto = resp.choices[0].message.content.strip()
+
+            # Llamada segura al API - usando ChatCompletion (compatible con versiones estables)
+            resp = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=prompt_messages,
+                max_tokens=800,
+            )
+
+            # Extraer texto de forma robusta
+            try:
+                texto = resp['choices'][0]['message']['content'].strip()
+            except Exception:
+                # Fallback a estructura alternativa
+                try:
+                    texto = resp['choices'][0]['text'].strip()
+                except Exception:
+                    texto = str(resp)
     except Exception as e:
         texto = f"No pude generar respuesta: {e}"
 
@@ -184,16 +197,6 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
             texto += "\n\nResultados sugeridos:\n" + "\n".join(links)
 
     # ------------------- FORMATEO FINAL -------------------
-    texto = hacer_links_clicleables(texto)
-    learn_from_message(usuario, mensaje, texto)
-    return {"texto": texto, "imagenes": [], "borrar_historial": False}
-
-       # Buscar links adicionales solo si el usuario lo pide
-    if any(palabra in mensaje.lower() for palabra in ["fuentes", "links", "referencias"]):
-        links = buscar_google_youtube(mensaje)
-        if links:
-            texto += "\n\nResultados sugeridos:\n" + "\n".join(links)
-
     texto = hacer_links_clicleables(texto)
     learn_from_message(usuario, mensaje, texto)
     return {"texto": texto, "imagenes": [], "borrar_historial": False}
