@@ -171,10 +171,11 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
             prompt_messages.append({"role": "assistant", "content": m["foschi"]})
         prompt_messages.append({"role": "user", "content": mensaje})
 
+        # ✅ Uso correcto para SDK openai>=1.0
         resp = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=prompt_messages,
-            max_tokens=800,
+            max_completion_tokens=800
         )
 
         texto = resp.choices[0].message.content.strip()
