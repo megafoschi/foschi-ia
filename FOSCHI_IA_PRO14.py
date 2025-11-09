@@ -6,6 +6,7 @@ import pytz
 from gtts import gTTS
 import requests
 import urllib.parse
+from openai import OpenAI
 
 # ---------------- CONFIG ----------------
 APP_NAME = "FOSCHI IA WEB"
@@ -65,26 +66,6 @@ def learn_from_message(usuario, mensaje, respuesta):
 def hacer_links_clicleables(texto):
     import re
     return re.sub(r'(https?://[^\s]+)', r'<a href="\1" target="_blank" style="color:#ff0000;">\1</a>', texto)
-
-def buscar_google_youtube(query, max_results=3):
-    # Esto solo para sugerencias, pero luego se transforma a texto natural
-    links = []
-    if GOOGLE_API_KEY and GOOGLE_CSE_ID:
-        try:
-            url = f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}&q={urllib.parse.quote(query)}"
-            r = requests.get(url, timeout=5)
-            data = r.json()
-            for item in data.get("items", [])[:max_results]:
-                links.append(f"{item.get('title','')}")
-        except:
-            pass
-    try:
-        yt_query = urllib.parse.quote(query)
-        yt_url = f"https://www.youtube.com/results?search_query={yt_query}"
-        links.append(f"Videos relacionados disponibles en YouTube")
-    except:
-        pass
-    return links
 
 def obtener_clima(ciudad=None, lat=None, lon=None):
     if not OWM_API_KEY:
@@ -161,7 +142,7 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         learn_from_message(usuario, mensaje, texto)
         return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
-    # RESPUESTA IA NATURAL
+    # RESPUESTA NATURAL
     try:
         memoria = load_json(MEMORY_FILE)
         historial = memoria.get(usuario, {}).get("mensajes", [])
@@ -171,35 +152,27 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
             prompt_messages.append({"role": "assistant", "content": m["foschi"]})
         prompt_messages.append({"role": "user", "content": mensaje})
 
-        import openai
-        openai.api_key = OPENAI_API_KEY
-
-        # Compatible con versiones <1.0 y >=1.0
-        resp = openai.ChatCompletion.create(
+        # Cliente OpenAI
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        resp = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=prompt_messages,
-            max_tokens=800,
-            temperature=0.7
+            temperature=0.7,
+            max_tokens=800
         )
-
-        # Detecta la versión y obtiene el contenido correctamente
-        if isinstance(resp.choices[0], dict):
-            texto = resp.choices[0]["message"]["content"].strip()
-        else:
-            # Para versiones 1.x
-            texto = resp.choices[0].message.content.strip()
+        texto = resp.choices[0].message.content.strip()
 
     except Exception as e:
         texto = f"No pude generar respuesta: {e}"
 
-    # No mostrar fuentes externas, solo respuesta natural
     learn_from_message(usuario, mensaje, texto)
     return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
 # ---------------- RUTAS ----------------
 @app.route("/")
 def index():
-    if "usuario_id" not in session: session["usuario_id"]=str(uuid.uuid4())
+    if "usuario_id" not in session:
+        session["usuario_id"]=str(uuid.uuid4())
     return render_template_string(HTML_TEMPLATE, APP_NAME=APP_NAME, usuario_id=session["usuario_id"])
 
 @app.route("/preguntar", methods=["POST"])
@@ -289,7 +262,7 @@ small{color:#aaa;}
 </div>
 
 <script>
-// --- JS del chat (igual que tu original, sin cambios funcionales) ---
+// --- JS del chat (igual que tu original) ---
 let usuario_id="{{usuario_id}}";
 let vozActiva=true,audioActual=null,mensajeActual=null;
 let musica=document.getElementById("musicaFondo");
