@@ -64,60 +64,9 @@ def learn_from_message(usuario, mensaje, respuesta):
 
 def hacer_links_clicleables(texto):
     import re
-    return re.sub(r'(https?://[^\s]+)', r'<a href="\1" target="_blank" style="color:#00ffff;">\1</a>', texto)
+    return re.sub(r'(https?://[^\s]+)', r'<a href="\1" target="_blank" style="color:#ff0000;">\1</a>', texto)
 
-# ---------------- FUNCIONES NUEVAS ----------------
-
-def detectar_idioma(texto):
-    # detección básica según palabras comunes
-    texto_lower = texto.lower()
-    if any(w in texto_lower for w in ["the", "game", "player", "match", "league"]):
-        return "en"
-    if any(w in texto_lower for w in ["jogo", "partida", "campeonato", "futebol"]):
-        return "pt"
-    return "es"
-
-def traducir_texto(texto, idioma_origen="auto", idioma_destino="es"):
-    try:
-        url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl={idioma_origen}&tl={idioma_destino}&dt=t&q={urllib.parse.quote(texto)}"
-        r = requests.get(url, timeout=5)
-        data = r.json()
-        traducido = "".join([seg[0] for seg in data[0]])
-        return traducido
-    except:
-        return texto
-
-def buscar_info_deportiva(query, max_results=3):
-    """
-    Busca información deportiva global en varios idiomas.
-    Devuelve texto resumido, sin links.
-    """
-    resultados = []
-    idioma = detectar_idioma(query)
-    if GOOGLE_API_KEY and GOOGLE_CSE_ID:
-        try:
-            q = f"{query} resultados deportivos globales"  
-            url = f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}&q={urllib.parse.quote(q)}&sort=date"
-            r = requests.get(url, timeout=5)
-            data = r.json()
-            for item in data.get("items", [])[:max_results]:
-                title = item.get("title", "")
-                snippet = item.get("snippet", "")
-                texto = f"🏟️ {title}: {snippet}"
-                # traducir al español si es necesario
-                if idioma != "es":
-                    texto = traducir_texto(texto, idioma_origen=idioma, idioma_destino="es")
-                resultados.append(texto)
-        except Exception as e:
-            resultados.append(f"No pude obtener información deportiva: {e}")
-    else:
-        resultados.append("No hay clave configurada para búsqueda deportiva (GOOGLE_API_KEY o GOOGLE_CSE_ID).")
-    return resultados
-
-def buscar_fuentes_extra(query, max_results=3):
-    """
-    Devuelve fuentes clicleables solo si el usuario las pide.
-    """
+def buscar_google_youtube(query, max_results=3):
     links = []
     if GOOGLE_API_KEY and GOOGLE_CSE_ID:
         try:
@@ -125,16 +74,33 @@ def buscar_fuentes_extra(query, max_results=3):
             r = requests.get(url, timeout=5)
             data = r.json()
             for item in data.get("items", [])[:max_results]:
-                title = item.get("title", "")
-                link = item.get("link", "")
-                links.append(f"<a href='{link}' target='_blank' style='color:#00ffff;'>{title}</a>")
+                links.append(f"{item.get('title','')} - {item.get('link')}")
         except:
             pass
-    yt_query = urllib.parse.quote(query)
-    links.append(f"<a href='https://www.youtube.com/results?search_query={yt_query}' target='_blank' style='color:#00ffff;'>Videos relacionados en YouTube</a>")
+    try:
+        yt_query = urllib.parse.quote(query)
+        yt_url = f"https://www.youtube.com/results?search_query={yt_query}"
+        links.append(f"Videos de YouTube: {yt_url}")
+    except:
+        pass
     return links
 
-# ---------------- CLIMA ----------------
+def buscar_info_actual(query, max_results=3):
+    resultados = []
+    if GOOGLE_API_KEY and GOOGLE_CSE_ID:
+        try:
+            url = f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}&q={urllib.parse.quote(query)}&sort=date"
+            r = requests.get(url, timeout=5)
+            data = r.json()
+            for item in data.get("items", [])[:max_results]:
+                title = item.get("title", "")
+                link = item.get("link", "")
+                snippet = item.get("snippet", "")
+                resultados.append(f"{title} - {snippet} ({link})")
+        except Exception as e:
+            resultados.append(f"No se pudo obtener información actual: {e}")
+    return resultados
+
 def obtener_clima(ciudad=None, lat=None, lon=None):
     if not OWM_API_KEY:
         return "No está configurada la API de clima (OWM_API_KEY)."
@@ -162,7 +128,6 @@ def obtener_clima(ciudad=None, lat=None, lon=None):
     except:
         return "No pude obtener el clima."
 
-# ---------------- HISTORIAL ----------------
 def guardar_en_historial(usuario, entrada, respuesta):
     path = os.path.join(DATA_DIR, f"{usuario}.json")
     datos = []
@@ -209,21 +174,14 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         learn_from_message(usuario,mensaje,texto)
         return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
-    # INFORMACIÓN DEPORTIVA GLOBAL
-    if any(word in mensaje_lower for word in ["fútbol", "basquet", "nba", "tenis", "deporte", "partido", "resultado", "copa", "mundial", "liga"]):
-        resultados = buscar_info_deportiva(mensaje)
-        texto = "Resumen deportivo global:\n" + "\n".join(resultados) if resultados else "No encontré información deportiva actual."
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
+    # INFORMACIÓN ACTUAL
+    if any(word in mensaje_lower for word in ["presidente","actualidad","noticias","quién es","últimas noticias","evento actual"]):
+        resultados = buscar_info_actual(mensaje)
+        texto = "Aquí tienes información actual:\n" + "\n".join(resultados) if resultados else "No pude obtener información actual en este momento."
+        learn_from_message(usuario,mensaje,texto)
+        return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
-    # SI EL USUARIO PIDE FUENTES O LINKS
-    if any(palabra in mensaje_lower for palabra in ["fuentes", "links", "páginas", "referencias", "videos"]):
-        links = buscar_fuentes_extra(mensaje)
-        texto = "🔗 Fuentes solicitadas:<br>" + "<br>".join(links)
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
-
-    # RESPUESTA IA NORMAL (CHATGPT)
+    # RESPUESTA IA NORMAL
     try:
         memoria = load_json(MEMORY_FILE)
         historial = memoria.get(usuario,{}).get("mensajes",[])
@@ -243,6 +201,11 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         texto = resp.choices[0].message.content.strip()
     except Exception as e:
         texto = f"No pude generar respuesta: {e}"
+
+    # LINKS ADICIONALES
+    if any(palabra in mensaje_lower for palabra in ["fuentes","links","paginas web","videos","referencias"]):
+        links = buscar_google_youtube(mensaje)
+        if links: texto += "\n\nResultados sugeridos:\n" + "\n".join(links)
 
     texto = hacer_links_clicleables(texto)
     learn_from_message(usuario,mensaje,texto)
@@ -304,7 +267,7 @@ body{font-family:Arial,system-ui,-apple-system,Segoe UI,Roboto,Helvetica;backgro
 .message.show{opacity:1;}
 .user{background:#3300ff;color:#fff;margin-left:auto;text-align:right;}
 .ai{background:#00ffff;color:#000;margin-right:auto;text-align:left;}
-a{color:#00ffff;text-decoration:underline;}
+a{color:#fff;text-decoration:underline;}
 img{max-width:300px;border-radius:10px;margin:5px 0;}
 input,button{padding:10px;font-size:16px;margin:5px;border:none;border-radius:5px;}
 input[type=text]{width:70%;background:#222;color:#fff;}
@@ -358,69 +321,75 @@ function logoClick(){ alert("FOSCHI NUNCA MUERE, TRASCIENDE..."); }
 function hablarTexto(texto,div=null){
   if(!vozActiva) return;
   detenerVoz();
-  if(mensajeActual) mensajeActual.style.border="";
-  if(div){div.style.border="2px solid #00ffff"; mensajeActual=div;}
-  let u=new Audio("/tts?texto="+encodeURIComponent(texto));
-  u.play(); audioActual=u;
+  if(mensajeActual) mensajeActual.classList.remove("playing");
+  if(div) div.classList.add("playing");
+  mensajeActual=div;
+  audioActual=new Audio("/tts?texto="+encodeURIComponent(texto));
+  audioActual.onended=()=>{ if(mensajeActual) mensajeActual.classList.remove("playing"); mensajeActual=null; };
+  audioActual.play();
 }
 
-function detenerVoz(){
-  if(audioActual){audioActual.pause();audioActual=null;}
-  if(mensajeActual) mensajeActual.style.border="";
-}
+function detenerVoz(){ if(audioActual){ try{audioActual.pause(); audioActual.currentTime=0; audioActual.src=""; audioActual.load(); audioActual=null; if(mensajeActual) mensajeActual.classList.remove("playing"); mensajeActual=null;}catch(e){console.log(e);}} }
 
-function toggleVoz(){
-  vozActiva=!vozActiva;
-  document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Voz desactivada";
-}
+function toggleVoz(estado=null){ vozActiva=estado!==null?estado:!vozActiva; document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada"; }
 
-function borrarPantalla(){document.getElementById("chat").innerHTML="";}
-
-function verHistorial(){
-  fetch("/historial/"+usuario_id).then(r=>r.json()).then(datos=>{
-    const chat=document.getElementById("chat");
-    chat.innerHTML="";
-    datos.forEach(e=>{
-      chat.innerHTML+=`<div class='message user show'>👤 ${e.usuario}</div>`;
-      chat.innerHTML+=`<div class='message ai show' onclick='hablarTexto("${e.foschi.replace(/"/g,'\\"')}")'>🤖 ${e.foschi}</div>`;
-    });
-    chat.scrollTop=chat.scrollHeight;
-  });
+function agregar(msg,cls,imagenes=[]){
+  let c=document.getElementById("chat"),div=document.createElement("div");
+  div.className="message "+cls; div.innerHTML=msg;
+  c.appendChild(div);
+  setTimeout(()=>div.classList.add("show"),50);
+  imagenes.forEach(url=>{ let img=document.createElement("img"); img.src=url; div.appendChild(img); });
+  c.scroll({top:c.scrollHeight,behavior:"smooth"});
+  if(cls==="ai") hablarTexto(msg,div);
 }
 
 function enviar(){
-  const msg=document.getElementById("mensaje").value.trim();
-  if(!msg)return;
-  document.getElementById("chat").innerHTML+=`<div class='message user show'>👤 ${msg}</div>`;
-  document.getElementById("mensaje").value="";
-  fetch("https://ipapi.co/json/").then(r=>r.json()).then(ipdata=>{
-    const datos={mensaje:msg,usuario_id:usuario_id,lat:ipdata.latitude,lon:ipdata.longitude,timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone};
-    return fetch("/preguntar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(datos)});
-  }).then(r=>r.json()).then(resp=>{
-    const div=document.createElement("div");
-    div.className="message ai";
-    div.innerHTML="🤖 "+resp.texto;
-    document.getElementById("chat").appendChild(div);
-    setTimeout(()=>div.classList.add("show"),50);
-    if(resp.borrar_historial) document.getElementById("chat").innerHTML+="<small>Historial eliminado</small>";
-    document.getElementById("chat").scrollTop=document.getElementById("chat").scrollHeight;
-    hablarTexto(resp.texto,div);
-  }).catch(err=>{
-    document.getElementById("chat").innerHTML+=`<div class='message ai show'>Error: ${err}</div>`;
+  let msg=document.getElementById("mensaje").value.trim(); if(!msg) return;
+  agregar(msg,"user"); document.getElementById("mensaje").value="";
+  fetch("/preguntar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mensaje: msg, usuario_id: usuario_id})})
+  .then(r=>r.json()).then(data=>{ agregar(data.texto,"ai",data.imagenes); if(data.borrar_historial){document.getElementById("chat").innerHTML="";} })
+  .catch(e=>{ agregar("Error al comunicarse con el servidor.","ai"); console.error(e); });
+}
+
+document.getElementById("mensaje").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); enviar(); } });
+
+function hablar(){
+  if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window){
+    const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new Rec();
+    recognition.lang='es-AR'; recognition.continuous=false; recognition.interimResults=false;
+    recognition.onresult=function(event){ document.getElementById("mensaje").value=event.results[0][0].transcript.toLowerCase(); enviar(); }
+    recognition.onerror=function(e){console.log(e); alert("Error reconocimiento de voz: " + e.error);}
+    recognition.start();
+  }else{alert("Tu navegador no soporta reconocimiento de voz.");}
+}
+
+function verHistorial(){
+  fetch("/historial/"+usuario_id).then(r=>r.json()).then(data=>{
+    document.getElementById("chat").innerHTML="";
+    if(data.length===0){agregar("No hay historial todavía.","ai");return;}
+    data.slice(-20).forEach(e=>{ agregar(`<small>${e.fecha}</small><br>${e.usuario}`,"user"); agregar(`<small>${e.fecha}</small><br>${e.foschi}`,"ai"); });
   });
 }
 
-function hablar(){
-  const rec=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!rec){alert("Tu navegador no soporta reconocimiento de voz.");return;}
-  const r=new rec();r.lang="es-ES";
-  r.onresult=e=>{document.getElementById("mensaje").value=e.results[0][0].transcript; enviar();};
-  r.start();
-}
+function borrarPantalla(){ document.getElementById("chat").innerHTML=""; }
+
+window.onload=function(){
+  agregar("👋 Hola, soy FOSCHI IA. Obteniendo tu ubicación...","ai");
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(pos=>{
+      fetch(`/clima?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`)
+      .then(r=>r.text()).then(clima=>{ agregar(`🌤️ ${clima}`,"ai"); })
+      .catch(e=>{ agregar("No pude obtener el clima automáticamente.","ai"); console.error(e); });
+    },()=>{ agregar("No pude obtener tu ubicación (permiso denegado o error).","ai"); }, {timeout:8000});
+  } else { agregar("Tu navegador no soporta geolocalización.","ai"); }
+};
 </script>
 </body>
 </html>
 """
 
-if __name__=="__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+if __name__ == "__main__":
+    import os
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
