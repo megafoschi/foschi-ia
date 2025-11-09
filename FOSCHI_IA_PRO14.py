@@ -175,18 +175,28 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         learn_from_message(usuario,mensaje,texto)
         return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
-    # INFORMACIÓN ACTUAL (sin mostrar links automáticamente)
-    if any(word in mensaje_lower for word in ["presidente","actualidad","noticias","quién es","últimas noticias","evento actual"]):
-        resultados = buscar_info_actual(mensaje)
-        if resultados:
-            texto = "Aquí tienes información actual."
-            # Agregamos links solo si el usuario pidió "fuentes" o "links"
-            if any(palabra in mensaje_lower for palabra in ["fuentes","links","referencias"]):
-                texto += "\n" + "\n".join(hacer_links_clicleables("\n".join(resultados)).split("\n"))
-        else:
-            texto = "No pude obtener información actual en este momento."
-        learn_from_message(usuario,mensaje,texto)
-        return {"texto":texto,"imagenes":[],"borrar_historial":False}
+    # INFORMACIÓN ACTUAL (resumen natural, links opcionales)
+if any(word in mensaje_lower for word in ["presidente","actualidad","noticias","quién es","últimas noticias","evento actual"]):
+    resultados = buscar_info_actual(mensaje)
+    if resultados:
+        # Resumir naturalmente: solo título + snippet, sin links
+        resumen = []
+        for r in resultados:
+            if "(" in r:  # separar snippet del link
+                parte = r.split("(")[0].strip()
+            else:
+                parte = r
+            resumen.append(parte)
+        texto = "Aquí tienes información actual: " + " | ".join(resumen)
+        # Si el usuario pidió fuentes o links, agregarlos clicleables
+        if any(palabra in mensaje_lower for palabra in ["fuentes","links","referencias"]):
+            links = [r[r.find("(")+1:r.find(")")] for r in resultados if "(" in r]
+            if links:
+                texto += "\n\nResultados sugeridos:\n" + "\n".join(hacer_links_clicleables("\n".join(links)).split("\n"))
+    else:
+        texto = "No pude obtener información actual en este momento."
+    learn_from_message(usuario,mensaje,texto)
+    return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
     # RESPUESTA IA NORMAL
     try:
