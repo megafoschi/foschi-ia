@@ -174,13 +174,29 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         learn_from_message(usuario,mensaje,texto)
         return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
-    # INFORMACIÓN ACTUAL
+    # INFORMACIÓN ACTUAL (MEJORADA)
     if any(word in mensaje_lower for word in ["presidente","actualidad","noticias","quién es","últimas noticias","evento actual"]):
         resultados = buscar_info_actual(mensaje)
-        # RESPUESTA RESUMIDA, SIN MENCIONAR FUENTES
-        texto = "Aquí tienes un resumen de la información actual."
-        if resultados:
-            texto += " " + " ".join([r.split(" - ")[1].split("(")[0] for r in resultados])  # solo texto resumido
+        texto_fuente = "\n".join(resultados) if resultados else ""
+        if texto_fuente:
+            try:
+                import openai
+                openai.api_key = OPENAI_API_KEY
+                resp = openai.ChatCompletion.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role":"system",
+                         "content":"Responde de forma resumida y natural usando únicamente la información proporcionada. No inventes datos ni agregues opiniones."},
+                        {"role":"user",
+                         "content":f"Basándote en esta información, responde claramente a la pregunta:\n{texto_fuente}"}
+                    ],
+                    max_tokens=200
+                )
+                texto = resp.choices[0].message.content.strip()
+            except Exception as e:
+                texto = "No pude generar la respuesta resumida de información actual."
+        else:
+            texto = "No pude obtener información actual en este momento."
         learn_from_message(usuario,mensaje,texto)
         return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
