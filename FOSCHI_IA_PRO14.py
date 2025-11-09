@@ -114,6 +114,7 @@ def cargar_historial(usuario):
         except: return []
 
 # ---------------- RESPUESTA IA ----------------
+# ---------------- RESPUESTA IA ----------------
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
     mensaje_lower = mensaje.lower().strip()
 
@@ -140,38 +141,45 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         learn_from_message(usuario,mensaje,texto)
         return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
-    # INFORMACIÓN ACTUALIZADA
-    if any(word in mensaje_lower for word in ["presidente","actualidad","noticias","quién es","últimas noticias","evento actual"]):
-        resultados = []
-        if GOOGLE_API_KEY and GOOGLE_CSE_ID:
-            try:
-                url = f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}&q={urllib.parse.quote(mensaje)}&sort=date"
-                r = requests.get(url, timeout=5)
-                data = r.json()
-                for item in data.get("items", [])[:3]:
-                    snippet = item.get("snippet", "")
-                    resultados.append(snippet)
-            except:
-                pass
-        texto = " ".join(resultados) if resultados else "No pude obtener información actualizada en este momento."
-        learn_from_message(usuario,mensaje,texto)
-        return {"texto":texto,"imagenes":[],"borrar_historial":False}
-
     # INFORMACIÓN DEPORTIVA GLOBAL
     if any(word in mensaje_lower for word in ["fútbol","futbol","tenis","nba","deporte","resultado","partido","liga","campeonato","mundial"]):
         resultados = []
-        query = f"sports news {mensaje}"  # Forzar búsqueda global en inglés/deportes
+        query = f"sports news {mensaje}"  # Búsqueda global
         if GOOGLE_API_KEY and GOOGLE_CSE_ID:
             try:
                 url = f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}&q={urllib.parse.quote(query)}&sort=date"
                 r = requests.get(url, timeout=5)
                 data = r.json()
                 for item in data.get("items", [])[:3]:
-                    snippet = item.get("snippet", "")
-                    resultados.append(snippet)
+                    snippet = item.get("snippet", "").strip()
+                    if snippet:
+                        snippet = " ".join(snippet.split())
+                        if not snippet.endswith("."): snippet += "."
+                        resultados.append(snippet)
             except:
                 pass
         texto = " ".join(resultados) if resultados else "No pude obtener información deportiva actual en este momento."
+        learn_from_message(usuario,mensaje,texto)
+        return {"texto":texto,"imagenes":[],"borrar_historial":False}
+
+    # INFORMACIÓN ACTUAL GENERAL
+    if any(word in mensaje_lower for word in ["presidente","actualidad","noticias","quién es","últimas noticias","evento actual"]):
+        resultados = []
+        query = mensaje
+        if GOOGLE_API_KEY and GOOGLE_CSE_ID:
+            try:
+                url = f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}&q={urllib.parse.quote(query)}&sort=date"
+                r = requests.get(url, timeout=5)
+                data = r.json()
+                for item in data.get("items", [])[:3]:
+                    snippet = item.get("snippet", "").strip()
+                    if snippet:
+                        snippet = " ".join(snippet.split())
+                        if not snippet.endswith("."): snippet += "."
+                        resultados.append(snippet)
+            except:
+                pass
+        texto = " ".join(resultados) if resultados else "No pude obtener información actual en este momento."
         learn_from_message(usuario,mensaje,texto)
         return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
@@ -195,33 +203,10 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         )
         texto = resp.choices[0].message.content.strip()
 
-    except Exception as e:
-        texto = f"No pude generar respuesta: {e}"
-
-    texto = hacer_links_clicleables(texto)
-    learn_from_message(usuario,mensaje,texto)
-    return {"texto":texto,"imagenes":[],"borrar_historial":False}
-
-    # RESPUESTA IA NORMAL
-    try:
-        memoria = load_json(MEMORY_FILE)
-        historial = memoria.get(usuario,{}).get("mensajes",[])
-        prompt_messages = []
-        for m in historial[-max_hist:]:
-            prompt_messages.append({"role":"user","content":m["usuario"]})
-            prompt_messages.append({"role":"assistant","content":m["foschi"]})
-        prompt_messages.append({"role":"user","content":mensaje})
-
-        from openai import OpenAI
-        client = OpenAI(api_key=OPENAI_API_KEY)
-
-        resp = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=prompt_messages,
-            max_tokens=800
-        )
-        # Cambio compatible con openai>=1.0.0
-        texto = resp.choices[0].message.content.strip()
+        # Eliminar referencias a fuentes para respuesta más natural
+        import re
+        texto = re.sub(r'(\s*\(?https?://[^\s]+\)?)', '', texto)
+        texto = re.sub(r'\s*\[[^\]]+\]', '', texto)
 
     except Exception as e:
         texto = f"No pude generar respuesta: {e}"
