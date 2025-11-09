@@ -6,6 +6,7 @@ import pytz
 from gtts import gTTS
 import requests
 import urllib.parse
+from openai import OpenAI
 
 # ---------------- CONFIG ----------------
 APP_NAME = "FOSCHI IA WEB"
@@ -66,41 +67,6 @@ def hacer_links_clicleables(texto):
     import re
     return re.sub(r'(https?://[^\s]+)', r'<a href="\1" target="_blank" style="color:#ff0000;">\1</a>', texto)
 
-def buscar_google_youtube(query, max_results=3):
-    links = []
-    if GOOGLE_API_KEY and GOOGLE_CSE_ID:
-        try:
-            url = f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}&q={urllib.parse.quote(query)}"
-            r = requests.get(url, timeout=5)
-            data = r.json()
-            for item in data.get("items", [])[:max_results]:
-                links.append(f"{item.get('title','')} - {item.get('link')}")
-        except:
-            pass
-    try:
-        yt_query = urllib.parse.quote(query)
-        yt_url = f"https://www.youtube.com/results?search_query={yt_query}"
-        links.append(f"Videos de YouTube: {yt_url}")
-    except:
-        pass
-    return links
-
-def buscar_info_actual(query, max_results=3):
-    resultados = []
-    if GOOGLE_API_KEY and GOOGLE_CSE_ID:
-        try:
-            url = f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}&q={urllib.parse.quote(query)}&sort=date"
-            r = requests.get(url, timeout=5)
-            data = r.json()
-            for item in data.get("items", [])[:max_results]:
-                title = item.get("title", "")
-                link = item.get("link", "")
-                snippet = item.get("snippet", "")
-                resultados.append(f"{title} - {snippet} ({link})")
-        except Exception as e:
-            resultados.append(f"No se pudo obtener información actual: {e}")
-    return resultados
-
 def obtener_clima(ciudad=None, lat=None, lon=None):
     if not OWM_API_KEY:
         return "No está configurada la API de clima (OWM_API_KEY)."
@@ -148,7 +114,7 @@ def cargar_historial(usuario):
         except: return []
 
 # ---------------- RESPUESTA IA ----------------
-
+# ---------------- RESPUESTA IA ----------------
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
     mensaje_lower = mensaje.lower().strip()
 
@@ -163,8 +129,8 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
     # FECHA/HORA
     if any(phrase in mensaje_lower for phrase in ["qué día", "que día", "qué fecha", "que fecha", "qué hora", "que hora", "día es hoy", "fecha hoy"]):
         texto = fecha_hora_en_es()
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
+        learn_from_message(usuario,mensaje,texto)
+        return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
     # CLIMA
     if "clima" in mensaje_lower:
@@ -172,66 +138,88 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         ciudad_match = re.search(r"clima en ([a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+)", mensaje_lower)
         ciudad = ciudad_match.group(1).strip() if ciudad_match else None
         texto = obtener_clima(ciudad=ciudad, lat=lat, lon=lon)
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
+        learn_from_message(usuario,mensaje,texto)
+        return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
-    # INFORMACIÓN ACTUAL Y DEPORTES
-    if any(word in mensaje_lower for word in ["presidente","actualidad","noticias","deporte","quién es","últimas noticias","evento actual"]):
-        resultados = buscar_info_actual(mensaje, max_results=5)
-        respuesta_natural = ""
+    # INFORMACIÓN DEPORTIVA GLOBAL
+    if any(word in mensaje_lower for word in ["fútbol","futbol","tenis","nba","deporte","resultado","partido","liga","campeonato","mundial"]):
+        resultados = []
+        query = f"sports news {mensaje}"  # Búsqueda global
+        if GOOGLE_API_KEY and GOOGLE_CSE_ID:
+            try:
+                url = f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}&q={urllib.parse.quote(query)}&sort=date"
+                r = requests.get(url, timeout=5)
+                data = r.json()
+                for item in data.get("items", [])[:3]:
+                    snippet = item.get("snippet", "").strip()
+                    if snippet:
+                        snippet = " ".join(snippet.split())
+                        if not snippet.endswith("."): snippet += "."
+                        resultados.append(snippet)
+            except:
+                pass
+        texto = " ".join(resultados) if resultados else "No pude obtener información deportiva actual en este momento."
+        learn_from_message(usuario,mensaje,texto)
+        return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
-        for res in resultados:
-            # separar título y snippet
-            partes = res.split(" - ")
-            if len(partes) >= 2:
-                snippet = partes[1]
-                # tomar solo la primera frase
-                primera_frase = snippet.split(".")[0].strip()
-                if primera_frase:
-                    respuesta_natural += primera_frase + ". "
-
-        if not respuesta_natural:
-            respuesta_natural = "No pude obtener información actual en este momento."
-
-        learn_from_message(usuario, mensaje, respuesta_natural)
-        return {"texto": respuesta_natural, "imagenes": [], "borrar_historial": False}
+    # INFORMACIÓN ACTUAL GENERAL
+    if any(word in mensaje_lower for word in ["presidente","actualidad","noticias","quién es","últimas noticias","evento actual"]):
+        resultados = []
+        query = mensaje
+        if GOOGLE_API_KEY and GOOGLE_CSE_ID:
+            try:
+                url = f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}&q={urllib.parse.quote(query)}&sort=date"
+                r = requests.get(url, timeout=5)
+                data = r.json()
+                for item in data.get("items", [])[:3]:
+                    snippet = item.get("snippet", "").strip()
+                    if snippet:
+                        snippet = " ".join(snippet.split())
+                        if not snippet.endswith("."): snippet += "."
+                        resultados.append(snippet)
+            except:
+                pass
+        texto = " ".join(resultados) if resultados else "No pude obtener información actual en este momento."
+        learn_from_message(usuario,mensaje,texto)
+        return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
     # RESPUESTA IA NORMAL
     try:
         memoria = load_json(MEMORY_FILE)
-        historial = memoria.get(usuario, {}).get("mensajes", [])
+        historial = memoria.get(usuario,{}).get("mensajes",[])
         prompt_messages = []
         for m in historial[-max_hist:]:
             prompt_messages.append({"role":"user","content":m["usuario"]})
             prompt_messages.append({"role":"assistant","content":m["foschi"]})
         prompt_messages.append({"role":"user","content":mensaje})
 
-        import openai
-        openai.api_key = OPENAI_API_KEY
+        from openai import OpenAI
+        client = OpenAI(api_key=OPENAI_API_KEY)
 
-        resp = openai.chat.completions.create(
+        resp = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=prompt_messages,
             max_tokens=800
         )
-        texto = resp.choices[0].message["content"].strip()
+        texto = resp.choices[0].message.content.strip()
+
+        # Eliminar referencias a fuentes para respuesta más natural
+        import re
+        texto = re.sub(r'(\s*\(?https?://[^\s]+\)?)', '', texto)
+        texto = re.sub(r'\s*\[[^\]]+\]', '', texto)
 
     except Exception as e:
         texto = f"No pude generar respuesta: {e}"
 
-    # LINKS ADICIONALES
-    if any(palabra in mensaje_lower for palabra in ["fuentes","links","paginas web","videos","referencias"]):
-        links = buscar_google_youtube(mensaje)
-        if links: texto += "\n\nResultados sugeridos:\n" + "\n".join(links)
-
     texto = hacer_links_clicleables(texto)
-    learn_from_message(usuario, mensaje, texto)
-    return {"texto": texto, "imagenes": [], "borrar_historial": False}
+    learn_from_message(usuario,mensaje,texto)
+    return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
 # ---------------- RUTAS ----------------
 @app.route("/")
 def index():
-    if "usuario_id" not in session: session["usuario_id"]=str(uuid.uuid4())
+    if "usuario_id" not in session:
+        session["usuario_id"]=str(uuid.uuid4())
     return render_template_string(HTML_TEMPLATE, APP_NAME=APP_NAME, usuario_id=session["usuario_id"])
 
 @app.route("/preguntar", methods=["POST"])
@@ -321,6 +309,7 @@ small{color:#aaa;}
 </div>
 
 <script>
+// --- JS del chat (igual que tu original) ---
 let usuario_id="{{usuario_id}}";
 let vozActiva=true,audioActual=null,mensajeActual=null;
 let musica=document.getElementById("musicaFondo");
@@ -364,18 +353,48 @@ function enviar(){
   let msg=document.getElementById("mensaje").value.trim(); if(!msg) return;
   agregar(msg,"user"); document.getElementById("mensaje").value="";
   fetch("/preguntar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mensaje: msg, usuario_id: usuario_id})})
-  .then(r=>r.json()).then(data=>{ agregar(data.texto,"ai",data.imagenes||[]); if(data.borrar_historial) document.getElementById("chat").innerHTML=""; });
+  .then(r=>r.json()).then(data=>{ agregar(data.texto,"ai",data.imagenes); if(data.borrar_historial){document.getElementById("chat").innerHTML="";} })
+  .catch(e=>{ agregar("Error al comunicarse con el servidor.","ai"); console.error(e); });
+}
+
+document.getElementById("mensaje").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); enviar(); } });
+
+function hablar(){
+  if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window){
+    const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new Rec();
+    recognition.lang='es-AR'; recognition.continuous=false; recognition.interimResults=false;
+    recognition.onresult=function(event){ document.getElementById("mensaje").value=event.results[0][0].transcript.toLowerCase(); enviar(); }
+    recognition.onerror=function(e){console.log(e); alert("Error reconocimiento de voz: " + e.error);}
+    recognition.start();
+  }else{alert("Tu navegador no soporta reconocimiento de voz.");}
+}
+
+function verHistorial(){
+  fetch("/historial/"+usuario_id).then(r=>r.json()).then(data=>{
+    document.getElementById("chat").innerHTML="";
+    if(data.length===0){agregar("No hay historial todavía.","ai");return;}
+    data.slice(-20).forEach(e=>{ agregar(`<small>${e.fecha}</small><br>${e.usuario}`,"user"); agregar(`<small>${e.fecha}</small><br>${e.foschi}`,"ai"); });
+  });
 }
 
 function borrarPantalla(){ document.getElementById("chat").innerHTML=""; }
 
-function verHistorial(){ fetch("/historial/"+usuario_id).then(r=>r.json()).then(hist=>{ hist.forEach(m=>{ agregar(m.usuario,"user"); agregar(m.foschi,"ai"); }); }); }
-
-function hablar(){ if('webkitSpeechRecognition' in window){let recog=new webkitSpeechRecognition(); recog.lang='es-AR'; recog.onresult=e=>{document.getElementById("mensaje").value=e.results[0][0].transcript; enviar();}; recog.start();}else alert("Tu navegador no soporta reconocimiento de voz."); }
+window.onload=function(){
+  agregar("👋 Hola, soy FOSCHI IA. Obteniendo tu ubicación...","ai");
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(pos=>{
+      fetch(`/clima?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`)
+      .then(r=>r.text()).then(clima=>{ agregar(`🌤️ ${clima}`,"ai"); })
+      .catch(e=>{ agregar("No pude obtener el clima automáticamente.","ai"); console.error(e); });
+    },()=>{ agregar("No pude obtener tu ubicación (permiso denegado o error).","ai"); }, {timeout:8000});
+  } else { agregar("Tu navegador no soporta geolocalización.","ai"); }
+};
 </script>
 </body>
 </html>
 """
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
