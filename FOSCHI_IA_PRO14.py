@@ -199,7 +199,8 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
             messages=prompt_messages,
             max_tokens=800
         )
-        texto = resp.choices[0].message["content"].strip()
+        texto = resp.choices[0].message.content.strip()
+
     except Exception as e:
         texto = f"No pude generar respuesta: {e}"
 
