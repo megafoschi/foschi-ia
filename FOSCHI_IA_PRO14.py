@@ -148,6 +148,7 @@ def cargar_historial(usuario):
         except: return []
 
 # ---------------- RESPUESTA IA ----------------
+# ---------------- RESPUESTA IA ----------------
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
     mensaje_lower = mensaje.lower().strip()
 
@@ -174,10 +175,16 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         learn_from_message(usuario,mensaje,texto)
         return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
-    # INFORMACIÓN ACTUAL
+    # INFORMACIÓN ACTUAL (sin mostrar links automáticamente)
     if any(word in mensaje_lower for word in ["presidente","actualidad","noticias","quién es","últimas noticias","evento actual"]):
         resultados = buscar_info_actual(mensaje)
-        texto = "Aquí tienes información actual:\n" + "\n".join(resultados) if resultados else "No pude obtener información actual en este momento."
+        if resultados:
+            texto = "Aquí tienes información actual."
+            # Agregamos links solo si el usuario pidió "fuentes" o "links"
+            if any(palabra in mensaje_lower for palabra in ["fuentes","links","referencias"]):
+                texto += "\n" + "\n".join(hacer_links_clicleables("\n".join(resultados)).split("\n"))
+        else:
+            texto = "No pude obtener información actual en este momento."
         learn_from_message(usuario,mensaje,texto)
         return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
@@ -202,12 +209,12 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
     except Exception as e:
         texto = f"No pude generar respuesta: {e}"
 
-    # LINKS ADICIONALES
+    # LINKS ADICIONALES solo si el usuario lo pidió
     if any(palabra in mensaje_lower for palabra in ["fuentes","links","paginas web","videos","referencias"]):
         links = buscar_google_youtube(mensaje)
-        if links: texto += "\n\nResultados sugeridos:\n" + "\n".join(links)
+        if links: texto += "\n\nResultados sugeridos:\n" + "\n".join(hacer_links_clicleables("\n".join(links)).split("\n"))
 
-    texto = hacer_links_clicleables(texto)
+    # Aprender del mensaje
     learn_from_message(usuario,mensaje,texto)
     return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
