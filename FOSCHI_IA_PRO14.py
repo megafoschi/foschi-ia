@@ -177,7 +177,10 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
     # INFORMACIÓN ACTUAL
     if any(word in mensaje_lower for word in ["presidente","actualidad","noticias","quién es","últimas noticias","evento actual"]):
         resultados = buscar_info_actual(mensaje)
-        texto = "Aquí tienes información actual:\n" + "\n".join(resultados) if resultados else "No pude obtener información actual en este momento."
+        # RESPUESTA RESUMIDA, SIN MENCIONAR FUENTES
+        texto = "Aquí tienes un resumen de la información actual."
+        if resultados:
+            texto += " " + " ".join([r.split(" - ")[1].split("(")[0] for r in resultados])  # solo texto resumido
         learn_from_message(usuario,mensaje,texto)
         return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
@@ -202,7 +205,7 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
     except Exception as e:
         texto = f"No pude generar respuesta: {e}"
 
-    # LINKS ADICIONALES
+    # LINKS SOLO SI SE PIDE
     if any(palabra in mensaje_lower for palabra in ["fuentes","links","paginas web","videos","referencias"]):
         links = buscar_google_youtube(mensaje)
         if links: texto += "\n\nResultados sugeridos:\n" + "\n".join(links)
