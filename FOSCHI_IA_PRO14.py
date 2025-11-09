@@ -157,16 +157,14 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         path = os.path.join(DATA_DIR, f"{usuario}.json")
         if os.path.exists(path): os.remove(path)
         memory = load_json(MEMORY_FILE)
-        if usuario in memory: 
-            memory[usuario]["mensajes"] = []
-            save_json(MEMORY_FILE, memory)
+        if usuario in memory: memory[usuario]["mensajes"] = []; save_json(MEMORY_FILE, memory)
         return {"texto":"✅ Historial borrado correctamente.","imagenes":[],"borrar_historial":True}
 
     # FECHA/HORA
     if any(phrase in mensaje_lower for phrase in ["qué día", "que día", "qué fecha", "que fecha", "qué hora", "que hora", "día es hoy", "fecha hoy"]):
         texto = fecha_hora_en_es()
-        learn_from_message(usuario,mensaje,texto)
-        return {"texto":texto,"imagenes":[],"borrar_historial":False}
+        learn_from_message(usuario, mensaje, texto)
+        return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
     # CLIMA
     if "clima" in mensaje_lower:
@@ -174,28 +172,34 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         ciudad_match = re.search(r"clima en ([a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+)", mensaje_lower)
         ciudad = ciudad_match.group(1).strip() if ciudad_match else None
         texto = obtener_clima(ciudad=ciudad, lat=lat, lon=lon)
-        learn_from_message(usuario,mensaje,texto)
-        return {"texto":texto,"imagenes":[],"borrar_historial":False}
+        learn_from_message(usuario, mensaje, texto)
+        return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
-    # PREGUNTAS DE ACTUALIDAD (política, deportes, noticias)
-    if any(word in mensaje_lower for word in ["presidente", "actualidad", "noticias", "deporte", "quién es", "últimas noticias", "evento actual"]):
+    # INFORMACIÓN ACTUAL Y DEPORTES
+    if any(word in mensaje_lower for word in ["presidente","actualidad","noticias","deporte","quién es","últimas noticias","evento actual"]):
         resultados = buscar_info_actual(mensaje, max_results=5)
-        # procesar resultados para generar respuesta natural
         respuesta_natural = ""
+
         for res in resultados:
-            # tomamos solo el título y snippet, descartamos el link
+            # separar título y snippet
             partes = res.split(" - ")
             if len(partes) >= 2:
-                respuesta_natural += partes[0] + ". " + partes[1] + " "
+                snippet = partes[1]
+                # tomar solo la primera frase
+                primera_frase = snippet.split(".")[0].strip()
+                if primera_frase:
+                    respuesta_natural += primera_frase + ". "
+
         if not respuesta_natural:
             respuesta_natural = "No pude obtener información actual en este momento."
-        learn_from_message(usuario,mensaje,respuesta_natural)
-        return {"texto":respuesta_natural,"imagenes":[],"borrar_historial":False}
+
+        learn_from_message(usuario, mensaje, respuesta_natural)
+        return {"texto": respuesta_natural, "imagenes": [], "borrar_historial": False}
 
     # RESPUESTA IA NORMAL
     try:
         memoria = load_json(MEMORY_FILE)
-        historial = memoria.get(usuario,{}).get("mensajes",[])
+        historial = memoria.get(usuario, {}).get("mensajes", [])
         prompt_messages = []
         for m in historial[-max_hist:]:
             prompt_messages.append({"role":"user","content":m["usuario"]})
@@ -204,6 +208,7 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
 
         import openai
         openai.api_key = OPENAI_API_KEY
+
         resp = openai.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=prompt_messages,
@@ -214,9 +219,14 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
     except Exception as e:
         texto = f"No pude generar respuesta: {e}"
 
+    # LINKS ADICIONALES
+    if any(palabra in mensaje_lower for palabra in ["fuentes","links","paginas web","videos","referencias"]):
+        links = buscar_google_youtube(mensaje)
+        if links: texto += "\n\nResultados sugeridos:\n" + "\n".join(links)
+
     texto = hacer_links_clicleables(texto)
-    learn_from_message(usuario,mensaje,texto)
-    return {"texto":texto,"imagenes":[],"borrar_historial":False}
+    learn_from_message(usuario, mensaje, texto)
+    return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
 # ---------------- RUTAS ----------------
 @app.route("/")
