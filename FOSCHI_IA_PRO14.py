@@ -67,6 +67,7 @@ def hacer_links_clicleables(texto):
     return re.sub(r'(https?://[^\s]+)', r'<a href="\1" target="_blank" style="color:#ff0000;">\1</a>', texto)
 
 def buscar_google_youtube(query, max_results=3):
+    # Esto solo para sugerencias, pero luego se transforma a texto natural
     links = []
     if GOOGLE_API_KEY and GOOGLE_CSE_ID:
         try:
@@ -74,32 +75,16 @@ def buscar_google_youtube(query, max_results=3):
             r = requests.get(url, timeout=5)
             data = r.json()
             for item in data.get("items", [])[:max_results]:
-                links.append(f"{item.get('title','')} - {item.get('link')}")
+                links.append(f"{item.get('title','')}")
         except:
             pass
     try:
         yt_query = urllib.parse.quote(query)
         yt_url = f"https://www.youtube.com/results?search_query={yt_query}"
-        links.append(f"Videos de YouTube: {yt_url}")
+        links.append(f"Videos relacionados disponibles en YouTube")
     except:
         pass
     return links
-
-def buscar_info_actual(query, max_results=3):
-    resultados = []
-    if GOOGLE_API_KEY and GOOGLE_CSE_ID:
-        try:
-            url = f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}&q={urllib.parse.quote(query)}&sort=date"
-            r = requests.get(url, timeout=5)
-            data = r.json()
-            for item in data.get("items", [])[:max_results]:
-                title = item.get("title", "")
-                link = item.get("link", "")
-                snippet = item.get("snippet", "")
-                resultados.append(f"{title} - {snippet} ({link})")
-        except Exception as e:
-            resultados.append(f"No se pudo obtener información actual: {e}")
-    return resultados
 
 def obtener_clima(ciudad=None, lat=None, lon=None):
     if not OWM_API_KEY:
@@ -174,14 +159,7 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         learn_from_message(usuario,mensaje,texto)
         return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
-    # INFORMACIÓN ACTUAL
-    if any(word in mensaje_lower for word in ["presidente","actualidad","noticias","quién es","últimas noticias","evento actual"]):
-        resultados = buscar_info_actual(mensaje)
-        texto = "Aquí tienes información actual:\n" + "\n".join(resultados) if resultados else "No pude obtener información actual en este momento."
-        learn_from_message(usuario,mensaje,texto)
-        return {"texto":texto,"imagenes":[],"borrar_historial":False}
-
-    # RESPUESTA IA NORMAL
+    # RESPUESTA IA NATURAL
     try:
         memoria = load_json(MEMORY_FILE)
         historial = memoria.get(usuario,{}).get("mensajes",[])
@@ -189,7 +167,9 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         for m in historial[-max_hist:]:
             prompt_messages.append({"role":"user","content":m["usuario"]})
             prompt_messages.append({"role":"assistant","content":m["foschi"]})
+
         prompt_messages.append({"role":"user","content":mensaje})
+        prompt_messages.append({"role":"system","content":"Responde de forma natural y conversacional en español, no menciones fuentes ni links, contesta como un humano."})
 
         from openai import OpenAI
         client = OpenAI(api_key=OPENAI_API_KEY)
@@ -203,11 +183,6 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
 
     except Exception as e:
         texto = f"No pude generar respuesta: {e}"
-
-    # LINKS ADICIONALES
-    if any(palabra in mensaje_lower for palabra in ["fuentes","links","paginas web","videos","referencias"]):
-        links = buscar_google_youtube(mensaje)
-        if links: texto += "\n\nResultados sugeridos:\n" + "\n".join(links)
 
     texto = hacer_links_clicleables(texto)
     learn_from_message(usuario,mensaje,texto)
@@ -306,7 +281,7 @@ small{color:#aaa;}
 </div>
 
 <script>
-// --- JS del chat (igual que tu original, no hay cambios de funcionalidad) ---
+// --- JS del chat (igual que tu original, sin cambios funcionales) ---
 let usuario_id="{{usuario_id}}";
 let vozActiva=true,audioActual=null,mensajeActual=null;
 let musica=document.getElementById("musicaFondo");
