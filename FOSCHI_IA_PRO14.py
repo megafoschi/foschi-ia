@@ -66,6 +66,41 @@ def hacer_links_clicleables(texto):
     import re
     return re.sub(r'(https?://[^\s]+)', r'<a href="\1" target="_blank" style="color:#ff0000;">\1</a>', texto)
 
+def buscar_google_youtube(query, max_results=3):
+    links = []
+    if GOOGLE_API_KEY and GOOGLE_CSE_ID:
+        try:
+            url = f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}&q={urllib.parse.quote(query)}"
+            r = requests.get(url, timeout=5)
+            data = r.json()
+            for item in data.get("items", [])[:max_results]:
+                links.append(f"{item.get('title','')} - {item.get('link')}")
+        except:
+            pass
+    try:
+        yt_query = urllib.parse.quote(query)
+        yt_url = f"https://www.youtube.com/results?search_query={yt_query}"
+        links.append(f"Videos de YouTube: {yt_url}")
+    except:
+        pass
+    return links
+
+def buscar_info_actual(query, max_results=3):
+    resultados = []
+    if GOOGLE_API_KEY and GOOGLE_CSE_ID:
+        try:
+            url = f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}&q={urllib.parse.quote(query)}&sort=date"
+            r = requests.get(url, timeout=5)
+            data = r.json()
+            for item in data.get("items", [])[:max_results]:
+                title = item.get("title", "")
+                link = item.get("link", "")
+                snippet = item.get("snippet", "")
+                resultados.append(f"{title} - {snippet} ({link})")
+        except Exception as e:
+            resultados.append(f"No se pudo obtener información actual: {e}")
+    return resultados
+
 def obtener_clima(ciudad=None, lat=None, lon=None):
     if not OWM_API_KEY:
         return "No está configurada la API de clima (OWM_API_KEY)."
@@ -115,16 +150,13 @@ def cargar_historial(usuario):
 # ---------------- RESPUESTA IA ----------------
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
     mensaje_lower = mensaje.lower().strip()
-    DEFAULT_PROMPT = "Responde siempre de manera natural, clara y directa, sin decir de dónde sacaste la información."
 
     # BORRAR HISTORIAL
     if any(phrase in mensaje_lower for phrase in ["borrar historial", "limpiar historial", "reset historial"]):
         path = os.path.join(DATA_DIR, f"{usuario}.json")
         if os.path.exists(path): os.remove(path)
         memory = load_json(MEMORY_FILE)
-        if usuario in memory: 
-            memory[usuario]["mensajes"] = []  
-            save_json(MEMORY_FILE, memory)
+        if usuario in memory: memory[usuario]["mensajes"] = []; save_json(MEMORY_FILE, memory)
         return {"texto":"✅ Historial borrado correctamente.","imagenes":[],"borrar_historial":True}
 
     # FECHA/HORA
@@ -142,22 +174,10 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         learn_from_message(usuario,mensaje,texto)
         return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
-    # INFORMACIÓN ACTUAL / PREGUNTAS DIRECTAS
+    # INFORMACIÓN ACTUAL
     if any(word in mensaje_lower for word in ["presidente","actualidad","noticias","quién es","últimas noticias","evento actual"]):
-        try:
-            import openai
-            openai.api_key = OPENAI_API_KEY
-            resp = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role":"system","content":DEFAULT_PROMPT},
-                    {"role":"user","content":mensaje}
-                ],
-                max_tokens=200
-            )
-            texto = resp.choices[0].message.content.strip()
-        except Exception as e:
-            texto = "No pude obtener la información en este momento."
+        resultados = buscar_info_actual(mensaje)
+        texto = "Aquí tienes información actual:\n" + "\n".join(resultados) if resultados else "No pude obtener información actual en este momento."
         learn_from_message(usuario,mensaje,texto)
         return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
@@ -165,7 +185,7 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
     try:
         memoria = load_json(MEMORY_FILE)
         historial = memoria.get(usuario,{}).get("mensajes",[])
-        prompt_messages = [{"role":"system","content":DEFAULT_PROMPT}]
+        prompt_messages = []
         for m in historial[-max_hist:]:
             prompt_messages.append({"role":"user","content":m["usuario"]})
             prompt_messages.append({"role":"assistant","content":m["foschi"]})
@@ -182,7 +202,12 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
     except Exception as e:
         texto = f"No pude generar respuesta: {e}"
 
-    texto = hacer_links_clicleables(texto)  # opcional
+    # LINKS ADICIONALES
+    if any(palabra in mensaje_lower for palabra in ["fuentes","links","paginas web","videos","referencias"]):
+        links = buscar_google_youtube(mensaje)
+        if links: texto += "\n\nResultados sugeridos:\n" + "\n".join(links)
+
+    texto = hacer_links_clicleables(texto)
     learn_from_message(usuario,mensaje,texto)
     return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
@@ -365,5 +390,6 @@ window.onload=function(){
 """
 
 if __name__ == "__main__":
+    import os
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
