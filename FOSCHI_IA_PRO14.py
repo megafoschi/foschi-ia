@@ -148,6 +148,7 @@ def cargar_historial(usuario):
         except: return []
 
 # ---------------- RESPUESTA IA ----------------
+# ---------------- RESPUESTA IA ----------------
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
     mensaje_lower = mensaje.lower().strip()
 
@@ -176,17 +177,17 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
-    # INFORMACIÓN ACTUAL / NOTICIAS / DEPORTES
-    if any(word in mensaje_lower for word in ["presidente","actualidad","noticias","quién es","últimas noticias","evento actual","deporte","fútbol","liga","mundial","partido","resultado"]):
+    # NOTICIAS O DEPORTES (solo si se pide explícitamente)
+    if any(word in mensaje_lower for word in ["noticias", "actualidad", "deporte", "resultados recientes"]):
         resultados = buscar_info_actual(mensaje)
         if resultados:
-            texto = " ".join([r.split(" - ")[0] for r in resultados[:3]])
+            texto = "Aquí tienes lo más reciente:\n" + "\n".join(resultados)
         else:
             texto = "No pude obtener información actual en este momento."
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
-    # RESPUESTA IA NORMAL
+    # RESPUESTA IA NORMAL (para preguntas directas)
     try:
         memoria = load_json(MEMORY_FILE)
         historial = memoria.get(usuario, {}).get("mensajes", [])
@@ -202,19 +203,14 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         resp = openai.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=prompt_messages,
-            max_tokens=800,
-            temperature=0.7
+            max_tokens=800
         )
+
+        # Accedemos correctamente al contenido
         texto = resp.choices[0].message.content.strip()
 
     except Exception as e:
         texto = f"No pude generar respuesta: {e}"
-
-    # LINKS ADICIONALES (opcional)
-    if any(palabra in mensaje_lower for palabra in ["fuentes","links","paginas web","videos","referencias"]):
-        links = buscar_google_youtube(mensaje)
-        if links:
-            texto += "\n\nResultados sugeridos:\n" + "\n".join(links)
 
     texto = hacer_links_clicleables(texto)
     learn_from_message(usuario, mensaje, texto)
