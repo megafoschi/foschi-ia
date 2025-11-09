@@ -148,7 +148,6 @@ def cargar_historial(usuario):
         except: return []
 
 # ---------------- RESPUESTA IA ----------------
-# ---------------- RESPUESTA IA ----------------
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
     mensaje_lower = mensaje.lower().strip()
 
@@ -176,27 +175,27 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
     # INFORMACIÓN ACTUAL (resumen natural, links opcionales)
-if any(word in mensaje_lower for word in ["presidente","actualidad","noticias","quién es","últimas noticias","evento actual"]):
-    resultados = buscar_info_actual(mensaje)
-    if resultados:
-        # Resumir naturalmente: solo título + snippet, sin links
-        resumen = []
-        for r in resultados:
-            if "(" in r:  # separar snippet del link
-                parte = r.split("(")[0].strip()
-            else:
-                parte = r
-            resumen.append(parte)
-        texto = "Aquí tienes información actual: " + " | ".join(resumen)
-        # Si el usuario pidió fuentes o links, agregarlos clicleables
-        if any(palabra in mensaje_lower for palabra in ["fuentes","links","referencias"]):
-            links = [r[r.find("(")+1:r.find(")")] for r in resultados if "(" in r]
-            if links:
-                texto += "\n\nResultados sugeridos:\n" + "\n".join(hacer_links_clicleables("\n".join(links)).split("\n"))
-    else:
-        texto = "No pude obtener información actual en este momento."
-    learn_from_message(usuario,mensaje,texto)
-    return {"texto":texto,"imagenes":[],"borrar_historial":False}
+    if any(word in mensaje_lower for word in ["presidente","actualidad","noticias","quién es","últimas noticias","evento actual"]):
+        resultados = buscar_info_actual(mensaje)
+        if resultados:
+            # Resumir naturalmente: solo título + snippet, sin links
+            resumen = []
+            for r in resultados:
+                if "(" in r:  # separar snippet del link
+                    parte = r.split("(")[0].strip()
+                else:
+                    parte = r
+                resumen.append(parte)
+            texto = "Aquí tienes información actual: " + " | ".join(resumen)
+            # Si el usuario pidió fuentes o links, agregarlos clicleables
+            if any(palabra in mensaje_lower for palabra in ["fuentes","links","referencias"]):
+                links = [r[r.find("(")+1:r.find(")")] for r in resultados if "(" in r]
+                if links:
+                    texto += "\n\nResultados sugeridos:\n" + "\n".join(hacer_links_clicleables("\n".join(links)).split("\n"))
+        else:
+            texto = "No pude obtener información actual en este momento."
+        learn_from_message(usuario,mensaje,texto)
+        return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
     # RESPUESTA IA NORMAL
     try:
@@ -227,48 +226,6 @@ if any(word in mensaje_lower for word in ["presidente","actualidad","noticias","
     # Aprender del mensaje
     learn_from_message(usuario,mensaje,texto)
     return {"texto":texto,"imagenes":[],"borrar_historial":False}
-
-# ---------------- RUTAS ----------------
-@app.route("/")
-def index():
-    if "usuario_id" not in session: session["usuario_id"]=str(uuid.uuid4())
-    return render_template_string(HTML_TEMPLATE, APP_NAME=APP_NAME, usuario_id=session["usuario_id"])
-
-@app.route("/preguntar", methods=["POST"])
-def preguntar():
-    data = request.get_json()
-    mensaje = data.get("mensaje","")
-    usuario_id = data.get("usuario_id", str(uuid.uuid4()))
-    lat = data.get("lat")
-    lon = data.get("lon")
-    tz = data.get("timeZone") or data.get("time_zone") or None
-    respuesta = generar_respuesta(mensaje, usuario_id, lat=lat, lon=lon, tz=tz)
-    guardar_en_historial(usuario_id, mensaje, respuesta["texto"])
-    return jsonify(respuesta)
-
-@app.route("/historial/<usuario_id>")
-def historial(usuario_id):
-    return jsonify(cargar_historial(usuario_id))
-
-@app.route("/tts")
-def tts():
-    texto = request.args.get("texto","")
-    tts_obj = gTTS(text=texto, lang="es", slow=False, tld="com.mx")
-    archivo = io.BytesIO()
-    tts_obj.write_to_fp(archivo)
-    archivo.seek(0)
-    return send_file(archivo, mimetype="audio/mpeg")
-
-@app.route("/clima")
-def clima():
-    lat = request.args.get("lat")
-    lon = request.args.get("lon")
-    ciudad = request.args.get("ciudad")
-    return obtener_clima(ciudad=ciudad, lat=lat, lon=lon)
-
-@app.route('/favicon.ico')
-def favicon():
-    return send_file(os.path.join(STATIC_DIR, 'favicon.ico'))
 
 # ---------------- HTML ----------------
 HTML_TEMPLATE = """  
