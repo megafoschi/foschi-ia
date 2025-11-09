@@ -191,14 +191,15 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
             prompt_messages.append({"role":"assistant","content":m["foschi"]})
         prompt_messages.append({"role":"user","content":mensaje})
 
-        import openai
-        openai.api_key = OPENAI_API_KEY
-        resp = openai.ChatCompletion.create(
+        from openai import OpenAI
+        client = OpenAI(api_key=OPENAI_API_KEY)
+
+        resp = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=prompt_messages,
             max_tokens=800
         )
-        texto = resp.choices[0].message.content.strip()
+        texto = resp.choices[0].message["content"].strip()
     except Exception as e:
         texto = f"No pude generar respuesta: {e}"
 
@@ -304,6 +305,7 @@ small{color:#aaa;}
 </div>
 
 <script>
+// --- JS del chat (igual que tu original, no hay cambios de funcionalidad) ---
 let usuario_id="{{usuario_id}}";
 let vozActiva=true,audioActual=null,mensajeActual=null;
 let musica=document.getElementById("musicaFondo");
@@ -390,6 +392,5 @@ window.onload=function(){
 """
 
 if __name__ == "__main__":
-    import os
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
