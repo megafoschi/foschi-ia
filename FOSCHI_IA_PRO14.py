@@ -142,19 +142,46 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
-    # INFORMACIÓN ACTUALIZADA
+    # INFORMACIÓN ACTUALIZADA (versión mejorada y natural)
     if any(word in mensaje_lower for word in ["presidente", "actualidad", "noticias", "quién es", "últimas noticias", "evento actual"]):
         resultados = []
         if GOOGLE_API_KEY and GOOGLE_CSE_ID:
             try:
-                url = f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}&q={urllib.parse.quote(mensaje)}&sort=date"
+                url = (
+                    f"https://www.googleapis.com/customsearch/v1"
+                    f"?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}"
+                    f"&q={urllib.parse.quote(mensaje)}&sort=date"
+                )
                 r = requests.get(url, timeout=5)
                 data = r.json()
-                for item in data.get("items", [])[:3]:
-                    resultados.append(item.get("snippet", ""))
-            except:
-                pass
-        texto = " ".join(resultados) if resultados else "No pude obtener información actualizada en este momento."
+                for item in data.get("items", [])[:5]:
+                    snippet = item.get("snippet", "").strip()
+                    if snippet and snippet not in resultados:
+                        resultados.append(snippet)
+            except Exception as e:
+                print("Error al obtener noticias:", e)
+
+        if resultados:
+            texto_bruto = " ".join(resultados)
+            client = OpenAI(api_key=OPENAI_API_KEY)
+            prompt = (
+                f"Tengo estos fragmentos de texto de distintas fuentes: {texto_bruto}\n\n"
+                f"Resumílos y respondé claramente a la siguiente pregunta: '{mensaje}'. "
+                f"Usá español argentino, tono natural y una sola oración clara y verificada. "
+                f"Si no hay información suficiente, decílo sin inventar."
+            )
+
+            resp = client.chat.completions.create(
+                model="gpt-4-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.5,
+                max_tokens=120
+            )
+
+            texto = resp.choices[0].message.content.strip()
+        else:
+            texto = "No pude obtener información actualizada en este momento."
+
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
