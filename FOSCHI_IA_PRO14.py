@@ -142,7 +142,7 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
-    # INFORMACIÓN ACTUALIZADA (versión mejorada y natural)
+        # INFORMACIÓN ACTUALIZADA (versión natural sin "según los textos")
     if any(word in mensaje_lower for word in ["presidente", "actualidad", "noticias", "quién es", "últimas noticias", "evento actual"]):
         resultados = []
         if GOOGLE_API_KEY and GOOGLE_CSE_ID:
@@ -165,10 +165,11 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
             texto_bruto = " ".join(resultados)
             client = OpenAI(api_key=OPENAI_API_KEY)
             prompt = (
-                f"Tengo estos fragmentos de texto de distintas fuentes: {texto_bruto}\n\n"
-                f"Resumílos y respondé claramente a la siguiente pregunta: '{mensaje}'. "
-                f"Usá español argentino, tono natural y una sola oración clara y verificada. "
-                f"Si no hay información suficiente, decílo sin inventar."
+                f"Tengo estos fragmentos de texto recientes: {texto_bruto}\n\n"
+                f"Respondé a la pregunta: '{mensaje}'. "
+                f"Usá un tono natural y directo en español argentino, sin frases como "
+                f"'según los textos', 'según los fragmentos' o 'de acuerdo a las fuentes'. "
+                f"Contestá con una sola oración clara y actualizada. Si no hay información suficiente, decílo sin inventar."
             )
 
             resp = client.chat.completions.create(
