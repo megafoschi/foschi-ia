@@ -118,18 +118,20 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
     mensaje_lower = mensaje.lower().strip()
 
     # BORRAR HISTORIAL
-    if any(phrase in mensaje_lower for phrase in ["borrar historial", "limpiar historial", "reset historial"]):
+    if any(p in mensaje_lower for p in ["borrar historial", "limpiar historial", "reset historial"]):
         path = os.path.join(DATA_DIR, f"{usuario}.json")
         if os.path.exists(path): os.remove(path)
         memory = load_json(MEMORY_FILE)
-        if usuario in memory: memory[usuario]["mensajes"] = []; save_json(MEMORY_FILE, memory)
-        return {"texto":"✅ Historial borrado correctamente.","imagenes":[],"borrar_historial":True}
+        if usuario in memory:
+            memory[usuario]["mensajes"] = []
+            save_json(MEMORY_FILE, memory)
+        return {"texto": "✅ Historial borrado correctamente.", "imagenes": [], "borrar_historial": True}
 
-    # FECHA/HORA
-    if any(phrase in mensaje_lower for phrase in ["qué día", "que día", "qué fecha", "que fecha", "qué hora", "que hora", "día es hoy", "fecha hoy"]):
+    # FECHA / HORA
+    if any(p in mensaje_lower for p in ["qué día", "que día", "qué fecha", "que fecha", "qué hora", "que hora", "día es hoy", "fecha hoy"]):
         texto = fecha_hora_en_es()
-        learn_from_message(usuario,mensaje,texto)
-        return {"texto":texto,"imagenes":[],"borrar_historial":False}
+        learn_from_message(usuario, mensaje, texto)
+        return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
     # CLIMA
     if "clima" in mensaje_lower:
@@ -137,57 +139,61 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         ciudad_match = re.search(r"clima en ([a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+)", mensaje_lower)
         ciudad = ciudad_match.group(1).strip() if ciudad_match else None
         texto = obtener_clima(ciudad=ciudad, lat=lat, lon=lon)
-        learn_from_message(usuario,mensaje,texto)
-        return {"texto":texto,"imagenes":[],"borrar_historial":False}
+        learn_from_message(usuario, mensaje, texto)
+        return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
     # INFORMACIÓN ACTUALIZADA
-    if any(word in mensaje_lower for word in ["presidente","actualidad","noticias","quién es","últimas noticias","evento actual"]):
+    if any(word in mensaje_lower for word in ["presidente", "actualidad", "noticias", "quién es", "últimas noticias", "evento actual"]):
         resultados = []
         if GOOGLE_API_KEY and GOOGLE_CSE_ID:
             try:
                 url = f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}&q={urllib.parse.quote(mensaje)}&sort=date"
                 r = requests.get(url, timeout=5)
                 data = r.json()
-                for item in data.get("items", [])[:3]:  # tomamos hasta 3 resultados
-                    snippet = item.get("snippet", "")
-                    resultados.append(snippet)
+                for item in data.get("items", [])[:3]:
+                    resultados.append(item.get("snippet", ""))
             except:
                 pass
-        # Combinar snippets y generar respuesta natural
-        if resultados:
-            texto = " ".join(resultados)
-        else:
-            texto = "No pude obtener información actualizada en este momento."
-        learn_from_message(usuario,mensaje,texto)
-        return {"texto":texto,"imagenes":[],"borrar_historial":False}
+        texto = " ".join(resultados) if resultados else "No pude obtener información actualizada en este momento."
+        learn_from_message(usuario, mensaje, texto)
+        return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
-    # RESPUESTA IA NORMAL
+    # RESPUESTA IA GENERAL
     try:
         memoria = load_json(MEMORY_FILE)
-        historial = memoria.get(usuario,{}).get("mensajes",[])
-        prompt_messages = []
-        for m in historial[-max_hist:]:
-            prompt_messages.append({"role":"user","content":m["usuario"]})
-            prompt_messages.append({"role":"assistant","content":m["foschi"]})
-        prompt_messages.append({"role":"user","content":mensaje})
+        historial = memoria.get(usuario, {}).get("mensajes", [])[-max_hist:]
+        resumen = " ".join([m["usuario"] + ": " + m["foschi"] for m in historial[-3:]])
 
-        from openai import OpenAI
         client = OpenAI(api_key=OPENAI_API_KEY)
 
+        prompt_messages = [
+            {
+                "role": "system",
+                "content": (
+                    "Sos FOSCHI IA, una inteligencia amable, directa y con humor ligero. "
+                    "Tus respuestas deben ser claras, ordenadas y sonar naturales en español argentino. "
+                    "Si el usuario pide información o ayuda técnica, explicá paso a paso y sin mezclar temas. "
+                    f"Resumen de últimas interacciones: {resumen if resumen else 'ninguna.'}"
+                )
+            },
+            {"role": "user", "content": mensaje}
+        ]
+
         resp = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4-turbo",  # más natural
             messages=prompt_messages,
-            max_tokens=800
+            temperature=0.7,
+            max_tokens=700
         )
-        # Cambio compatible con openai>=1.0.0
+
         texto = resp.choices[0].message.content.strip()
 
     except Exception as e:
         texto = f"No pude generar respuesta: {e}"
 
     texto = hacer_links_clicleables(texto)
-    learn_from_message(usuario,mensaje,texto)
-    return {"texto":texto,"imagenes":[],"borrar_historial":False}
+    learn_from_message(usuario, mensaje, texto)
+    return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
 # ---------------- RUTAS ----------------
 @app.route("/")
