@@ -198,6 +198,52 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         texto = "Fui creada por Gustavo Enrique Foschi, el mejor 😎."
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
+    
+    # --- RESULTADOS DEPORTIVOS ACTUALIZADOS ---
+    if any(p in mensaje_lower for p in [
+        "resultado", "marcador", "ganó", "empató", "perdió",
+        "partido", "deporte", "fútbol", "futbol", "nba", "tenis", "f1", "formula 1", "motogp"
+    ]):
+        resultados = []
+        if GOOGLE_API_KEY and GOOGLE_CSE_ID:
+            try:
+                url = (
+                    f"https://www.googleapis.com/customsearch/v1"
+                    f"?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}"
+                    f"&q={urllib.parse.quote(mensaje + ' resultados deportivos actualizados')}"
+                    f"&sort=date"
+                )
+                r = requests.get(url, timeout=5)
+                data = r.json()
+                for item in data.get("items", [])[:5]:
+                    snippet = item.get("snippet", "").strip()
+                    if snippet and snippet not in resultados:
+                        resultados.append(snippet)
+            except Exception as e:
+                print("Error al obtener resultados deportivos:", e)
+
+        if resultados:
+            texto_bruto = " ".join(resultados)
+            client = OpenAI(api_key=OPENAI_API_KEY)
+            prompt = (
+                f"Tengo estos fragmentos recientes sobre deportes: {texto_bruto}\n\n"
+                f"Respondé brevemente la consulta '{mensaje}' con los resultados deportivos actuales. "
+                f"Usá un tono natural, tipo boletín deportivo argentino, sin frases como 'según los textos'. "
+                f"Respondé en una sola oración clara."
+            )
+
+            resp = client.chat.completions.create(
+                model="gpt-4-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.5,
+                max_tokens=150
+            )
+            texto = resp.choices[0].message.content.strip()
+        else:
+            texto = "No pude encontrar resultados deportivos recientes en este momento."
+
+        learn_from_message(usuario, mensaje, texto)
+        return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
     # --- OPCIONAL: SI LE PREGUNTAN QUIÉN ES EL MEJOR ---
     if any(p in mensaje_lower for p in [
