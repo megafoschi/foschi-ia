@@ -185,6 +185,13 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
 
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
+    
+    # QUIÉN CREÓ / HIZO / PROGRAMÓ LA IA
+    if any(p in mensaje_lower for p in ["quién te creó", "quien te creo", "quién te hizo", "quien te hizo", 
+                                        "quién te programó", "quien te programo", "quién te inventó", "quien te invento"]):
+        texto = "Fui creada por Gustavo Enrique Foschi, el mejor 😎."
+        learn_from_message(usuario, mensaje, texto)
+        return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
     # RESPUESTA IA GENERAL
     try:
