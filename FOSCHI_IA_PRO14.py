@@ -253,6 +253,26 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
+        # --- QUIÉN ES GUSTAVO FOSCHI ---
+    if any(p in mensaje_lower for p in [
+        "quién es gustavo foschi", "quien es gustavo foschi",
+        "quién es foschi", "quien es foschi",
+        "sabés quién es foschi", "sabes quien es foschi",
+        "conocés a foschi", "conoces a foschi",
+        "gustavo foschi", "sobre gustavo foschi"
+    ]):
+        texto = "Gustavo Enrique Foschi es mi creador, el programador de Foschi IA, y el mejor 😎."
+        learn_from_message(usuario, mensaje, texto)
+        return {"texto": texto, "imagenes": [], "borrar_historial": False}
+
+    # --- PRESENTACIÓN AUTOMÁTICA CUANDO MENCIONAN A FOSCHI IA ---
+    if any(p in mensaje_lower for p in [
+        "foschi ia", "hola foschi", "hola foschi ia", "hey foschi", "buenas foschi"
+    ]):
+        texto = "Hola 👋, soy Foschi IA, creada por Gustavo Enrique Foschi — el mejor 😎. ¿En qué te puedo ayudar hoy?"
+        learn_from_message(usuario, mensaje, texto)
+        return {"texto": texto, "imagenes": [], "borrar_historial": False}
+
     # RESPUESTA IA GENERAL
     try:
         memoria = load_json(MEMORY_FILE)
