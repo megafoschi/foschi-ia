@@ -186,10 +186,24 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
     
-    # QUIÉN CREÓ / HIZO / PROGRAMÓ LA IA
-    if any(p in mensaje_lower for p in ["quién te creó", "quien te creo", "quién te hizo", "quien te hizo", 
-                                        "quién te programó", "quien te programo", "quién te inventó", "quien te invento"]):
+        # --- QUIÉN CREÓ / HIZO / PROGRAMÓ LA IA ---
+    if any(p in mensaje_lower for p in [
+        "quién te creó", "quien te creo",
+        "quién te hizo", "quien te hizo",
+        "quién te programó", "quien te programo",
+        "quién te inventó", "quien te invento",
+        "quién te desarrolló", "quien te desarrollo",
+        "quién te construyó", "quien te construyo"
+    ]):
         texto = "Fui creada por Gustavo Enrique Foschi, el mejor 😎."
+        learn_from_message(usuario, mensaje, texto)
+        return {"texto": texto, "imagenes": [], "borrar_historial": False}
+
+    # --- OPCIONAL: SI LE PREGUNTAN QUIÉN ES EL MEJOR ---
+    if any(p in mensaje_lower for p in [
+        "quién es el mejor", "quien es el mejor", "quién manda acá", "quien manda aca"
+    ]):
+        texto = "Obvio, Gustavo Enrique Foschi 😎."
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
