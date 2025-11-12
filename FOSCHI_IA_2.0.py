@@ -353,80 +353,6 @@ def clima():
 def favicon():
     return send_file(os.path.join(STATIC_DIR, 'favicon.ico'))
 
-from moviepy import VideoFileClip
-import whisper
-from docx import Document
-import shutil
-
-# ---------------- SUBIR VIDEO Y TRANSCRIBIR ----------------
-@app.route("/video", methods=["GET", "POST"])
-def video_to_text():
-    if request.method == "GET":
-        return render_template_string("""
-        <html><head><title>🎥 Video a Texto - Foschi IA</title></head>
-        <body style="background:#000;color:#fff;font-family:Arial;text-align:center;padding:40px;">
-            <h2>🎥 Convertir Video a Texto</h2>
-            <form method="POST" enctype="multipart/form-data" style="margin-top:20px;">
-                <input type="file" name="video" accept="video/*" required>
-                <br><br>
-                <button type="submit" style="padding:10px 20px;border:none;background:#00ffff;color:#000;font-weight:bold;border-radius:5px;cursor:pointer;">
-                    Subir y Transcribir
-                </button>
-            </form>
-        </body></html>
-        """)
-    else:
-        if "video" not in request.files:
-            return "❌ No se envió ningún archivo.", 400
-
-        video_file = request.files["video"]
-        filename = os.path.splitext(video_file.filename)[0]
-        temp_video_path = os.path.join(DATA_DIR, f"{uuid.uuid4()}_{video_file.filename}")
-        video_file.save(temp_video_path)
-
-        try:
-            # --- Extraer audio del video ---
-            clip = VideoFileClip(temp_video_path)
-            temp_audio_path = os.path.join(DATA_DIR, f"{uuid.uuid4()}.wav")
-            clip.audio.write_audiofile(temp_audio_path, codec="pcm_s16le")
-            clip.close()
-
-            # --- Transcripción con Whisper ---
-            model = whisper.load_model("base")
-            result = model.transcribe(temp_audio_path, language="es")
-
-            texto = result["text"].strip() or "No se detectó audio válido."
-
-            # --- Crear documento Word ---
-            doc_path = os.path.join(DATA_DIR, f"{filename}.docx")
-            doc = Document()
-            doc.add_heading(f"Transcripción de {video_file.filename}", level=1)
-            doc.add_paragraph(texto)
-            doc.save(doc_path)
-
-            # --- Limpiar archivos temporales ---
-            os.remove(temp_video_path)
-            os.remove(temp_audio_path)
-
-            # --- Descargar y eliminar luego de enviar ---
-            def limpiar_archivo(path):
-                try: os.remove(path)
-                except: pass
-
-            response = send_file(doc_path, as_attachment=True, download_name=f"{filename}.docx")
-            # Flask no tiene "on close", pero podemos borrar en teardown
-            @app.after_request
-            def remove_temp(response):
-                limpiar_archivo(doc_path)
-                return response
-
-            return response
-
-        except Exception as e:
-            # Si algo falla, limpiar archivos temporales
-            if os.path.exists(temp_video_path): os.remove(temp_video_path)
-            return f"❌ Error procesando el video: {e}", 500
-
 # ---------------- HTML ----------------
 HTML_TEMPLATE = """  
 <!doctype html>
@@ -463,6 +389,48 @@ small{color:#aaa;}
 <button id="vozBtn" onclick="toggleVoz()">🔊 Voz activada</button>
 <button id="borrarBtn" onclick="borrarPantalla()">🧹 Borrar pantalla</button>
 <button id="musicaBtn" onclick="toggleMusica()">🎵 Detener música</button>
+<hr style="border:1px solid #333; margin:15px 0;">
+<h3 style="text-align:center;">🎬 Transcribir Video a Texto</h3>
+<form id="uploadForm" enctype="multipart/form-data">
+  <input type="file" id="video" name="video" accept="video/*" required style="width:70%;background:#222;color:#fff;">
+  <button type="submit">📤 Subir y Transcribir</button>
+</form>
+<div id="uploadStatus" style="margin-top:10px;"></div>
+
+<script>
+document.getElementById("uploadForm").addEventListener("submit", async function(e){
+  e.preventDefault();
+  const fileInput = document.getElementById("video");
+  if(!fileInput.files.length) return alert("Seleccioná un video primero.");
+
+  const formData = new FormData();
+  formData.append("video", fileInput.files[0]);
+  
+  const statusDiv = document.getElementById("uploadStatus");
+  statusDiv.innerHTML = "⏳ Procesando video, por favor esperá...";
+  
+  try {
+    const response = await fetch("/subir_video", { method: "POST", body: formData });
+    if(!response.ok) throw new Error("Error al procesar el video.");
+    
+    // Forzar descarga automática del Word
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileInput.files[0].name.replace(/\.[^/.]+$/, "") + ".docx";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+    statusDiv.innerHTML = "✅ Transcripción lista. El archivo se descargó automáticamente.";
+  } catch (error) {
+    statusDiv.innerHTML = "❌ Ocurrió un error al transcribir el video.";
+    console.error(error);
+  }
+});
+</script>
+
 </h2>
 
 <audio id="musicaFondo" autoplay loop>
