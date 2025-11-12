@@ -1,26 +1,24 @@
-from flask import Flask, render_template_string, request, jsonify, session, send_file
+from flask import Flask, render_template_string, request, send_file, jsonify, session
 from flask_session import Session
-import os, uuid, json, io
+import os, uuid, io
 from datetime import datetime
 import pytz
-from gtts import gTTS
-import requests
-import urllib.parse
 from openai import OpenAI
+from docx import Document
+import tempfile
 
 # ---------------- CONFIG ----------------
 APP_NAME = "FOSCHI IA WEB"
 CREADOR = "Gustavo Enrique Foschi"
 DATA_DIR = "data"
 STATIC_DIR = "static"
+
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(STATIC_DIR, exist_ok=True)
 
-# ---------------- KEYS ----------------
+# ---------------- API KEYS ----------------
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID")
-OWM_API_KEY = os.getenv("OWM_API_KEY")
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 # ---------------- APP ----------------
 app = Flask(__name__)
@@ -28,510 +26,205 @@ app.secret_key = "FoschiWebKey"
 app.config["SESSION_TYPE"] = "filesystem"
 Session(app)
 
-# ---------------- MEMORIA ----------------
-MEMORY_FILE = os.path.join(DATA_DIR, "memory.json")
-
-def load_json(path):
-    if not os.path.exists(path): return {}
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return {}
-
-def save_json(path, data):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
+# ---------------- UTILIDADES ----------------
 def fecha_hora_en_es():
     tz = pytz.timezone("America/Argentina/Buenos_Aires")
     ahora = datetime.now(tz)
-    meses = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"]
-    dias = ["lunes","martes","miércoles","jueves","viernes","sábado","domingo"]
-    dia_semana = dias[ahora.weekday()]
-    mes = meses[ahora.month-1]
-    return f"{dia_semana}, {ahora.day} de {mes} de {ahora.year}, {ahora.hour:02d}:{ahora.minute:02d}"
+    return ahora.strftime("%d/%m/%Y %H:%M")
 
-def learn_from_message(usuario, mensaje, respuesta):
-    memory = load_json(MEMORY_FILE)
-    if usuario not in memory:
-        memory[usuario] = {"temas": {}, "mensajes": [], "ultima_interaccion": None}
-    memory[usuario]["mensajes"].append({"usuario": mensaje, "foschi": respuesta})
-    ahora = datetime.now(pytz.timezone("America/Argentina/Buenos_Aires"))
-    memory[usuario]["ultima_interaccion"] = ahora.strftime("%d/%m/%Y %H:%M:%S")
-    memory[usuario]["temas"].update({palabra: memory[usuario]["temas"].get(palabra,0)+1
-                                     for palabra in mensaje.lower().split() if len(palabra)>3})
-    save_json(MEMORY_FILE, memory)
-
-def hacer_links_clicleables(texto):
-    import re
-    return re.sub(r'(https?://[^\s]+)', r'<a href="\1" target="_blank" style="color:#ff0000;">\1</a>', texto)
-
-def obtener_clima(ciudad=None, lat=None, lon=None):
-    if not OWM_API_KEY:
-        return "No está configurada la API de clima (OWM_API_KEY)."
-    try:
-        if lat and lon:
-            url = f"http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={OWM_API_KEY}&units=metric&lang=es"
-        else:
-            ciudad = ciudad if ciudad else "Buenos Aires"
-            url = f"http://api.openweathermap.org/data/2.5/weather?q={ciudad}&appid={OWM_API_KEY}&units=metric&lang=es"
-        r = requests.get(url, timeout=6)
-        data = r.json()
-        if r.status_code != 200:
-            msg = data.get("message", "Respuesta no OK de OpenWeatherMap.")
-            return f"No pude obtener el clima: {r.status_code} - {msg}"
-        desc = data.get("weather", [{}])[0].get("description", "Sin descripción").capitalize()
-        temp = data.get("main", {}).get("temp")
-        hum = data.get("main", {}).get("humidity")
-        name = data.get("name", ciudad if ciudad else "la ubicación")
-        parts = [f"El clima en {name} es {desc}"]
-        if temp is not None:
-            parts.append(f"temperatura {round(temp)}°C")
-        if hum is not None:
-            parts.append(f"humedad {hum}%")
-        return ", ".join(parts) + "."
-    except:
-        return "No pude obtener el clima."
-
-def guardar_en_historial(usuario, entrada, respuesta):
-    path = os.path.join(DATA_DIR, f"{usuario}.json")
-    datos = []
-    if os.path.exists(path):
-        with open(path,"r",encoding="utf-8") as f:
-            try: datos = json.load(f)
-            except: datos = []
-    datos.append({"fecha":datetime.now(pytz.timezone("America/Argentina/Buenos_Aires")).strftime("%d/%m/%Y %H:%M:%S"),
-                  "usuario":entrada,"foschi":respuesta})
-    with open(path,"w",encoding="utf-8") as f:
-        json.dump(datos,f,ensure_ascii=False,indent=2)
-
-def cargar_historial(usuario):
-    path = os.path.join(DATA_DIR, f"{usuario}.json")
-    if not os.path.exists(path): return []
-    with open(path,"r",encoding="utf-8") as f:
-        try: return json.load(f)
-        except: return []
-
-# ---------------- RESPUESTA IA ----------------
-def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
-    mensaje_lower = mensaje.lower().strip()
-
-    # BORRAR HISTORIAL
-    if any(p in mensaje_lower for p in ["borrar historial", "limpiar historial", "reset historial"]):
-        path = os.path.join(DATA_DIR, f"{usuario}.json")
-        if os.path.exists(path): os.remove(path)
-        memory = load_json(MEMORY_FILE)
-        if usuario in memory:
-            memory[usuario]["mensajes"] = []
-            save_json(MEMORY_FILE, memory)
-        return {"texto": "✅ Historial borrado correctamente.", "imagenes": [], "borrar_historial": True}
-
-    # FECHA / HORA
-    if any(p in mensaje_lower for p in ["qué día", "que día", "qué fecha", "que fecha", "qué hora", "que hora", "día es hoy", "fecha hoy"]):
-        texto = fecha_hora_en_es()
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
-
-    # CLIMA
-    if "clima" in mensaje_lower:
-        import re
-        ciudad_match = re.search(r"clima en ([a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+)", mensaje_lower)
-        ciudad = ciudad_match.group(1).strip() if ciudad_match else None
-        texto = obtener_clima(ciudad=ciudad, lat=lat, lon=lon)
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
-
-        # INFORMACIÓN ACTUALIZADA (versión natural sin "según los textos")
-    if any(word in mensaje_lower for word in ["presidente", "actualidad", "noticias", "quién es", "últimas noticias", "evento actual"]):
-        resultados = []
-        if GOOGLE_API_KEY and GOOGLE_CSE_ID:
-            try:
-                url = (
-                    f"https://www.googleapis.com/customsearch/v1"
-                    f"?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}"
-                    f"&q={urllib.parse.quote(mensaje)}&sort=date"
-                )
-                r = requests.get(url, timeout=5)
-                data = r.json()
-                for item in data.get("items", [])[:5]:
-                    snippet = item.get("snippet", "").strip()
-                    if snippet and snippet not in resultados:
-                        resultados.append(snippet)
-            except Exception as e:
-                print("Error al obtener noticias:", e)
-
-        if resultados:
-            texto_bruto = " ".join(resultados)
-            client = OpenAI(api_key=OPENAI_API_KEY)
-            prompt = (
-                f"Tengo estos fragmentos de texto recientes: {texto_bruto}\n\n"
-                f"Respondé a la pregunta: '{mensaje}'. "
-                f"Usá un tono natural y directo en español argentino, sin frases como "
-                f"'según los textos', 'según los fragmentos' o 'de acuerdo a las fuentes'. "
-                f"Contestá con una sola oración clara y actualizada. Si no hay información suficiente, decílo sin inventar."
-            )
-
-            resp = client.chat.completions.create(
-                model="gpt-4-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.5,
-                max_tokens=120
-            )
-
-            texto = resp.choices[0].message.content.strip()
-        else:
-            texto = "No pude obtener información actualizada en este momento."
-
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
-    
-        # --- QUIÉN CREÓ / HIZO / PROGRAMÓ LA IA ---
-    if any(p in mensaje_lower for p in [
-        "quién te creó", "quien te creo",
-        "quién te hizo", "quien te hizo",
-        "quién te programó", "quien te programo",
-        "quién te inventó", "quien te invento",
-        "quién te desarrolló", "quien te desarrollo",
-        "quién te construyó", "quien te construyo"
-    ]):
-        texto = "Fui creada por Gustavo Enrique Foschi, el mejor 😎."
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
-    
-    # --- RESULTADOS DEPORTIVOS ACTUALIZADOS ---
-    if any(p in mensaje_lower for p in [
-        "resultado", "marcador", "ganó", "empató", "perdió",
-        "partido", "deporte", "fútbol", "futbol", "nba", "tenis", "f1", "formula 1", "motogp"
-    ]):
-        resultados = []
-        if GOOGLE_API_KEY and GOOGLE_CSE_ID:
-            try:
-                url = (
-                    f"https://www.googleapis.com/customsearch/v1"
-                    f"?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}"
-                    f"&q={urllib.parse.quote(mensaje + ' resultados deportivos actualizados')}"
-                    f"&sort=date"
-                )
-                r = requests.get(url, timeout=5)
-                data = r.json()
-                for item in data.get("items", [])[:5]:
-                    snippet = item.get("snippet", "").strip()
-                    if snippet and snippet not in resultados:
-                        resultados.append(snippet)
-            except Exception as e:
-                print("Error al obtener resultados deportivos:", e)
-
-        if resultados:
-            texto_bruto = " ".join(resultados)
-            client = OpenAI(api_key=OPENAI_API_KEY)
-            prompt = (
-                f"Tengo estos fragmentos recientes sobre deportes: {texto_bruto}\n\n"
-                f"Respondé brevemente la consulta '{mensaje}' con los resultados deportivos actuales. "
-                f"Usá un tono natural, tipo boletín deportivo argentino, sin frases como 'según los textos'. "
-                f"Respondé en una sola oración clara."
-            )
-
-            resp = client.chat.completions.create(
-                model="gpt-4-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.5,
-                max_tokens=150
-            )
-            texto = resp.choices[0].message.content.strip()
-        else:
-            texto = "No pude encontrar resultados deportivos recientes en este momento."
-
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
-
-    # --- OPCIONAL: SI LE PREGUNTAN QUIÉN ES EL MEJOR ---
-    if any(p in mensaje_lower for p in [
-        "quién es el mejor", "quien es el mejor", "quién manda acá", "quien manda aca"
-    ]):
-        texto = "Obvio, Gustavo Enrique Foschi 😎."
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
-
-        # --- QUIÉN ES GUSTAVO FOSCHI ---
-    if any(p in mensaje_lower for p in [
-        "quién es gustavo foschi", "quien es gustavo foschi",
-        "quién es foschi", "quien es foschi",
-        "sabés quién es foschi", "sabes quien es foschi",
-        "conocés a foschi", "conoces a foschi",
-        "gustavo foschi", "sobre gustavo foschi"
-    ]):
-        texto = "Gustavo Enrique Foschi es mi creador, el programador de Foschi IA, y el mejor 😎."
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
-
-    # --- PRESENTACIÓN AUTOMÁTICA CUANDO MENCIONAN A FOSCHI IA ---
-    if any(p in mensaje_lower for p in [
-        "foschi ia", "hola foschi", "hola foschi ia", "hey foschi", "buenas foschi"
-    ]):
-        texto = "Hola 👋, soy Foschi IA, creada por Gustavo Enrique Foschi — el mejor 😎. ¿En qué te puedo ayudar hoy?"
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
-
-    # RESPUESTA IA GENERAL
-    try:
-        memoria = load_json(MEMORY_FILE)
-        historial = memoria.get(usuario, {}).get("mensajes", [])[-max_hist:]
-        resumen = " ".join([m["usuario"] + ": " + m["foschi"] for m in historial[-3:]])
-
-        client = OpenAI(api_key=OPENAI_API_KEY)
-
-        prompt_messages = [
-            {
-                "role": "system",
-                "content": (
-                    "Sos FOSCHI IA, una inteligencia amable, directa y con humor ligero. "
-                    "Tus respuestas deben ser claras, ordenadas y sonar naturales en español argentino. "
-                    "Si el usuario pide información o ayuda técnica, explicá paso a paso y sin mezclar temas. "
-                    f"Resumen de últimas interacciones: {resumen if resumen else 'ninguna.'}"
-                )
-            },
-            {"role": "user", "content": mensaje}
-        ]
-
-        resp = client.chat.completions.create(
-            model="gpt-4-turbo",  # más natural
-            messages=prompt_messages,
-            temperature=0.7,
-            max_tokens=700
-        )
-
-        texto = resp.choices[0].message.content.strip()
-
-    except Exception as e:
-        texto = f"No pude generar respuesta: {e}"
-
-    texto = hacer_links_clicleables(texto)
-    learn_from_message(usuario, mensaje, texto)
-    return {"texto": texto, "imagenes": [], "borrar_historial": False}
-
-# ---------------- RUTAS ----------------
+# ---------------- RUTA: PÁGINA PRINCIPAL ----------------
 @app.route("/")
 def index():
     if "usuario_id" not in session:
-        session["usuario_id"]=str(uuid.uuid4())
+        session["usuario_id"] = str(uuid.uuid4())
     return render_template_string(HTML_TEMPLATE, APP_NAME=APP_NAME, usuario_id=session["usuario_id"])
 
-@app.route("/preguntar", methods=["POST"])
-def preguntar():
-    data = request.get_json()
-    mensaje = data.get("mensaje","")
-    usuario_id = data.get("usuario_id", str(uuid.uuid4()))
-    lat = data.get("lat")
-    lon = data.get("lon")
-    tz = data.get("timeZone") or data.get("time_zone") or None
-    respuesta = generar_respuesta(mensaje, usuario_id, lat=lat, lon=lon, tz=tz)
-    guardar_en_historial(usuario_id, mensaje, respuesta["texto"])
-    return jsonify(respuesta)
+# ---------------- RUTA: SUBIR VIDEO Y TRANSCRIBIR ----------------
+@app.route("/subir_video", methods=["POST"])
+def subir_video():
+    if "video" not in request.files:
+        return jsonify({"error": "No se subió ningún archivo"}), 400
 
-@app.route("/historial/<usuario_id>")
-def historial(usuario_id):
-    return jsonify(cargar_historial(usuario_id))
+    video = request.files["video"]
+    nombre_original = os.path.splitext(video.filename)[0]
+    if not nombre_original:
+        nombre_original = f"video_{uuid.uuid4().hex}"
 
-@app.route("/tts")
-def tts():
-    texto = request.args.get("texto","")
-    tts_obj = gTTS(text=texto, lang="es", slow=False, tld="com.mx")
-    archivo = io.BytesIO()
-    tts_obj.write_to_fp(archivo)
-    archivo.seek(0)
-    return send_file(archivo, mimetype="audio/mpeg")
+    # Guardar temporalmente el video
+    video_path = os.path.join(tempfile.gettempdir(), f"{nombre_original}.mp4")
+    video.save(video_path)
 
-@app.route("/clima")
-def clima():
-    lat = request.args.get("lat")
-    lon = request.args.get("lon")
-    ciudad = request.args.get("ciudad")
-    return obtener_clima(ciudad=ciudad, lat=lat, lon=lon)
+    try:
+        # Transcribir con Whisper API (OpenAI)
+        with open(video_path, "rb") as f:
+            transcript = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=f,
+                response_format="text"
+            )
 
-@app.route('/favicon.ico')
-def favicon():
-    return send_file(os.path.join(STATIC_DIR, 'favicon.ico'))
+        texto = transcript.strip() if transcript else "No se pudo obtener transcripción."
 
-# ---------------- HTML ----------------
-HTML_TEMPLATE = """  
+        # Crear archivo Word
+        doc = Document()
+        doc.add_heading(f"Transcripción de {nombre_original}", level=1)
+        doc.add_paragraph(texto)
+        doc_path = os.path.join(tempfile.gettempdir(), f"{nombre_original}.docx")
+        doc.save(doc_path)
+
+        # Preparar descarga
+        return_data = io.BytesIO()
+        with open(doc_path, "rb") as f:
+            return_data.write(f.read())
+        return_data.seek(0)
+
+        # Borrar archivos temporales
+        try:
+            os.remove(video_path)
+            os.remove(doc_path)
+        except:
+            pass
+
+        # Enviar el archivo Word al usuario
+        return send_file(
+            return_data,
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            as_attachment=True,
+            download_name=f"{nombre_original}.docx"
+        )
+
+    except Exception as e:
+        return jsonify({"error": f"Error en transcripción: {e}"}), 500
+
+
+# ---------------- HTML MODERNO ----------------
+HTML_TEMPLATE = """
 <!doctype html>
-<html>
+<html lang="es">
 <head>
-<title>{{APP_NAME}}</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-body{font-family:Arial,system-ui,-apple-system,Segoe UI,Roboto,Helvetica;background:#000;color:#fff;margin:0;padding:0;}
-#chat{width:100%;height:70vh;overflow-y:auto;padding:10px;background:#111;}
-.message{margin:5px 0;padding:8px 12px;border-radius:15px;max-width:80%;word-wrap:break-word;opacity:0;transition:opacity 0.5s,border 0.5s;}
-.message.show{opacity:1;}
-.user{background:#3300ff;color:#fff;margin-left:auto;text-align:right;}
-.ai{background:#00ffff;color:#000;margin-right:auto;text-align:left;}
-a{color:#fff;text-decoration:underline;}
-img{max-width:300px;border-radius:10px;margin:5px 0;}
-input,button{padding:10px;font-size:16px;margin:5px;border:none;border-radius:5px;}
-input[type=text]{width:70%;background:#222;color:#fff;}
-button{background:#333;color:#fff;cursor:pointer;}
-button:hover{background:#555;}
-#vozBtn,#borrarBtn,#musicaBtn{float:right;margin-right:20px;}
-#logo{width:50px;vertical-align:middle;cursor:pointer;transition: transform 0.5s;}
-#logo:hover{transform:scale(1.15) rotate(6deg);}
-#nombre{font-weight:bold;margin-left:10px;cursor:pointer;}
-small{color:#aaa;}
-.playing{outline:2px solid #fff;}
-</style>
+  <meta charset="utf-8">
+  <title>{{APP_NAME}} — Transcriptor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      background: linear-gradient(135deg, #000000, #1a1a1a);
+      color: #fff;
+      font-family: 'Segoe UI', Roboto, sans-serif;
+      text-align: center;
+      margin: 0;
+      padding: 0;
+    }
+    h1 { margin-top: 20px; }
+    .container {
+      margin: 40px auto;
+      padding: 20px;
+      background: #111;
+      border-radius: 20px;
+      width: 90%;
+      max-width: 500px;
+      box-shadow: 0 0 20px #00ffff33;
+    }
+    input[type=file] {
+      display: none;
+    }
+    label {
+      display: inline-block;
+      padding: 12px 25px;
+      background: #00ffff;
+      color: #000;
+      border-radius: 30px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: 0.3s;
+    }
+    label:hover { background: #00cccc; }
+    #mensaje {
+      margin-top: 15px;
+      color: #aaa;
+    }
+    #loading {
+      display: none;
+      margin-top: 20px;
+      font-style: italic;
+      color: #0ff;
+    }
+    button {
+      margin-top: 20px;
+      padding: 10px 20px;
+      background: #00ffff;
+      border: none;
+      color: #000;
+      font-weight: bold;
+      border-radius: 25px;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+    button:hover { background: #00cccc; }
+  </style>
 </head>
 <body>
-<h2 style="text-align:center;margin:10px 0;">
-<img src="/static/logo.png" id="logo" onclick="logoClick()" alt="logo">
-<span id="nombre" onclick="logoClick()">FOSCHI IA</span>
-<button onclick="detenerVoz()" style="margin-left:10px;">⏹️ Detener voz</button>
-<button id="vozBtn" onclick="toggleVoz()">🔊 Voz activada</button>
-<button id="borrarBtn" onclick="borrarPantalla()">🧹 Borrar pantalla</button>
-<button id="musicaBtn" onclick="toggleMusica()">🎵 Detener música</button>
-<hr style="border:1px solid #333; margin:15px 0;">
-<h3 style="text-align:center;">🎬 Transcribir Video a Texto</h3>
-<form id="uploadForm" enctype="multipart/form-data">
-  <input type="file" id="video" name="video" accept="video/*" required style="width:70%;background:#222;color:#fff;">
-  <button type="submit">📤 Subir y Transcribir</button>
-</form>
-<div id="uploadStatus" style="margin-top:10px;"></div>
+  <h1>🎬 FOSCHI IA — Transcriptor de Video</h1>
+  <div class="container">
+    <form id="formVideo" enctype="multipart/form-data">
+      <label for="video">📁 Elegí un video</label>
+      <input type="file" id="video" name="video" accept="video/*" required>
+      <div id="mensaje">Ningún archivo seleccionado</div>
+      <button type="submit">Transcribir y Descargar Word</button>
+    </form>
+    <div id="loading">⏳ Transcribiendo audio... Esto puede tardar unos minutos</div>
+  </div>
 
-<script>
-document.getElementById("uploadForm").addEventListener("submit", async function(e){
-  e.preventDefault();
-  const fileInput = document.getElementById("video");
-  if(!fileInput.files.length) return alert("Seleccioná un video primero.");
+  <script>
+  const form = document.getElementById('formVideo');
+  const input = document.getElementById('video');
+  const msg = document.getElementById('mensaje');
+  const loading = document.getElementById('loading');
 
-  const formData = new FormData();
-  formData.append("video", fileInput.files[0]);
-  
-  const statusDiv = document.getElementById("uploadStatus");
-  statusDiv.innerHTML = "⏳ Procesando video, por favor esperá...";
-  
-  try {
-    const response = await fetch("/subir_video", { method: "POST", body: formData });
-    if(!response.ok) throw new Error("Error al procesar el video.");
-    
-    // Forzar descarga automática del Word
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = fileInput.files[0].name.replace(/\.[^/.]+$/, "") + ".docx";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.URL.revokeObjectURL(url);
-    statusDiv.innerHTML = "✅ Transcripción lista. El archivo se descargó automáticamente.";
-  } catch (error) {
-    statusDiv.innerHTML = "❌ Ocurrió un error al transcribir el video.";
-    console.error(error);
-  }
-});
-</script>
-
-</h2>
-
-<audio id="musicaFondo" autoplay loop>
-  <source src="/static/musica.mp3" type="audio/mpeg">
-</audio>
-
-<div id="chat" role="log" aria-live="polite"></div>
-<div style="padding:10px;">
-<input type="text" id="mensaje" placeholder="Escribí tu mensaje o hablá" />
-<button onclick="enviar()">Enviar</button>
-<button onclick="hablar()">🎤 Hablar</button>
-<button onclick="verHistorial()">🗂️ Ver historial</button>
-</div>
-
-<script>
-// --- JS del chat (igual que tu original) ---
-let usuario_id="{{usuario_id}}";
-let vozActiva=true,audioActual=null,mensajeActual=null;
-let musica=document.getElementById("musicaFondo");
-let musicaBtn=document.getElementById("musicaBtn");
-let musicaActiva=true;
-
-function toggleMusica(){
-  if(musicaActiva){musica.pause(); musicaActiva=false; musicaBtn.textContent="🎵 Reproducir música";}
-  else{musica.play().catch(()=>{}); musicaActiva=true; musicaBtn.textContent="🎵 Detener música";}
-}
-document.addEventListener('click',()=>{if(musica.paused) musica.play().catch(()=>{});},{once:true});
-
-function logoClick(){ alert("FOSCHI NUNCA MUERE, TRASCIENDE..."); }
-
-function hablarTexto(texto,div=null){
-  if(!vozActiva) return;
-  detenerVoz();
-  if(mensajeActual) mensajeActual.classList.remove("playing");
-  if(div) div.classList.add("playing");
-  mensajeActual=div;
-  audioActual=new Audio("/tts?texto="+encodeURIComponent(texto));
-  audioActual.onended=()=>{ if(mensajeActual) mensajeActual.classList.remove("playing"); mensajeActual=null; };
-  audioActual.play();
-}
-
-function detenerVoz(){ if(audioActual){ try{audioActual.pause(); audioActual.currentTime=0; audioActual.src=""; audioActual.load(); audioActual=null; if(mensajeActual) mensajeActual.classList.remove("playing"); mensajeActual=null;}catch(e){console.log(e);}} }
-
-function toggleVoz(estado=null){ vozActiva=estado!==null?estado:!vozActiva; document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada"; }
-
-function agregar(msg,cls,imagenes=[]){
-  let c=document.getElementById("chat"),div=document.createElement("div");
-  div.className="message "+cls; div.innerHTML=msg;
-  c.appendChild(div);
-  setTimeout(()=>div.classList.add("show"),50);
-  imagenes.forEach(url=>{ let img=document.createElement("img"); img.src=url; div.appendChild(img); });
-  c.scroll({top:c.scrollHeight,behavior:"smooth"});
-  if(cls==="ai") hablarTexto(msg,div);
-}
-
-function enviar(){
-  let msg=document.getElementById("mensaje").value.trim(); if(!msg) return;
-  agregar(msg,"user"); document.getElementById("mensaje").value="";
-  fetch("/preguntar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mensaje: msg, usuario_id: usuario_id})})
-  .then(r=>r.json()).then(data=>{ agregar(data.texto,"ai",data.imagenes); if(data.borrar_historial){document.getElementById("chat").innerHTML="";} })
-  .catch(e=>{ agregar("Error al comunicarse con el servidor.","ai"); console.error(e); });
-}
-
-document.getElementById("mensaje").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); enviar(); } });
-
-function hablar(){
-  if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window){
-    const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new Rec();
-    recognition.lang='es-AR'; recognition.continuous=false; recognition.interimResults=false;
-    recognition.onresult=function(event){ document.getElementById("mensaje").value=event.results[0][0].transcript.toLowerCase(); enviar(); }
-    recognition.onerror=function(e){console.log(e); alert("Error reconocimiento de voz: " + e.error);}
-    recognition.start();
-  }else{alert("Tu navegador no soporta reconocimiento de voz.");}
-}
-
-function verHistorial(){
-  fetch("/historial/"+usuario_id).then(r=>r.json()).then(data=>{
-    document.getElementById("chat").innerHTML="";
-    if(data.length===0){agregar("No hay historial todavía.","ai");return;}
-    data.slice(-20).forEach(e=>{ agregar(`<small>${e.fecha}</small><br>${e.usuario}`,"user"); agregar(`<small>${e.fecha}</small><br>${e.foschi}`,"ai"); });
+  input.addEventListener('change', () => {
+    if (input.files.length > 0) {
+      msg.textContent = '🎞️ ' + input.files[0].name;
+    } else {
+      msg.textContent = 'Ningún archivo seleccionado';
+    }
   });
-}
 
-function borrarPantalla(){ document.getElementById("chat").innerHTML=""; }
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (input.files.length === 0) {
+      alert('Subí un video primero');
+      return;
+    }
 
-window.onload=function(){
-  agregar("👋 Hola, soy FOSCHI IA. Obteniendo tu ubicación...","ai");
-  if(navigator.geolocation){
-    navigator.geolocation.getCurrentPosition(pos=>{
-      fetch(`/clima?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`)
-      .then(r=>r.text()).then(clima=>{ agregar(`🌤️ ${clima}`,"ai"); })
-      .catch(e=>{ agregar("No pude obtener el clima automáticamente.","ai"); console.error(e); });
-    },()=>{ agregar("No pude obtener tu ubicación (permiso denegado o error).","ai"); }, {timeout:8000});
-  } else { agregar("Tu navegador no soporta geolocalización.","ai"); }
-};
-</script>
+    loading.style.display = 'block';
+    msg.textContent = 'Procesando...';
+
+    const formData = new FormData();
+    formData.append('video', input.files[0]);
+
+    const response = await fetch('/subir_video', { method: 'POST', body: formData });
+    loading.style.display = 'none';
+
+    if (response.ok) {
+      const blob = await response.blob();
+      const link = document.createElement('a');
+      const fileName = input.files[0].name.replace(/\.[^/.]+$/, "") + ".docx";
+      link.href = window.URL.createObjectURL(blob);
+      link.download = fileName;
+      link.click();
+      msg.textContent = '✅ Transcripción completada y descargada';
+      input.value = '';
+    } else {
+      const err = await response.json();
+      alert('Error: ' + (err.error || 'No se pudo procesar el video.'));
+      msg.textContent = '❌ Error en la transcripción';
+    }
+  });
+  </script>
 </body>
 </html>
 """
 
+# ---------------- MAIN ----------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
