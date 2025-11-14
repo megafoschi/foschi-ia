@@ -373,7 +373,7 @@ input,button{padding:10px;font-size:16px;margin:5px;border:none;border-radius:5p
 input[type=text]{width:70%;background:#222;color:#fff;}
 button{background:#333;color:#fff;cursor:pointer;}
 button:hover{background:#555;}
-#vozBtn,#borrarBtn,#musicaBtn{float:right;margin-right:20px;}
+#vozBtn,#borrarBtn{float:right;margin-right:20px;}
 #logo{width:50px;vertical-align:middle;cursor:pointer;transition: transform 0.5s;}
 #logo:hover{transform:scale(1.15) rotate(6deg);}
 #nombre{font-weight:bold;margin-left:10px;cursor:pointer;}
@@ -388,12 +388,7 @@ small{color:#aaa;}
 <button onclick="detenerVoz()" style="margin-left:10px;">⏹️ Detener voz</button>
 <button id="vozBtn" onclick="toggleVoz()">🔊 Voz activada</button>
 <button id="borrarBtn" onclick="borrarPantalla()">🧹 Borrar pantalla</button>
-<button id="musicaBtn" onclick="toggleMusica()">🎵 Detener música</button>
 </h2>
-
-<audio id="musicaFondo" autoplay loop>
-  <source src="/static/musica.mp3" type="audio/mpeg">
-</audio>
 
 <div id="chat" role="log" aria-live="polite"></div>
 <div style="padding:10px;">
@@ -404,18 +399,9 @@ small{color:#aaa;}
 </div>
 
 <script>
-// --- JS del chat (igual que tu original) ---
+// --- JS del chat ---
 let usuario_id="{{usuario_id}}";
 let vozActiva=true,audioActual=null,mensajeActual=null;
-let musica=document.getElementById("musicaFondo");
-let musicaBtn=document.getElementById("musicaBtn");
-let musicaActiva=true;
-
-function toggleMusica(){
-  if(musicaActiva){musica.pause(); musicaActiva=false; musicaBtn.textContent="🎵 Reproducir música";}
-  else{musica.play().catch(()=>{}); musicaActiva=true; musicaBtn.textContent="🎵 Detener música";}
-}
-document.addEventListener('click',()=>{if(musica.paused) musica.play().catch(()=>{});},{once:true});
 
 function logoClick(){ alert("FOSCHI NUNCA MUERE, TRASCIENDE..."); }
 
@@ -460,7 +446,7 @@ function hablar(){
     const recognition = new Rec();
     recognition.lang='es-AR'; recognition.continuous=false; recognition.interimResults=false;
     recognition.onresult=function(event){ document.getElementById("mensaje").value=event.results[0][0].transcript.toLowerCase(); enviar(); }
-    recognition.onerror=function(e){console.log(e); alert("Error reconocimiento de voz: " + e.error);}
+    recognition.onerror=function(e){console.log(e); alert("Error reconocimiento de voz: " + e.error); }
     recognition.start();
   }else{alert("Tu navegador no soporta reconocimiento de voz.");}
 }
