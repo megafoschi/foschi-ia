@@ -7,6 +7,9 @@ from gtts import gTTS
 import requests
 import urllib.parse
 from openai import OpenAI
+from werkzeug.utils import secure_filename
+import whisper
+from docx import Document
 
 # ---------------- CONFIG ----------------
 APP_NAME = "FOSCHI IA WEB"
@@ -353,6 +356,54 @@ def clima():
 def favicon():
     return send_file(os.path.join(STATIC_DIR, 'favicon.ico'))
 
+@app.route("/subir_audio", methods=["POST"])
+def subir_audio():
+    if "audio" not in request.files:
+        return "No se envió archivo de audio", 400
+
+    archivo = request.files["audio"]
+    if archivo.filename == "":
+        return "Archivo inválido", 400
+
+    # Asegurar nombre seguro
+    nombre_audio = secure_filename(archivo.filename)
+    ruta_audio = os.path.join(DATA_DIR, nombre_audio)
+
+    # Guardar audio temporalmente
+    archivo.save(ruta_audio)
+
+    try:
+        # ---------- TRANSCRIPCIÓN ----------
+        modelo = whisper.load_model("base")
+        result = modelo.transcribe(ruta_audio)
+        texto = result["text"]
+
+        # ---------- CREAR WORD ----------
+        nombre_sin_ext = os.path.splitext(nombre_audio)[0]
+        nombre_word = nombre_sin_ext + ".docx"
+        ruta_word = os.path.join(DATA_DIR, nombre_word)
+
+        doc = Document()
+        doc.add_heading("Transcripción de Audio", level=1)
+        doc.add_paragraph(texto)
+        doc.save(ruta_word)
+
+        # Descargar y borrar archivos
+        def borrar_archivos(_):
+            try:
+                os.remove(ruta_audio)
+                os.remove(ruta_word)
+            except:
+                pass
+
+        resp = send_file(ruta_word, as_attachment=True)
+        resp.call_on_close(lambda: borrar_archivos(resp))
+        return resp
+
+    except Exception as e:
+        os.remove(ruta_audio)
+        return f"Error al procesar audio: {e}", 500
+
 # ---------------- HTML ----------------
 HTML_TEMPLATE = """  
 <!doctype html>
@@ -397,6 +448,10 @@ small{color:#aaa;}
 <button onclick="hablar()">🎤 Hablar</button>
 <button onclick="verHistorial()">🗂️ Ver historial</button>
 </div>
+
+<div style="padding:10px;">
+<input type="file" id="audioFile" accept="audio/*">
+<button onclick="subirAudio()">🎧 Subir audio</button>
 
 <script>
 // --- JS del chat ---
@@ -471,6 +526,38 @@ window.onload=function(){
     },()=>{ agregar("No pude obtener tu ubicación (permiso denegado o error).","ai"); }, {timeout:8000});
   } else { agregar("Tu navegador no soporta geolocalización.","ai"); }
 };
+
+function subirAudio(){
+    let archivo = document.getElementById("audioFile").files[0];
+    if(!archivo){
+        alert("Seleccioná un archivo de audio primero.");
+        return;
+    }
+
+    let formData = new FormData();
+    formData.append("audio", archivo);
+
+    fetch("/subir_audio", {
+        method: "POST",
+        body: formData
+    })
+    .then(resp => {
+        if(resp.ok) return resp.blob();
+        else throw new Error("Error al procesar el audio");
+    })
+    .then(blob => {
+        let url = window.URL.createObjectURL(blob);
+        let a = document.createElement("a");
+        a.href = url;
+        a.download = archivo.name.replace(/\\.[^\\/]+$/, "") + ".docx";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+    })
+    .catch(err => alert("Error: " + err));
+}
+
 </script>
 </body>
 </html>
