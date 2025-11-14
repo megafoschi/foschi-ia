@@ -8,3 +8,4 @@ gtts
 pytz
 openai-whisper
 python-docx
+ffmpeg-python
