@@ -549,7 +549,7 @@ function subirAudio(){
         let url = window.URL.createObjectURL(blob);
         let a = document.createElement("a");
         a.href = url;
-        a.download = archivo.name.split('.').slice(0, -1).join('.') + ".docx";
+        a.download = archivo.name.replace(/\.[^/.]+$/, "") + ".docx";
         document.body.appendChild(a);
         a.click();
         a.remove();
