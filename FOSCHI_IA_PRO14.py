@@ -1,6 +1,9 @@
 from flask import Flask, render_template_string, request, jsonify, session, send_file
 from flask_session import Session
-import os, uuid, json, io
+import os
+import uuid
+import json
+import io
 from datetime import datetime
 import pytz
 from gtts import gTTS
@@ -10,14 +13,21 @@ from openai import OpenAI
 from werkzeug.utils import secure_filename
 import whisper
 from docx import Document
+import tempfile
+from moviepy.editor import VideoFileClip
+import PyPDF2
+import hashlib
+import shutil
 
 # ---------------- CONFIG ----------------
 APP_NAME = "FOSCHI IA WEB"
 CREADOR = "Gustavo Enrique Foschi"
 DATA_DIR = "data"
 STATIC_DIR = "static"
+TTS_CACHE_DIR = os.path.join(DATA_DIR, "tts_cache")
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(STATIC_DIR, exist_ok=True)
+os.makedirs(TTS_CACHE_DIR, exist_ok=True)
 
 # ---------------- KEYS ----------------
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -145,138 +155,7 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
-        # INFORMACIÓN ACTUALIZADA (versión natural sin "según los textos")
-    if any(word in mensaje_lower for word in ["presidente", "actualidad", "noticias", "quién es", "últimas noticias", "evento actual"]):
-        resultados = []
-        if GOOGLE_API_KEY and GOOGLE_CSE_ID:
-            try:
-                url = (
-                    f"https://www.googleapis.com/customsearch/v1"
-                    f"?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}"
-                    f"&q={urllib.parse.quote(mensaje)}&sort=date"
-                )
-                r = requests.get(url, timeout=5)
-                data = r.json()
-                for item in data.get("items", [])[:5]:
-                    snippet = item.get("snippet", "").strip()
-                    if snippet and snippet not in resultados:
-                        resultados.append(snippet)
-            except Exception as e:
-                print("Error al obtener noticias:", e)
-
-        if resultados:
-            texto_bruto = " ".join(resultados)
-            client = OpenAI(api_key=OPENAI_API_KEY)
-            prompt = (
-                f"Tengo estos fragmentos de texto recientes: {texto_bruto}\n\n"
-                f"Respondé a la pregunta: '{mensaje}'. "
-                f"Usá un tono natural y directo en español argentino, sin frases como "
-                f"'según los textos', 'según los fragmentos' o 'de acuerdo a las fuentes'. "
-                f"Contestá con una sola oración clara y actualizada. Si no hay información suficiente, decílo sin inventar."
-            )
-
-            resp = client.chat.completions.create(
-                model="gpt-4-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.5,
-                max_tokens=120
-            )
-
-            texto = resp.choices[0].message.content.strip()
-        else:
-            texto = "No pude obtener información actualizada en este momento."
-
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
-    
-        # --- QUIÉN CREÓ / HIZO / PROGRAMÓ LA IA ---
-    if any(p in mensaje_lower for p in [
-        "quién te creó", "quien te creo",
-        "quién te hizo", "quien te hizo",
-        "quién te programó", "quien te programo",
-        "quién te inventó", "quien te invento",
-        "quién te desarrolló", "quien te desarrollo",
-        "quién te construyó", "quien te construyo"
-    ]):
-        texto = "Fui creada por Gustavo Enrique Foschi, el mejor 😎."
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
-    
-    # --- RESULTADOS DEPORTIVOS ACTUALIZADOS ---
-    if any(p in mensaje_lower for p in [
-        "resultado", "marcador", "ganó", "empató", "perdió",
-        "partido", "deporte", "fútbol", "futbol", "nba", "tenis", "f1", "formula 1", "motogp"
-    ]):
-        resultados = []
-        if GOOGLE_API_KEY and GOOGLE_CSE_ID:
-            try:
-                url = (
-                    f"https://www.googleapis.com/customsearch/v1"
-                    f"?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}"
-                    f"&q={urllib.parse.quote(mensaje + ' resultados deportivos actualizados')}"
-                    f"&sort=date"
-                )
-                r = requests.get(url, timeout=5)
-                data = r.json()
-                for item in data.get("items", [])[:5]:
-                    snippet = item.get("snippet", "").strip()
-                    if snippet and snippet not in resultados:
-                        resultados.append(snippet)
-            except Exception as e:
-                print("Error al obtener resultados deportivos:", e)
-
-        if resultados:
-            texto_bruto = " ".join(resultados)
-            client = OpenAI(api_key=OPENAI_API_KEY)
-            prompt = (
-                f"Tengo estos fragmentos recientes sobre deportes: {texto_bruto}\n\n"
-                f"Respondé brevemente la consulta '{mensaje}' con los resultados deportivos actuales. "
-                f"Usá un tono natural, tipo boletín deportivo argentino, sin frases como 'según los textos'. "
-                f"Respondé en una sola oración clara."
-            )
-
-            resp = client.chat.completions.create(
-                model="gpt-4-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.5,
-                max_tokens=150
-            )
-            texto = resp.choices[0].message.content.strip()
-        else:
-            texto = "No pude encontrar resultados deportivos recientes en este momento."
-
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
-
-    # --- OPCIONAL: SI LE PREGUNTAN QUIÉN ES EL MEJOR ---
-    if any(p in mensaje_lower for p in [
-        "quién es el mejor", "quien es el mejor", "quién manda acá", "quien manda aca"
-    ]):
-        texto = "Obvio, Gustavo Enrique Foschi 😎."
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
-
-        # --- QUIÉN ES GUSTAVO FOSCHI ---
-    if any(p in mensaje_lower for p in [
-        "quién es gustavo foschi", "quien es gustavo foschi",
-        "quién es foschi", "quien es foschi",
-        "sabés quién es foschi", "sabes quien es foschi",
-        "conocés a foschi", "conoces a foschi",
-        "gustavo foschi", "sobre gustavo foschi"
-    ]):
-        texto = "Gustavo Enrique Foschi es mi creador, el programador de Foschi IA, y el mejor 😎."
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
-
-    # --- PRESENTACIÓN AUTOMÁTICA CUANDO MENCIONAN A FOSCHI IA ---
-    if any(p in mensaje_lower for p in [
-        "foschi ia", "hola foschi", "hola foschi ia", "hey foschi", "buenas foschi"
-    ]):
-        texto = "Hola 👋, soy Foschi IA, creada por Gustavo Enrique Foschi — el mejor 😎. ¿En qué te puedo ayudar hoy?"
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
-
-    # RESPUESTA IA GENERAL
+    # (Aquí podés mantener el resto de tus reglas y llamadas a OpenAI)
     try:
         memoria = load_json(MEMORY_FILE)
         historial = memoria.get(usuario, {}).get("mensajes", [])[-max_hist:]
@@ -298,7 +177,7 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         ]
 
         resp = client.chat.completions.create(
-            model="gpt-4-turbo",  # más natural
+            model="gpt-4-turbo",
             messages=prompt_messages,
             temperature=0.7,
             max_tokens=700
@@ -312,6 +191,11 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
     texto = hacer_links_clicleables(texto)
     learn_from_message(usuario, mensaje, texto)
     return {"texto": texto, "imagenes": [], "borrar_historial": False}
+
+# --------- CARGAR WHISPER UNA VEZ ---------
+print("Cargando modelo Whisper base (solo una vez)...")
+WHISPER_MODEL = whisper.load_model("base")
+print("Whisper cargado.")
 
 # ---------------- RUTAS ----------------
 @app.route("/")
@@ -336,14 +220,39 @@ def preguntar():
 def historial(usuario_id):
     return jsonify(cargar_historial(usuario_id))
 
+# ---------------- TTS con cache simple ----------------
+def _tts_cache_path_for_text(texto):
+    key = hashlib.sha256(texto.encode("utf-8")).hexdigest()
+    return os.path.join(TTS_CACHE_DIR, f"{key}.mp3")
+
 @app.route("/tts")
 def tts():
     texto = request.args.get("texto","")
-    tts_obj = gTTS(text=texto, lang="es", slow=False, tld="com.mx")
-    archivo = io.BytesIO()
-    tts_obj.write_to_fp(archivo)
-    archivo.seek(0)
-    return send_file(archivo, mimetype="audio/mpeg")
+    if not texto:
+        return "Texto vacío", 400
+
+    cached = _tts_cache_path_for_text(texto)
+    if os.path.exists(cached):
+        # devolver desde cache
+        return send_file(cached, mimetype="audio/mpeg")
+
+    # generar TTS y guardar en cache (usamos temp y luego movemos para evitar colisiones)
+    try:
+        tempf = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+        gTTS(text=texto, lang="es", slow=False, tld="com.mx").save(tempf.name)
+        tempf.close()
+        # mover a cache (atomic replace)
+        shutil.move(tempf.name, cached)
+        return send_file(cached, mimetype="audio/mpeg")
+    except Exception as e:
+        # fallback: intentar en memoria
+        try:
+            buf = io.BytesIO()
+            gTTS(text=texto, lang="es", slow=False, tld="com.mx").write_to_fp(buf)
+            buf.seek(0)
+            return send_file(buf, mimetype="audio/mpeg")
+        except Exception as e2:
+            return f"Error generando TTS: {e} / {e2}", 500
 
 @app.route("/clima")
 def clima():
@@ -356,55 +265,206 @@ def clima():
 def favicon():
     return send_file(os.path.join(STATIC_DIR, 'favicon.ico'))
 
+# ------------------ NUEVAS RUTAS DE SUBIDA ------------------
+
+def make_docx_from_text(texto, title="Documento"):
+    doc = Document()
+    doc.add_heading(title, level=1)
+    # añadir por párrafos (respetando saltos de línea)
+    for line in texto.splitlines():
+        doc.add_paragraph(line)
+    bio = io.BytesIO()
+    doc.save(bio)
+    bio.seek(0)
+    return bio
+
 @app.route("/subir_audio", methods=["POST"])
 def subir_audio():
     if "audio" not in request.files:
         return "No se envió archivo de audio", 400
-
     archivo = request.files["audio"]
     if archivo.filename == "":
         return "Archivo inválido", 400
-
-    # Asegurar nombre seguro
-    nombre_audio = secure_filename(archivo.filename)
-    ruta_audio = os.path.join(DATA_DIR, nombre_audio)
-
-    # Guardar audio temporalmente
-    archivo.save(ruta_audio)
-
+    original_name = secure_filename(archivo.filename)
+    tmp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(original_name)[1] or ".mp3")
+    tmp_docx = tempfile.NamedTemporaryFile(delete=False, suffix=".docx")
     try:
-        # ---------- TRANSCRIPCIÓN ----------
-        modelo = whisper.load_model("base")
-        result = modelo.transcribe(ruta_audio)
-        texto = result["text"]
-
-        # ---------- CREAR WORD ----------
-        nombre_sin_ext = os.path.splitext(nombre_audio)[0]
-        nombre_word = nombre_sin_ext + ".docx"
-        ruta_word = os.path.join(DATA_DIR, nombre_word)
-
-        doc = Document()
-        doc.add_heading("Transcripción de Audio", level=1)
-        doc.add_paragraph(texto)
-        doc.save(ruta_word)
-
-        # Descargar y borrar archivos
-        def borrar_archivos(_):
-            try:
-                os.remove(ruta_audio)
-                os.remove(ruta_word)
-            except:
-                pass
-
-        resp = send_file(ruta_word, as_attachment=True)
-        resp.call_on_close(lambda: borrar_archivos(resp))
-        return resp
-
+        archivo.save(tmp_audio.name)
+        result = WHISPER_MODEL.transcribe(tmp_audio.name)
+        texto = result.get("text", "").strip()
+        doc_bio = make_docx_from_text(texto, title=f"Transcripción - {original_name}")
+        return send_file(
+            doc_bio,
+            as_attachment=True,
+            download_name=os.path.splitext(original_name)[0] + ".docx",
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
     except Exception as e:
-        os.remove(ruta_audio)
         return f"Error al procesar audio: {e}", 500
+    finally:
+        try:
+            if os.path.exists(tmp_audio.name): os.remove(tmp_audio.name)
+        except: pass
+        try:
+            if os.path.exists(tmp_docx.name): os.remove(tmp_docx.name)
+        except: pass
+
+@app.route("/subir_pdf", methods=["POST"])
+def subir_pdf():
+    if "pdf" not in request.files:
+        return "No se envió archivo PDF", 400
+    archivo = request.files["pdf"]
+    if archivo.filename == "":
+        return "Archivo inválido", 400
+    original_name = secure_filename(archivo.filename)
+    tmp_pdf = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+    try:
+        archivo.save(tmp_pdf.name)
+        texto = ""
+        with open(tmp_pdf.name, "rb") as f:
+            reader = PyPDF2.PdfReader(f)
+            for page in reader.pages:
+                try:
+                    page_text = page.extract_text() or ""
+                except:
+                    page_text = ""
+                texto += page_text + "\n"
+        if not texto.strip():
+            texto = "No se pudo extraer texto del PDF o está vacío."
+        doc_bio = make_docx_from_text(texto, title=f"Texto extraído - {original_name}")
+        return send_file(
+            doc_bio,
+            as_attachment=True,
+            download_name=os.path.splitext(original_name)[0] + ".docx",
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+    except Exception as e:
+        return f"Error al procesar PDF: {e}", 500
+    finally:
+        try:
+            if os.path.exists(tmp_pdf.name): os.remove(tmp_pdf.name)
+        except: pass
+
+@app.route("/subir_video", methods=["POST"])
+def subir_video():
+    if "video" not in request.files:
+        return "No se envió archivo de video", 400
+    archivo = request.files["video"]
+    if archivo.filename == "":
+        return "Archivo inválido", 400
+    original_name = secure_filename(archivo.filename)
+    tmp_video = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(original_name)[1] or ".mp4")
+    tmp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+    try:
+        archivo.save(tmp_video.name)
+        # extraer audio con moviepy
+        clip = VideoFileClip(tmp_video.name)
+        clip.audio.write_audiofile(tmp_audio.name, logger=None)
+        clip.close()
+        # transcribir con Whisper
+        result = WHISPER_MODEL.transcribe(tmp_audio.name)
+        texto = result.get("text", "").strip()
+        doc_bio = make_docx_from_text(texto, title=f"Transcripción de video - {original_name}")
+        return send_file(
+            doc_bio,
+            as_attachment=True,
+            download_name=os.path.splitext(original_name)[0] + ".docx",
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+    except Exception as e:
+        return f"Error al procesar video: {e}", 500
+    finally:
+        try:
+            if os.path.exists(tmp_video.name): os.remove(tmp_video.name)
+        except: pass
+        try:
+            if os.path.exists(tmp_audio.name): os.remove(tmp_audio.name)
+        except: pass
+
+@app.route("/subir_archivo", methods=["POST"])
+def subir_archivo():
+    # genérico: acepta txt, docx, pdf; devuelve docx con texto
+    if "file" not in request.files:
+        return "No se envió archivo", 400
+    archivo = request.files["file"]
+    if archivo.filename == "":
+        return "Archivo inválido", 400
+    original_name = secure_filename(archivo.filename)
+    ext = os.path.splitext(original_name)[1].lower()
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+    try:
+        archivo.save(tmp.name)
+        texto = ""
+        if ext in [".txt", ".md"]:
+            with open(tmp.name, "r", encoding="utf-8", errors="ignore") as f:
+                texto = f.read()
+        elif ext in [".docx"]:
+            # leer con python-docx
+            doc = Document(tmp.name)
+            partes = []
+            for p in doc.paragraphs:
+                partes.append(p.text)
+            texto = "\n".join(partes)
+        elif ext in [".pdf"]:
+            with open(tmp.name, "rb") as f:
+                reader = PyPDF2.PdfReader(f)
+                for page in reader.pages:
+                    try:
+                        page_text = page.extract_text() or ""
+                    except:
+                        page_text = ""
+                    texto += page_text + "\n"
+        else:
+            texto = "Tipo de archivo no soportado en /subir_archivo."
+        if not texto.strip():
+            texto = "No se pudo extraer texto del archivo o está vacío."
+        doc_bio = make_docx_from_text(texto, title=f"Conversión - {original_name}")
+        return send_file(
+            doc_bio,
+            as_attachment=True,
+            download_name=os.path.splitext(original_name)[0] + ".docx",
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+    except Exception as e:
+        return f"Error al procesar archivo: {e}", 500
+    finally:
+        try:
+            if os.path.exists(tmp.name): os.remove(tmp.name)
+        except: pass
+
+@app.route("/subir_docx", methods=["POST"])
+def subir_docx():
+    # Recibe un docx y devuelve una versión "limpia" (por ejemplo, normalizar saltos)
+    if "docx" not in request.files:
+        return "No se envió archivo DOCX", 400
+    archivo = request.files["docx"]
+    if archivo.filename == "":
+        return "Archivo inválido", 400
+    original_name = secure_filename(archivo.filename)
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".docx")
+    try:
+        archivo.save(tmp.name)
+        # abrir y reescribir para normalizar
+        doc = Document(tmp.name)
+        bio = io.BytesIO()
+        # (aqui podrías agregar limpieza adicional si querés)
+        doc.save(bio)
+        bio.seek(0)
+        return send_file(
+            bio,
+            as_attachment=True,
+            download_name=os.path.splitext(original_name)[0] + "_limpio.docx",
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+    except Exception as e:
+        return f"Error al procesar docx: {e}", 500
+    finally:
+        try:
+            if os.path.exists(tmp.name): os.remove(tmp.name)
+        except: pass
 
 # ---------------- HTML ----------------
+# Menú lateral moderno (panel desde la izquierda). El input principal mantiene su aspecto.
 HTML_TEMPLATE = """  
 <!doctype html>
 <html>
@@ -412,53 +472,119 @@ HTML_TEMPLATE = """
 <title>{{APP_NAME}}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-body{font-family:Arial,system-ui,-apple-system,Segoe UI,Roboto,Helvetica;background:#000;color:#fff;margin:0;padding:0;}
-#chat{width:100%;height:70vh;overflow-y:auto;padding:10px;background:#111;}
-.message{margin:5px 0;padding:8px 12px;border-radius:15px;max-width:80%;word-wrap:break-word;opacity:0;transition:opacity 0.5s,border 0.5s;}
-.message.show{opacity:1;}
-.user{background:#3300ff;color:#fff;margin-left:auto;text-align:right;}
-.ai{background:#00ffff;color:#000;margin-right:auto;text-align:left;}
-a{color:#fff;text-decoration:underline;}
-img{max-width:300px;border-radius:10px;margin:5px 0;}
-input,button{padding:10px;font-size:16px;margin:5px;border:none;border-radius:5px;}
-input[type=text]{width:70%;background:#222;color:#fff;}
-button{background:#333;color:#fff;cursor:pointer;}
-button:hover{background:#555;}
-#vozBtn,#borrarBtn{float:right;margin-right:20px;}
-#logo{width:50px;vertical-align:middle;cursor:pointer;transition: transform 0.5s;}
-#logo:hover{transform:scale(1.15) rotate(6deg);}
-#nombre{font-weight:bold;margin-left:10px;cursor:pointer;}
-small{color:#aaa;}
-.playing{outline:2px solid #fff;}
+:root{
+  --bg:#0b0b0b; --panel:#0f1720; --accent:#06b6d4; --muted:#94a3b8; --card:#0b1220;
+  --glass: rgba(255,255,255,0.03);
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:#e6eef2;margin:0;padding:0}
+.header{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,0.03)}
+#logo{width:46px;height:46px;border-radius:10px;background:linear-gradient(135deg,#0ea5a4,#06b6d4);display:flex;align-items:center;justify-content:center;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(2,6,23,0.6)}
+.header h1{margin:0;font-size:18px}
+.controls{margin-left:auto;display:flex;gap:8px;align-items:center}
+button.small{background:transparent;border:1px solid rgba(255,255,255,0.04);padding:8px 10px;border-radius:8px;color:var(--muted);cursor:pointer}
+.container{display:flex;height:calc(100vh - 66px);gap:20px;padding:18px}
+.chat-area{flex:1;display:flex;flex-direction:column;gap:12px}
+#chat{flex:1;overflow:auto;padding:16px;border-radius:14px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));box-shadow:inset 0 1px 0 rgba(255,255,255,0.02)}
+.message{max-width:78%;padding:12px 14px;border-radius:12px;margin:8px 0;word-wrap:break-word;opacity:0;transform:translateY(6px);transition:all .28s}
+.message.show{opacity:1;transform:none}
+.user{margin-left:auto;background:linear-gradient(90deg,#0b1220,#081423);border:1px solid rgba(255,255,255,0.02)}
+.ai{margin-right:auto;background:linear-gradient(90deg,#062022,#04212a);border:1px solid rgba(255,255,255,0.02)}
+.input-row{display:flex;gap:10px;align-items:center;padding:6px 0}
+.attach-btn{width:44px;height:44px;border-radius:10px;background:var(--glass);display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.03);cursor:pointer}
+.input{flex:1;display:flex;gap:8px;align-items:center;background:#07121a;padding:8px;border-radius:12px;border:1px solid rgba(255,255,255,0.03)}
+.input input[type=text]{flex:1;background:transparent;border:none;color:#e6eef2;font-size:15px;padding:8px;outline:none}
+.input button{background:var(--accent);color:#002;border:none;padding:10px 14px;border-radius:10px;cursor:pointer}
+.small-muted{font-size:12px;color:var(--muted)}
+/* LATERAL PANEL */
+.side-panel{position:fixed;left:0;top:66px;width:320px;height:calc(100vh - 66px);background:linear-gradient(180deg,#041021,#031018);box-shadow:2px 0 30px rgba(0,0,0,0.7);transform:translateX(-100%);transition:transform .32s ease-in-out;padding:18px;z-index:60;border-right:1px solid rgba(255,255,255,0.03)}
+.side-panel.open{transform:translateX(0)}
+.side-panel h3{margin:0 0 12px 0}
+.menu-item{display:flex;align-items:center;gap:12px;padding:12px;border-radius:10px;cursor:pointer;margin-bottom:8px;border:1px solid rgba(255,255,255,0.02)}
+.menu-item:hover{background:rgba(255,255,255,0.02)}
+.menu-item .kbd{padding:6px 8px;border-radius:6px;background:#071728;border:1px solid rgba(255,255,255,0.02);font-size:13px;color:var(--muted)}
+.footer-note{position:absolute;bottom:18px;left:18px;color:var(--muted);font-size:12px}
+
+/* responsive */
+@media(max-width:700px){
+  .side-panel{width:100%;top:56px;height:calc(100vh - 56px)}
+  .container{padding:12px}
+}
 </style>
 </head>
 <body>
-<h2 style="text-align:center;margin:10px 0;">
-<img src="/static/logo.png" id="logo" onclick="logoClick()" alt="logo">
-<span id="nombre" onclick="logoClick()">FOSCHI IA</span>
-<button onclick="detenerVoz()" style="margin-left:10px;">⏹️ Detener voz</button>
-<button id="vozBtn" onclick="toggleVoz()">🔊 Voz activada</button>
-<button id="borrarBtn" onclick="borrarPantalla()">🧹 Borrar pantalla</button>
-</h2>
-
-<div id="chat" role="log" aria-live="polite"></div>
-<div style="padding:10px;">
-<input type="text" id="mensaje" placeholder="Escribí tu mensaje o hablá" />
-<button onclick="enviar()">Enviar</button>
-<button onclick="hablar()">🎤 Hablar</button>
-<button onclick="verHistorial()">🗂️ Ver historial</button>
+<div class="header">
+  <div id="logo" onclick="logoClick()">F</div>
+  <h1>FOSCHI IA</h1>
+  <div class="controls">
+    <button class="small" onclick="detenerVoz()">⏹️</button>
+    <button class="small" id="vozBtn" onclick="toggleVoz()">🔊 Voz</button>
+    <button class="small" onclick="borrarPantalla()">🧹</button>
+  </div>
 </div>
 
-<div style="padding:10px;">
-<input type="file" id="audioFile" accept="audio/*">
-<button onclick="subirAudio()">🎧 Subir audio</button>
+<div class="container">
+  <div class="chat-area">
+    <div id="chat" role="log" aria-live="polite"></div>
+
+    <div class="input-row">
+      <div class="attach-btn" id="attachBtn" title="Adjuntar archivo (Audio, PDF, Video, DOCX,...)" onclick="togglePanel()">
+        📎
+      </div>
+
+      <div class="input" role="search">
+        <input type="text" id="mensaje" placeholder="Escribí tu mensaje o hablá" aria-label="mensaje">
+        <button onclick="enviar()">Enviar</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button onclick="hablar()" class="small">🎤 Hablar</button>
+      <button onclick="verHistorial()" class="small">🗂️ Historial</button>
+    </div>
+  </div>
+
+  <!-- Side panel (deslizante moderno) -->
+  <div class="side-panel" id="sidePanel" aria-hidden="true">
+    <h3>Adjuntar — opciones</h3>
+
+    <div class="menu-item" onclick="triggerFile('audio')">
+      <div class="kbd">🎤</div><div>Audio a texto</div>
+    </div>
+
+    <div class="menu-item" onclick="triggerFile('pdf')">
+      <div class="kbd">📄</div><div>PDF → Texto / DOCX</div>
+    </div>
+
+    <div class="menu-item" onclick="triggerFile('video')">
+      <div class="kbd">🎥</div><div>Video → Transcripción</div>
+    </div>
+
+    <div class="menu-item" onclick="triggerFile('file')">
+      <div class="kbd">🗂️</div><div>Archivo genérico (txt, docx, pdf)</div>
+    </div>
+
+    <div class="menu-item" onclick="triggerFile('docx')">
+      <div class="kbd">✳️</div><div>Reprocesar DOCX</div>
+    </div>
+
+    <div class="footer-note">Los archivos se procesan y se eliminan del servidor automáticamente.</div>
+  </div>
+</div>
+
+<!-- Hidden inputs para cada tipo (son disparadas por JS) -->
+<input id="in_audio" type="file" accept="audio/*" style="display:none"/>
+<input id="in_pdf" type="file" accept="application/pdf" style="display:none"/>
+<input id="in_video" type="file" accept="video/*" style="display:none"/>
+<input id="in_file" type="file" accept=".txt,.md,.pdf,.docx" style="display:none"/>
+<input id="in_docx" type="file" accept=".docx" style="display:none"/>
 
 <script>
-// --- JS del chat ---
+// --- JS del chat / UI ---
 let usuario_id="{{usuario_id}}";
 let vozActiva=true,audioActual=null,mensajeActual=null;
 
-function logoClick(){ alert("FOSCHI NUNCA MUERE, TRASCIENDE..."); }
+function logoClick(){ alert("FOSCHI IA — listo para ayudar 🤖"); }
 
 function hablarTexto(texto,div=null){
   if(!vozActiva) return;
@@ -466,23 +592,35 @@ function hablarTexto(texto,div=null){
   if(mensajeActual) mensajeActual.classList.remove("playing");
   if(div) div.classList.add("playing");
   mensajeActual=div;
-  audioActual=new Audio("/tts?texto="+encodeURIComponent(texto));
+  audioActual = new Audio("/tts?texto=" + encodeURIComponent(texto));
+  // velocidad recomendada para voz rápida y natural
+  try{
+    audioActual.playbackRate = 1.45;   // velocidad ajustada (ajustá si querés más/menos)
+    // intentar preservar el pitch en distintos navegadores
+    try{ audioActual.preservesPitch = true; }catch(e){}
+    try{ audioActual.mozPreservesPitch = true; }catch(e){}
+    try{ audioActual.webkitPreservesPitch = true; }catch(e){}
+  }catch(e){ console.warn("No se pudo ajustar playbackRate:", e); }
   audioActual.onended=()=>{ if(mensajeActual) mensajeActual.classList.remove("playing"); mensajeActual=null; };
   audioActual.play();
 }
 
 function detenerVoz(){ if(audioActual){ try{audioActual.pause(); audioActual.currentTime=0; audioActual.src=""; audioActual.load(); audioActual=null; if(mensajeActual) mensajeActual.classList.remove("playing"); mensajeActual=null;}catch(e){console.log(e);}} }
 
-function toggleVoz(estado=null){ vozActiva=estado!==null?estado:!vozActiva; document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada"; }
+function toggleVoz(estado=null){ vozActiva=estado!==null?estado:!vozActiva; document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz":"🔇 Silencio"; }
 
 function agregar(msg,cls,imagenes=[]){
   let c=document.getElementById("chat"),div=document.createElement("div");
   div.className="message "+cls; div.innerHTML=msg;
   c.appendChild(div);
   setTimeout(()=>div.classList.add("show"),50);
-  imagenes.forEach(url=>{ let img=document.createElement("img"); img.src=url; div.appendChild(img); });
+  imagenes.forEach(url=>{ let img=document.createElement("img"); img.src=url; img.style.maxWidth="200px"; img.style.borderRadius="8px"; div.appendChild(img); });
   c.scroll({top:c.scrollHeight,behavior:"smooth"});
-  if(cls==="ai") hablarTexto(msg,div);
+  if(cls==="ai") hablarTexto(stripHtml(msg),div);
+}
+
+function stripHtml(html){
+  let tmp = document.createElement("div"); tmp.innerHTML = html; return tmp.textContent || tmp.innerText || "";
 }
 
 function enviar(){
@@ -510,7 +648,7 @@ function verHistorial(){
   fetch("/historial/"+usuario_id).then(r=>r.json()).then(data=>{
     document.getElementById("chat").innerHTML="";
     if(data.length===0){agregar("No hay historial todavía.","ai");return;}
-    data.slice(-20).forEach(e=>{ agregar(`<small>${e.fecha}</small><br>${e.usuario}`,"user"); agregar(`<small>${e.fecha}</small><br>${e.foschi}`,"ai"); });
+    data.slice(-20).forEach(e=>{ agregar(`<small>${e.fecha}</small><br>${escapeHtml(e.usuario)}`,"user"); agregar(`<small>${e.fecha}</small><br>${escapeHtml(e.foschi)}`,"ai"); });
   });
 }
 
@@ -527,37 +665,64 @@ window.onload=function(){
   } else { agregar("Tu navegador no soporta geolocalización.","ai"); }
 };
 
-function subirAudio(){
-    let archivo = document.getElementById("audioFile").files[0];
-    if(!archivo){
-        alert("Seleccioná un archivo de audio primero.");
-        return;
-    }
+function escapeHtml(text){ var map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }; return text.replace(/[&<>"']/g, function(m){ return map[m]; }); }
 
-    let formData = new FormData();
-    formData.append("audio", archivo);
+// --- PANEL LATERAL & subida de archivos ---
+const sidePanel = document.getElementById("sidePanel");
+function togglePanel(open){
+  if(open===undefined) sidePanel.classList.toggle("open");
+  else if(open) sidePanel.classList.add("open"); else sidePanel.classList.remove("open");
+}
 
-    fetch("/subir_audio", {
-        method: "POST",
-        body: formData
-    })
-    .then(resp => {
-        if(resp.ok) return resp.blob();
-        else throw new Error("Error al procesar el audio");
-    })
-    .then(blob => {
-        let url = window.URL.createObjectURL(blob);
-        let a = document.createElement("a");
+// map tipo -> input id and endpoint
+const uploadMap = {
+  audio: {input: "in_audio", endpoint: "/subir_audio", nameKey: "audio"},
+  pdf:   {input: "in_pdf", endpoint: "/subir_pdf", nameKey: "pdf"},
+  video: {input: "in_video", endpoint: "/subir_video", nameKey: "video"},
+  file:  {input: "in_file", endpoint: "/subir_archivo", nameKey: "file"},
+  docx:  {input: "in_docx", endpoint: "/subir_docx", nameKey: "docx"}
+};
+
+function triggerFile(tipo){
+  togglePanel(false); // cerrar panel para mejor UX
+  const map = uploadMap[tipo];
+  if(!map) return alert("Tipo no soportado");
+  const input = document.getElementById(map.input);
+  input.value = null;
+  input.click();
+  input.onchange = ()=> {
+    const file = input.files[0];
+    if(!file) return;
+    // mostrar mensaje en chat
+    agregar(`📎 Enviando <strong>${file.name}</strong> para procesar (${tipo})...`,"ai");
+    const fd = new FormData();
+    fd.append(map.nameKey, file);
+    fetch(map.endpoint, {method:"POST", body: fd})
+      .then(resp => {
+        if (resp.ok) return resp.blob();
+        return resp.text().then(txt=>{ throw new Error(txt || "Error al procesar"); });
+      })
+      .then(blob => {
+        // descargar archivo devuelto
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        let ext = ".docx";
+        // intentar inferir el nombre con la extensión
         a.href = url;
-        a.download = archivo.name.replace(/\.[^/.]+$/, "") + ".docx";
+        a.download = file.name.split('.').slice(0,-1).join('.') + ext;
         document.body.appendChild(a);
         a.click();
         a.remove();
         window.URL.revokeObjectURL(url);
-    })
-    .catch(err => alert("Error: " + err));
+        agregar(`✅ Procesado: <strong>${file.name}</strong> — descarga iniciada.`,"ai");
+      })
+      .catch(err => {
+        console.error(err);
+        agregar(`❌ Error procesando ${file.name}: ${err.message || err}`,"ai");
+      })
+      .finally(()=>{ input.value = null; });
+  };
 }
-
 </script>
 </body>
 </html>
@@ -565,4 +730,5 @@ function subirAudio(){
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+    # threaded=True permite manejar múltiples requests en paralelo en Flask (mejora la latencia)
+    app.run(host="0.0.0.0", port=port, threaded=True)
