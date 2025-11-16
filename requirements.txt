@@ -9,3 +9,7 @@ pytz
 openai-whisper
 python-docx
 ffmpeg-python
+moviepy
+pillow
+pypdf2
+werkzeug
