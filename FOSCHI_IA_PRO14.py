@@ -1,9 +1,6 @@
 from flask import Flask, render_template_string, request, jsonify, session, send_file
 from flask_session import Session
-import os
-import uuid
-import json
-import io
+import os, uuid, json, io
 from datetime import datetime
 import pytz
 from gtts import gTTS
@@ -13,7 +10,6 @@ from openai import OpenAI
 from werkzeug.utils import secure_filename
 import whisper
 from docx import Document
-import tempfile
 
 # ---------------- CONFIG ----------------
 APP_NAME = "FOSCHI IA WEB"
@@ -149,7 +145,138 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
-    # (Aquí podés mantener el resto de tus reglas y llamadas a OpenAI)
+        # INFORMACIÓN ACTUALIZADA (versión natural sin "según los textos")
+    if any(word in mensaje_lower for word in ["presidente", "actualidad", "noticias", "quién es", "últimas noticias", "evento actual"]):
+        resultados = []
+        if GOOGLE_API_KEY and GOOGLE_CSE_ID:
+            try:
+                url = (
+                    f"https://www.googleapis.com/customsearch/v1"
+                    f"?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}"
+                    f"&q={urllib.parse.quote(mensaje)}&sort=date"
+                )
+                r = requests.get(url, timeout=5)
+                data = r.json()
+                for item in data.get("items", [])[:5]:
+                    snippet = item.get("snippet", "").strip()
+                    if snippet and snippet not in resultados:
+                        resultados.append(snippet)
+            except Exception as e:
+                print("Error al obtener noticias:", e)
+
+        if resultados:
+            texto_bruto = " ".join(resultados)
+            client = OpenAI(api_key=OPENAI_API_KEY)
+            prompt = (
+                f"Tengo estos fragmentos de texto recientes: {texto_bruto}\n\n"
+                f"Respondé a la pregunta: '{mensaje}'. "
+                f"Usá un tono natural y directo en español argentino, sin frases como "
+                f"'según los textos', 'según los fragmentos' o 'de acuerdo a las fuentes'. "
+                f"Contestá con una sola oración clara y actualizada. Si no hay información suficiente, decílo sin inventar."
+            )
+
+            resp = client.chat.completions.create(
+                model="gpt-4-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.5,
+                max_tokens=120
+            )
+
+            texto = resp.choices[0].message.content.strip()
+        else:
+            texto = "No pude obtener información actualizada en este momento."
+
+        learn_from_message(usuario, mensaje, texto)
+        return {"texto": texto, "imagenes": [], "borrar_historial": False}
+    
+        # --- QUIÉN CREÓ / HIZO / PROGRAMÓ LA IA ---
+    if any(p in mensaje_lower for p in [
+        "quién te creó", "quien te creo",
+        "quién te hizo", "quien te hizo",
+        "quién te programó", "quien te programo",
+        "quién te inventó", "quien te invento",
+        "quién te desarrolló", "quien te desarrollo",
+        "quién te construyó", "quien te construyo"
+    ]):
+        texto = "Fui creada por Gustavo Enrique Foschi, el mejor 😎."
+        learn_from_message(usuario, mensaje, texto)
+        return {"texto": texto, "imagenes": [], "borrar_historial": False}
+    
+    # --- RESULTADOS DEPORTIVOS ACTUALIZADOS ---
+    if any(p in mensaje_lower for p in [
+        "resultado", "marcador", "ganó", "empató", "perdió",
+        "partido", "deporte", "fútbol", "futbol", "nba", "tenis", "f1", "formula 1", "motogp"
+    ]):
+        resultados = []
+        if GOOGLE_API_KEY and GOOGLE_CSE_ID:
+            try:
+                url = (
+                    f"https://www.googleapis.com/customsearch/v1"
+                    f"?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}"
+                    f"&q={urllib.parse.quote(mensaje + ' resultados deportivos actualizados')}"
+                    f"&sort=date"
+                )
+                r = requests.get(url, timeout=5)
+                data = r.json()
+                for item in data.get("items", [])[:5]:
+                    snippet = item.get("snippet", "").strip()
+                    if snippet and snippet not in resultados:
+                        resultados.append(snippet)
+            except Exception as e:
+                print("Error al obtener resultados deportivos:", e)
+
+        if resultados:
+            texto_bruto = " ".join(resultados)
+            client = OpenAI(api_key=OPENAI_API_KEY)
+            prompt = (
+                f"Tengo estos fragmentos recientes sobre deportes: {texto_bruto}\n\n"
+                f"Respondé brevemente la consulta '{mensaje}' con los resultados deportivos actuales. "
+                f"Usá un tono natural, tipo boletín deportivo argentino, sin frases como 'según los textos'. "
+                f"Respondé en una sola oración clara."
+            )
+
+            resp = client.chat.completions.create(
+                model="gpt-4-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.5,
+                max_tokens=150
+            )
+            texto = resp.choices[0].message.content.strip()
+        else:
+            texto = "No pude encontrar resultados deportivos recientes en este momento."
+
+        learn_from_message(usuario, mensaje, texto)
+        return {"texto": texto, "imagenes": [], "borrar_historial": False}
+
+    # --- OPCIONAL: SI LE PREGUNTAN QUIÉN ES EL MEJOR ---
+    if any(p in mensaje_lower for p in [
+        "quién es el mejor", "quien es el mejor", "quién manda acá", "quien manda aca"
+    ]):
+        texto = "Obvio, Gustavo Enrique Foschi 😎."
+        learn_from_message(usuario, mensaje, texto)
+        return {"texto": texto, "imagenes": [], "borrar_historial": False}
+
+        # --- QUIÉN ES GUSTAVO FOSCHI ---
+    if any(p in mensaje_lower for p in [
+        "quién es gustavo foschi", "quien es gustavo foschi",
+        "quién es foschi", "quien es foschi",
+        "sabés quién es foschi", "sabes quien es foschi",
+        "conocés a foschi", "conoces a foschi",
+        "gustavo foschi", "sobre gustavo foschi"
+    ]):
+        texto = "Gustavo Enrique Foschi es mi creador, el programador de Foschi IA, y el mejor 😎."
+        learn_from_message(usuario, mensaje, texto)
+        return {"texto": texto, "imagenes": [], "borrar_historial": False}
+
+    # --- PRESENTACIÓN AUTOMÁTICA CUANDO MENCIONAN A FOSCHI IA ---
+    if any(p in mensaje_lower for p in [
+        "foschi ia", "hola foschi", "hola foschi ia", "hey foschi", "buenas foschi"
+    ]):
+        texto = "Hola 👋, soy Foschi IA, creada por Gustavo Enrique Foschi — el mejor 😎. ¿En qué te puedo ayudar hoy?"
+        learn_from_message(usuario, mensaje, texto)
+        return {"texto": texto, "imagenes": [], "borrar_historial": False}
+
+    # RESPUESTA IA GENERAL
     try:
         memoria = load_json(MEMORY_FILE)
         historial = memoria.get(usuario, {}).get("mensajes", [])[-max_hist:]
@@ -171,7 +298,7 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         ]
 
         resp = client.chat.completions.create(
-            model="gpt-4-turbo",
+            model="gpt-4-turbo",  # más natural
             messages=prompt_messages,
             temperature=0.7,
             max_tokens=700
@@ -185,11 +312,6 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
     texto = hacer_links_clicleables(texto)
     learn_from_message(usuario, mensaje, texto)
     return {"texto": texto, "imagenes": [], "borrar_historial": False}
-
-# --------- CARGAR WHISPER UNA VEZ ---------
-print("Cargando modelo Whisper base (solo una vez)...")
-WHISPER_MODEL = whisper.load_model("base")
-print("Whisper cargado.")
 
 # ---------------- RUTAS ----------------
 @app.route("/")
@@ -243,54 +365,46 @@ def subir_audio():
     if archivo.filename == "":
         return "Archivo inválido", 400
 
-    # Asegurar nombre seguro y crear temporales
-    original_name = secure_filename(archivo.filename)
-    # Creamos temp file para guardar el audio
-    tmp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(original_name)[1] or ".mp3")
-    tmp_docx = tempfile.NamedTemporaryFile(delete=False, suffix=".docx")
+    # Asegurar nombre seguro
+    nombre_audio = secure_filename(archivo.filename)
+    ruta_audio = os.path.join(DATA_DIR, nombre_audio)
+
+    # Guardar audio temporalmente
+    archivo.save(ruta_audio)
+
     try:
-        archivo.save(tmp_audio.name)
+        # ---------- TRANSCRIPCIÓN ----------
+        modelo = whisper.load_model("base")
+        result = modelo.transcribe(ruta_audio)
+        texto = result["text"]
 
-        # Transcribir con el modelo ya cargado
-        result = WHISPER_MODEL.transcribe(tmp_audio.name)
-        texto = result.get("text", "").strip()
+        # ---------- CREAR WORD ----------
+        nombre_sin_ext = os.path.splitext(nombre_audio)[0]
+        nombre_word = nombre_sin_ext + ".docx"
+        ruta_word = os.path.join(DATA_DIR, nombre_word)
 
-        # Crear documento Word
         doc = Document()
         doc.add_heading("Transcripción de Audio", level=1)
         doc.add_paragraph(texto)
-        doc.save(tmp_docx.name)
+        doc.save(ruta_word)
 
-        # Leer docx a bytes y devolverlo con nombre original.docx
-        with open(tmp_docx.name, "rb") as f:
-            data = f.read()
+        # Descargar y borrar archivos
+        def borrar_archivos(_):
+            try:
+                os.remove(ruta_audio)
+                os.remove(ruta_word)
+            except:
+                pass
 
-        download_name = os.path.splitext(original_name)[0] + ".docx"
-        return send_file(
-            io.BytesIO(data),
-            as_attachment=True,
-            download_name=download_name,
-            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
+        resp = send_file(ruta_word, as_attachment=True)
+        resp.call_on_close(lambda: borrar_archivos(resp))
+        return resp
 
     except Exception as e:
+        os.remove(ruta_audio)
         return f"Error al procesar audio: {e}", 500
 
-    finally:
-        # Limpiar temporales si existen
-        try:
-            if os.path.exists(tmp_audio.name):
-                os.remove(tmp_audio.name)
-        except:
-            pass
-        try:
-            if os.path.exists(tmp_docx.name):
-                os.remove(tmp_docx.name)
-        except:
-            pass
-
 # ---------------- HTML ----------------
-# (Tu HTML original aquí — lo dejé intacto para no romper tu UI)
 HTML_TEMPLATE = """  
 <!doctype html>
 <html>
@@ -435,7 +549,7 @@ function subirAudio(){
         let url = window.URL.createObjectURL(blob);
         let a = document.createElement("a");
         a.href = url;
-        a.download = archivo.name.split('.').slice(0, -1).join('.') + ".docx";
+        a.download = archivo.name.replace(/\.[^/.]+$/, "") + ".docx";
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -443,6 +557,7 @@ function subirAudio(){
     })
     .catch(err => alert("Error: " + err));
 }
+
 </script>
 </body>
 </html>
