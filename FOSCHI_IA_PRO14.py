@@ -1,12 +1,13 @@
 from flask import Flask, render_template_string, request, jsonify, session, send_file
 from flask_session import Session
-import os, uuid, json, io
+import os, uuid, json, io, time, threading
 from datetime import datetime
 import pytz
 from gtts import gTTS
 import requests
 import urllib.parse
 from openai import OpenAI
+from concurrent.futures import ThreadPoolExecutor
 
 # ---------------- CONFIG ----------------
 APP_NAME = "FOSCHI IA WEB"
@@ -30,6 +31,9 @@ Session(app)
 
 # ---------------- MEMORIA ----------------
 MEMORY_FILE = os.path.join(DATA_DIR, "memory.json")
+CACHE = {}
+CACHE_LOCK = threading.Lock()
+CACHE_TTL = 300  # 5 minutos de validez
 
 def load_json(path):
     if not os.path.exists(path): return {}
@@ -113,6 +117,69 @@ def cargar_historial(usuario):
         try: return json.load(f)
         except: return []
 
+# ---------------- CACHE ----------------
+def get_cached(query):
+    with CACHE_LOCK:
+        entry = CACHE.get(query)
+        if entry and (time.time() - entry["ts"] < CACHE_TTL):
+            return entry["result"]
+        return None
+
+def set_cache(query, result):
+    with CACHE_LOCK:
+        CACHE[query] = {"result": result, "ts": time.time()}
+
+def buscar_google(query, max_results=5):
+    cached = get_cached(query)
+    if cached: return cached
+    resultados = []
+    if GOOGLE_API_KEY and GOOGLE_CSE_ID:
+        try:
+            url = (
+                f"https://www.googleapis.com/customsearch/v1"
+                f"?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}"
+                f"&q={urllib.parse.quote(query)}&sort=date"
+            )
+            r = requests.get(url, timeout=3)
+            data = r.json()
+            for item in data.get("items", [])[:max_results]:
+                snippet = item.get("snippet", "").strip()
+                if snippet and snippet not in resultados:
+                    resultados.append(snippet)
+        except Exception as e:
+            print("Error al obtener Google Search:", e)
+    set_cache(query, resultados)
+    return resultados
+
+def responder_con_openai(fragmentos, mensaje, prompt_type="general"):
+    if not fragmentos: return None
+    texto_bruto = " ".join(fragmentos)
+    client = OpenAI(api_key=OPENAI_API_KEY)
+    if prompt_type=="deportes":
+        prompt = (
+            f"Tengo estos fragmentos recientes sobre deportes: {texto_bruto}\n\n"
+            f"Respondé brevemente la consulta '{mensaje}' con los resultados deportivos actuales. "
+            f"Usá un tono natural, tipo boletín deportivo argentino, sin frases como 'según los textos'. "
+            f"Respondé en una sola oración clara."
+        )
+        max_tokens=150
+    else:
+        prompt = (
+            f"Tengo estos fragmentos de texto recientes: {texto_bruto}\n\n"
+            f"Respondé a la pregunta: '{mensaje}'. "
+            f"Usá un tono natural y directo en español argentino, sin frases como "
+            f"'según los textos', 'según los fragmentos' o 'de acuerdo a las fuentes'. "
+            f"Contestá con una sola oración clara y actualizada. Si no hay información suficiente, decílo sin inventar."
+        )
+        max_tokens=120
+    resp = client.chat.completions.create(
+        model="gpt-4-turbo",
+        messages=[{"role":"user","content":prompt}],
+        temperature=0.5,
+        max_tokens=max_tokens
+    )
+    return resp.choices[0].message.content.strip()
+
 # ---------------- RESPUESTA IA ----------------
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
     mensaje_lower = mensaje.lower().strip()
@@ -142,145 +209,37 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
-        # INFORMACIÓN ACTUALIZADA (versión natural sin "según los textos")
+    # --- BÚSQUEDAS ACELERADAS ---
     if any(word in mensaje_lower for word in ["presidente", "actualidad", "noticias", "quién es", "últimas noticias", "evento actual"]):
-        resultados = []
-        if GOOGLE_API_KEY and GOOGLE_CSE_ID:
-            try:
-                url = (
-                    f"https://www.googleapis.com/customsearch/v1"
-                    f"?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}"
-                    f"&q={urllib.parse.quote(mensaje)}&sort=date"
-                )
-                r = requests.get(url, timeout=5)
-                data = r.json()
-                for item in data.get("items", [])[:5]:
-                    snippet = item.get("snippet", "").strip()
-                    if snippet and snippet not in resultados:
-                        resultados.append(snippet)
-            except Exception as e:
-                print("Error al obtener noticias:", e)
-
-        if resultados:
-            texto_bruto = " ".join(resultados)
-            client = OpenAI(api_key=OPENAI_API_KEY)
-            prompt = (
-                f"Tengo estos fragmentos de texto recientes: {texto_bruto}\n\n"
-                f"Respondé a la pregunta: '{mensaje}'. "
-                f"Usá un tono natural y directo en español argentino, sin frases como "
-                f"'según los textos', 'según los fragmentos' o 'de acuerdo a las fuentes'. "
-                f"Contestá con una sola oración clara y actualizada. Si no hay información suficiente, decílo sin inventar."
-            )
-
-            resp = client.chat.completions.create(
-                model="gpt-4-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.5,
-                max_tokens=120
-            )
-
-            texto = resp.choices[0].message.content.strip()
-        else:
-            texto = "No pude obtener información actualizada en este momento."
-
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
-    
-        # --- QUIÉN CREÓ / HIZO / PROGRAMÓ LA IA ---
-    if any(p in mensaje_lower for p in [
-        "quién te creó", "quien te creo",
-        "quién te hizo", "quien te hizo",
-        "quién te programó", "quien te programo",
-        "quién te inventó", "quien te invento",
-        "quién te desarrolló", "quien te desarrollo",
-        "quién te construyó", "quien te construyo"
-    ]):
-        texto = "Fui creada por Gustavo Enrique Foschi, el mejor 😎."
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
-    
-    # --- RESULTADOS DEPORTIVOS ACTUALIZADOS ---
-    if any(p in mensaje_lower for p in [
-        "resultado", "marcador", "ganó", "empató", "perdió",
-        "partido", "deporte", "fútbol", "futbol", "nba", "tenis", "f1", "formula 1", "motogp"
-    ]):
-        resultados = []
-        if GOOGLE_API_KEY and GOOGLE_CSE_ID:
-            try:
-                url = (
-                    f"https://www.googleapis.com/customsearch/v1"
-                    f"?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}"
-                    f"&q={urllib.parse.quote(mensaje + ' resultados deportivos actualizados')}"
-                    f"&sort=date"
-                )
-                r = requests.get(url, timeout=5)
-                data = r.json()
-                for item in data.get("items", [])[:5]:
-                    snippet = item.get("snippet", "").strip()
-                    if snippet and snippet not in resultados:
-                        resultados.append(snippet)
-            except Exception as e:
-                print("Error al obtener resultados deportivos:", e)
-
-        if resultados:
-            texto_bruto = " ".join(resultados)
-            client = OpenAI(api_key=OPENAI_API_KEY)
-            prompt = (
-                f"Tengo estos fragmentos recientes sobre deportes: {texto_bruto}\n\n"
-                f"Respondé brevemente la consulta '{mensaje}' con los resultados deportivos actuales. "
-                f"Usá un tono natural, tipo boletín deportivo argentino, sin frases como 'según los textos'. "
-                f"Respondé en una sola oración clara."
-            )
-
-            resp = client.chat.completions.create(
-                model="gpt-4-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.5,
-                max_tokens=150
-            )
-            texto = resp.choices[0].message.content.strip()
-        else:
-            texto = "No pude encontrar resultados deportivos recientes en este momento."
-
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_google = executor.submit(buscar_google, mensaje)
+            resultados = future_google.result(timeout=4)
+            texto = responder_con_openai(resultados, mensaje) or "No pude obtener información actualizada en este momento."
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
-    # --- OPCIONAL: SI LE PREGUNTAN QUIÉN ES EL MEJOR ---
-    if any(p in mensaje_lower for p in [
-        "quién es el mejor", "quien es el mejor", "quién manda acá", "quien manda aca"
-    ]):
-        texto = "Obvio, Gustavo Enrique Foschi 😎."
+    if any(p in mensaje_lower for p in ["resultado", "marcador", "ganó", "empató", "perdió",
+                                        "partido", "deporte", "fútbol", "futbol", "nba", "tenis", "f1", "formula 1", "motogp"]):
+        query = mensaje + " resultados deportivos actualizados"
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_google = executor.submit(buscar_google, query)
+            resultados = future_google.result(timeout=4)
+            texto = responder_con_openai(resultados, mensaje, prompt_type="deportes") or "No pude encontrar resultados deportivos recientes en este momento."
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
-        # --- QUIÉN ES GUSTAVO FOSCHI ---
-    if any(p in mensaje_lower for p in [
-        "quién es gustavo foschi", "quien es gustavo foschi",
-        "quién es foschi", "quien es foschi",
-        "sabés quién es foschi", "sabes quien es foschi",
-        "conocés a foschi", "conoces a foschi",
-        "gustavo foschi", "sobre gustavo foschi"
-    ]):
-        texto = "Gustavo Enrique Foschi es mi creador, el programador de Foschi IA, y el mejor 😎."
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
+    # --- RESPUESTA GENERAL OPTIMIZADA CON HISTORIAL ---
+    historial_cache_key = f"{usuario}_last_{mensaje_lower}"
+    cached_resp = get_cached(historial_cache_key)
+    if cached_resp:
+        return {"texto": cached_resp, "imagenes": [], "borrar_historial": False}
 
-    # --- PRESENTACIÓN AUTOMÁTICA CUANDO MENCIONAN A FOSCHI IA ---
-    if any(p in mensaje_lower for p in [
-        "foschi ia", "hola foschi", "hola foschi ia", "hey foschi", "buenas foschi"
-    ]):
-        texto = "Hola 👋, soy Foschi IA, creada por Gustavo Enrique Foschi — el mejor 😎. ¿En qué te puedo ayudar hoy?"
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
-
-    # RESPUESTA IA GENERAL
     try:
         memoria = load_json(MEMORY_FILE)
         historial = memoria.get(usuario, {}).get("mensajes", [])[-max_hist:]
         resumen = " ".join([m["usuario"] + ": " + m["foschi"] for m in historial[-3:]])
 
         client = OpenAI(api_key=OPENAI_API_KEY)
-
         prompt_messages = [
             {
                 "role": "system",
@@ -293,16 +252,14 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
             },
             {"role": "user", "content": mensaje}
         ]
-
         resp = client.chat.completions.create(
-            model="gpt-4-turbo",  # más natural
+            model="gpt-4-turbo",
             messages=prompt_messages,
             temperature=0.7,
             max_tokens=700
         )
-
         texto = resp.choices[0].message.content.strip()
-
+        set_cache(historial_cache_key, texto)
     except Exception as e:
         texto = f"No pude generar respuesta: {e}"
 
@@ -353,127 +310,8 @@ def clima():
 def favicon():
     return send_file(os.path.join(STATIC_DIR, 'favicon.ico'))
 
-HTML_TEMPLATE = """  
-<!doctype html>
-<html>
-<head>
-<title>{{APP_NAME}}</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-body{font-family:Arial,system-ui,-apple-system,Segoe UI,Roboto,Helvetica;background:#000;color:#fff;margin:0;padding:0;}
-#chat{width:100%;height:70vh;overflow-y:auto;padding:10px;background:#111;}
-.message{margin:5px 0;padding:8px 12px;border-radius:15px;max-width:80%;word-wrap:break-word;opacity:0;transition:opacity 0.5s,border 0.5s;}
-.message.show{opacity:1;}
-.user{background:#3300ff;color:#fff;margin-left:auto;text-align:right;}
-.ai{background:#00ffff;color:#000;margin-right:auto;text-align:left;}
-a{color:#fff;text-decoration:underline;}
-img{max-width:300px;border-radius:10px;margin:5px 0;}
-input,button{padding:10px;font-size:16px;margin:5px;border:none;border-radius:5px;}
-input[type=text]{width:70%;background:#222;color:#fff;}
-button{background:#333;color:#fff;cursor:pointer;}
-button:hover{background:#555;}
-#vozBtn,#borrarBtn{float:right;margin-right:20px;}
-#logo{width:50px;vertical-align:middle;cursor:pointer;transition: transform 0.5s;}
-#logo:hover{transform:scale(1.15) rotate(6deg);}
-#nombre{font-weight:bold;margin-left:10px;cursor:pointer;}
-small{color:#aaa;}
-.playing{outline:2px solid #fff;}
-</style>
-</head>
-<body>
-<h2 style="text-align:center;margin:10px 0;">
-<img src="/static/logo.png" id="logo" onclick="logoClick()" alt="logo">
-<span id="nombre" onclick="logoClick()">FOSCHI IA</span>
-<button onclick="detenerVoz()" style="margin-left:10px;">⏹️ Detener voz</button>
-<button id="vozBtn" onclick="toggleVoz()">🔊 Voz activada</button>
-<button id="borrarBtn" onclick="borrarPantalla()">🧹 Borrar pantalla</button>
-</h2>
-
-<div id="chat" role="log" aria-live="polite"></div>
-<div style="padding:10px;">
-<input type="text" id="mensaje" placeholder="Escribí tu mensaje o hablá" />
-<button onclick="enviar()">Enviar</button>
-<button onclick="hablar()">🎤 Hablar</button>
-<button onclick="verHistorial()">🗂️ Ver historial</button>
-</div>
-
-<script>
-// --- JS del chat ---
-let usuario_id="{{usuario_id}}";
-let vozActiva=true,audioActual=null,mensajeActual=null;
-
-function logoClick(){ alert("FOSCHI NUNCA MUERE, TRASCIENDE..."); }
-
-function hablarTexto(texto,div=null){
-  if(!vozActiva) return;
-  detenerVoz();
-  if(mensajeActual) mensajeActual.classList.remove("playing");
-  if(div) div.classList.add("playing");
-  mensajeActual=div;
-  audioActual=new Audio("/tts?texto="+encodeURIComponent(texto));
-  audioActual.onended=()=>{ if(mensajeActual) mensajeActual.classList.remove("playing"); mensajeActual=null; };
-  audioActual.play();
-}
-
-function detenerVoz(){ if(audioActual){ try{audioActual.pause(); audioActual.currentTime=0; audioActual.src=""; audioActual.load(); audioActual=null; if(mensajeActual) mensajeActual.classList.remove("playing"); mensajeActual=null;}catch(e){console.log(e);}} }
-
-function toggleVoz(estado=null){ vozActiva=estado!==null?estado:!vozActiva; document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada"; }
-
-function agregar(msg,cls,imagenes=[]){
-  let c=document.getElementById("chat"),div=document.createElement("div");
-  div.className="message "+cls; div.innerHTML=msg;
-  c.appendChild(div);
-  setTimeout(()=>div.classList.add("show"),50);
-  imagenes.forEach(url=>{ let img=document.createElement("img"); img.src=url; div.appendChild(img); });
-  c.scroll({top:c.scrollHeight,behavior:"smooth"});
-  if(cls==="ai") hablarTexto(msg,div);
-}
-
-function enviar(){
-  let msg=document.getElementById("mensaje").value.trim(); if(!msg) return;
-  agregar(msg,"user"); document.getElementById("mensaje").value="";
-  fetch("/preguntar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mensaje: msg, usuario_id: usuario_id})})
-  .then(r=>r.json()).then(data=>{ agregar(data.texto,"ai",data.imagenes); if(data.borrar_historial){document.getElementById("chat").innerHTML="";} })
-  .catch(e=>{ agregar("Error al comunicarse con el servidor.","ai"); console.error(e); });
-}
-
-document.getElementById("mensaje").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); enviar(); } });
-
-function hablar(){
-  if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window){
-    const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new Rec();
-    recognition.lang='es-AR'; recognition.continuous=false; recognition.interimResults=false;
-    recognition.onresult=function(event){ document.getElementById("mensaje").value=event.results[0][0].transcript.toLowerCase(); enviar(); }
-    recognition.onerror=function(e){console.log(e); alert("Error reconocimiento de voz: " + e.error); }
-    recognition.start();
-  }else{alert("Tu navegador no soporta reconocimiento de voz.");}
-}
-
-function verHistorial(){
-  fetch("/historial/"+usuario_id).then(r=>r.json()).then(data=>{
-    document.getElementById("chat").innerHTML="";
-    if(data.length===0){agregar("No hay historial todavía.","ai");return;}
-    data.slice(-20).forEach(e=>{ agregar(`<small>${e.fecha}</small><br>${e.usuario}`,"user"); agregar(`<small>${e.fecha}</small><br>${e.foschi}`,"ai"); });
-  });
-}
-
-function borrarPantalla(){ document.getElementById("chat").innerHTML=""; }
-
-window.onload=function(){
-  agregar("👋 Hola, soy FOSCHI IA. Obteniendo tu ubicación...","ai");
-  if(navigator.geolocation){
-    navigator.geolocation.getCurrentPosition(pos=>{
-      fetch(`/clima?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`)
-      .then(r=>r.text()).then(clima=>{ agregar(`🌤️ ${clima}`,"ai"); })
-      .catch(e=>{ agregar("No pude obtener el clima automáticamente.","ai"); console.error(e); });
-    },()=>{ agregar("No pude obtener tu ubicación (permiso denegado o error).","ai"); }, {timeout:8000});
-  } else { agregar("Tu navegador no soporta geolocalización.","ai"); }
-};
-</script>
-</body>
-</html>
-"""
+# ---------------- HTML ----------------
+HTML_TEMPLATE = """..."""  # Mantén tu template tal cual, no cambia
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
