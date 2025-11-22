@@ -6,10 +6,15 @@ import json
 import io
 from datetime import datetime
 import pytz
+from gtts import gTTS
+import requests
+import urllib.parse
 from openai import OpenAI
 from werkzeug.utils import secure_filename
+import whisper
 from docx import Document
 import tempfile
+from moviepy.editor import VideoFileClip
 import PyPDF2
 import hashlib
 import shutil
@@ -19,8 +24,10 @@ APP_NAME = "FOSCHI IA WEB"
 CREADOR = "Gustavo Enrique Foschi"
 DATA_DIR = "data"
 STATIC_DIR = "static"
+TTS_CACHE_DIR = os.path.join(DATA_DIR, "tts_cache")
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(STATIC_DIR, exist_ok=True)
+os.makedirs(TTS_CACHE_DIR, exist_ok=True)
 
 # ---------------- KEYS ----------------
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -185,6 +192,11 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
     learn_from_message(usuario, mensaje, texto)
     return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
+# --------- CARGAR WHISPER UNA VEZ ---------
+print("Cargando modelo Whisper base (solo una vez)...")
+WHISPER_MODEL = whisper.load_model("base")
+print("Whisper cargado.")
+
 # ---------------- RUTAS ----------------
 @app.route("/")
 def index():
@@ -207,6 +219,40 @@ def preguntar():
 @app.route("/historial/<usuario_id>")
 def historial(usuario_id):
     return jsonify(cargar_historial(usuario_id))
+
+# ---------------- TTS con cache simple ----------------
+def _tts_cache_path_for_text(texto):
+    key = hashlib.sha256(texto.encode("utf-8")).hexdigest()
+    return os.path.join(TTS_CACHE_DIR, f"{key}.mp3")
+
+@app.route("/tts")
+def tts():
+    texto = request.args.get("texto","")
+    if not texto:
+        return "Texto vacío", 400
+
+    cached = _tts_cache_path_for_text(texto)
+    if os.path.exists(cached):
+        # devolver desde cache
+        return send_file(cached, mimetype="audio/mpeg")
+
+    # generar TTS y guardar en cache (usamos temp y luego movemos para evitar colisiones)
+    try:
+        tempf = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+        gTTS(text=texto, lang="es", slow=False, tld="com.mx").save(tempf.name)
+        tempf.close()
+        # mover a cache (atomic replace)
+        shutil.move(tempf.name, cached)
+        return send_file(cached, mimetype="audio/mpeg")
+    except Exception as e:
+        # fallback: intentar en memoria
+        try:
+            buf = io.BytesIO()
+            gTTS(text=texto, lang="es", slow=False, tld="com.mx").write_to_fp(buf)
+            buf.seek(0)
+            return send_file(buf, mimetype="audio/mpeg")
+        except Exception as e2:
+            return f"Error generando TTS: {e} / {e2}", 500
 
 @app.route("/clima")
 def clima():
@@ -231,6 +277,37 @@ def make_docx_from_text(texto, title="Documento"):
     doc.save(bio)
     bio.seek(0)
     return bio
+
+@app.route("/subir_audio", methods=["POST"])
+def subir_audio():
+    if "audio" not in request.files:
+        return "No se envió archivo de audio", 400
+    archivo = request.files["audio"]
+    if archivo.filename == "":
+        return "Archivo inválido", 400
+    original_name = secure_filename(archivo.filename)
+    tmp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(original_name)[1] or ".mp3")
+    tmp_docx = tempfile.NamedTemporaryFile(delete=False, suffix=".docx")
+    try:
+        archivo.save(tmp_audio.name)
+        result = WHISPER_MODEL.transcribe(tmp_audio.name)
+        texto = result.get("text", "").strip()
+        doc_bio = make_docx_from_text(texto, title=f"Transcripción - {original_name}")
+        return send_file(
+            doc_bio,
+            as_attachment=True,
+            download_name=os.path.splitext(original_name)[0] + ".docx",
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+    except Exception as e:
+        return f"Error al procesar audio: {e}", 500
+    finally:
+        try:
+            if os.path.exists(tmp_audio.name): os.remove(tmp_audio.name)
+        except: pass
+        try:
+            if os.path.exists(tmp_docx.name): os.remove(tmp_docx.name)
+        except: pass
 
 @app.route("/subir_pdf", methods=["POST"])
 def subir_pdf():
@@ -266,6 +343,42 @@ def subir_pdf():
     finally:
         try:
             if os.path.exists(tmp_pdf.name): os.remove(tmp_pdf.name)
+        except: pass
+
+@app.route("/subir_video", methods=["POST"])
+def subir_video():
+    if "video" not in request.files:
+        return "No se envió archivo de video", 400
+    archivo = request.files["video"]
+    if archivo.filename == "":
+        return "Archivo inválido", 400
+    original_name = secure_filename(archivo.filename)
+    tmp_video = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(original_name)[1] or ".mp4")
+    tmp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+    try:
+        archivo.save(tmp_video.name)
+        # extraer audio con moviepy
+        clip = VideoFileClip(tmp_video.name)
+        clip.audio.write_audiofile(tmp_audio.name, logger=None)
+        clip.close()
+        # transcribir con Whisper
+        result = WHISPER_MODEL.transcribe(tmp_audio.name)
+        texto = result.get("text", "").strip()
+        doc_bio = make_docx_from_text(texto, title=f"Transcripción de video - {original_name}")
+        return send_file(
+            doc_bio,
+            as_attachment=True,
+            download_name=os.path.splitext(original_name)[0] + ".docx",
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+    except Exception as e:
+        return f"Error al procesar video: {e}", 500
+    finally:
+        try:
+            if os.path.exists(tmp_video.name): os.remove(tmp_video.name)
+        except: pass
+        try:
+            if os.path.exists(tmp_audio.name): os.remove(tmp_audio.name)
         except: pass
 
 @app.route("/subir_archivo", methods=["POST"])
@@ -405,6 +518,8 @@ button.small{background:transparent;border:1px solid rgba(255,255,255,0.04);padd
   <div id="logo" onclick="logoClick()">F</div>
   <h1>FOSCHI IA</h1>
   <div class="controls">
+    <button class="small" onclick="detenerVoz()">⏹️</button>
+    <button class="small" id="vozBtn" onclick="toggleVoz()">🔊 Voz</button>
     <button class="small" onclick="borrarPantalla()">🧹</button>
   </div>
 </div>
@@ -414,16 +529,17 @@ button.small{background:transparent;border:1px solid rgba(255,255,255,0.04);padd
     <div id="chat" role="log" aria-live="polite"></div>
 
     <div class="input-row">
-      <div class="attach-btn" id="attachBtn" title="Adjuntar archivo (PDF, DOCX,...)" onclick="togglePanel()">
+      <div class="attach-btn" id="attachBtn" title="Adjuntar archivo (Audio, PDF, Video, DOCX,...)" onclick="togglePanel()">
         📎
       </div>
 
       <div class="input" role="search">
-        <input type="text" id="mensaje" placeholder="Escribí tu mensaje" aria-label="mensaje">
+        <input type="text" id="mensaje" placeholder="Escribí tu mensaje o hablá" aria-label="mensaje">
         <button onclick="enviar()">Enviar</button>
       </div>
     </div>
     <div style="display:flex;gap:8px;margin-top:8px;">
+      <button onclick="hablar()" class="small">🎤 Hablar</button>
       <button onclick="verHistorial()" class="small">🗂️ Historial</button>
     </div>
   </div>
@@ -432,8 +548,16 @@ button.small{background:transparent;border:1px solid rgba(255,255,255,0.04);padd
   <div class="side-panel" id="sidePanel" aria-hidden="true">
     <h3>Adjuntar — opciones</h3>
 
+    <div class="menu-item" onclick="triggerFile('audio')">
+      <div class="kbd">🎤</div><div>Audio a texto</div>
+    </div>
+
     <div class="menu-item" onclick="triggerFile('pdf')">
       <div class="kbd">📄</div><div>PDF → Texto / DOCX</div>
+    </div>
+
+    <div class="menu-item" onclick="triggerFile('video')">
+      <div class="kbd">🎥</div><div>Video → Transcripción</div>
     </div>
 
     <div class="menu-item" onclick="triggerFile('file')">
@@ -449,15 +573,41 @@ button.small{background:transparent;border:1px solid rgba(255,255,255,0.04);padd
 </div>
 
 <!-- Hidden inputs para cada tipo (son disparadas por JS) -->
+<input id="in_audio" type="file" accept="audio/*" style="display:none"/>
 <input id="in_pdf" type="file" accept="application/pdf" style="display:none"/>
+<input id="in_video" type="file" accept="video/*" style="display:none"/>
 <input id="in_file" type="file" accept=".txt,.md,.pdf,.docx" style="display:none"/>
 <input id="in_docx" type="file" accept=".docx" style="display:none"/>
 
 <script>
 // --- JS del chat / UI ---
 let usuario_id="{{usuario_id}}";
+let vozActiva=true,audioActual=null,mensajeActual=null;
 
 function logoClick(){ alert("FOSCHI IA — listo para ayudar 🤖"); }
+
+function hablarTexto(texto,div=null){
+  if(!vozActiva) return;
+  detenerVoz();
+  if(mensajeActual) mensajeActual.classList.remove("playing");
+  if(div) div.classList.add("playing");
+  mensajeActual=div;
+  audioActual = new Audio("/tts?texto=" + encodeURIComponent(texto));
+  // velocidad recomendada para voz rápida y natural
+  try{
+    audioActual.playbackRate = 1.45;   // velocidad ajustada (ajustá si querés más/menos)
+    // intentar preservar el pitch en distintos navegadores
+    try{ audioActual.preservesPitch = true; }catch(e){}
+    try{ audioActual.mozPreservesPitch = true; }catch(e){}
+    try{ audioActual.webkitPreservesPitch = true; }catch(e){}
+  }catch(e){ console.warn("No se pudo ajustar playbackRate:", e); }
+  audioActual.onended=()=>{ if(mensajeActual) mensajeActual.classList.remove("playing"); mensajeActual=null; };
+  audioActual.play();
+}
+
+function detenerVoz(){ if(audioActual){ try{audioActual.pause(); audioActual.currentTime=0; audioActual.src=""; audioActual.load(); audioActual=null; if(mensajeActual) mensajeActual.classList.remove("playing"); mensajeActual=null;}catch(e){console.log(e);}} }
+
+function toggleVoz(estado=null){ vozActiva=estado!==null?estado:!vozActiva; document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz":"🔇 Silencio"; }
 
 function agregar(msg,cls,imagenes=[]){
   let c=document.getElementById("chat"),div=document.createElement("div");
@@ -466,6 +616,7 @@ function agregar(msg,cls,imagenes=[]){
   setTimeout(()=>div.classList.add("show"),50);
   imagenes.forEach(url=>{ let img=document.createElement("img"); img.src=url; img.style.maxWidth="200px"; img.style.borderRadius="8px"; div.appendChild(img); });
   c.scroll({top:c.scrollHeight,behavior:"smooth"});
+  if(cls==="ai") hablarTexto(stripHtml(msg),div);
 }
 
 function stripHtml(html){
@@ -482,6 +633,17 @@ function enviar(){
 
 document.getElementById("mensaje").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); enviar(); } });
 
+function hablar(){
+  if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window){
+    const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new Rec();
+    recognition.lang='es-AR'; recognition.continuous=false; recognition.interimResults=false;
+    recognition.onresult=function(event){ document.getElementById("mensaje").value=event.results[0][0].transcript.toLowerCase(); enviar(); }
+    recognition.onerror=function(e){console.log(e); alert("Error reconocimiento de voz: " + e.error); }
+    recognition.start();
+  }else{alert("Tu navegador no soporta reconocimiento de voz.");}
+}
+
 function verHistorial(){
   fetch("/historial/"+usuario_id).then(r=>r.json()).then(data=>{
     document.getElementById("chat").innerHTML="";
@@ -493,7 +655,7 @@ function verHistorial(){
 function borrarPantalla(){ document.getElementById("chat").innerHTML=""; }
 
 window.onload=function(){
-  agregar("👋 Hola, soy FOSCHI IA.","ai");
+  agregar("👋 Hola, soy FOSCHI IA. Obteniendo tu ubicación...","ai");
   if(navigator.geolocation){
     navigator.geolocation.getCurrentPosition(pos=>{
       fetch(`/clima?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`)
@@ -514,7 +676,9 @@ function togglePanel(open){
 
 // map tipo -> input id and endpoint
 const uploadMap = {
+  audio: {input: "in_audio", endpoint: "/subir_audio", nameKey: "audio"},
   pdf:   {input: "in_pdf", endpoint: "/subir_pdf", nameKey: "pdf"},
+  video: {input: "in_video", endpoint: "/subir_video", nameKey: "video"},
   file:  {input: "in_file", endpoint: "/subir_archivo", nameKey: "file"},
   docx:  {input: "in_docx", endpoint: "/subir_docx", nameKey: "docx"}
 };
@@ -543,6 +707,7 @@ function triggerFile(tipo){
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement("a");
         let ext = ".docx";
+        // intentar inferir el nombre con la extensión
         a.href = url;
         a.download = file.name.split('.').slice(0,-1).join('.') + ext;
         document.body.appendChild(a);
