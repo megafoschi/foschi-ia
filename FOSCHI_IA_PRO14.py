@@ -14,7 +14,6 @@ from werkzeug.utils import secure_filename
 import whisper
 from docx import Document
 import tempfile
-from moviepy.editor import VideoFileClip
 import PyPDF2
 import hashlib
 import shutil
@@ -345,41 +344,6 @@ def subir_pdf():
             if os.path.exists(tmp_pdf.name): os.remove(tmp_pdf.name)
         except: pass
 
-@app.route("/subir_video", methods=["POST"])
-def subir_video():
-    if "video" not in request.files:
-        return "No se envió archivo de video", 400
-    archivo = request.files["video"]
-    if archivo.filename == "":
-        return "Archivo inválido", 400
-    original_name = secure_filename(archivo.filename)
-    tmp_video = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(original_name)[1] or ".mp4")
-    tmp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-    try:
-        archivo.save(tmp_video.name)
-        # extraer audio con moviepy
-        clip = VideoFileClip(tmp_video.name)
-        clip.audio.write_audiofile(tmp_audio.name, logger=None)
-        clip.close()
-        # transcribir con Whisper
-        result = WHISPER_MODEL.transcribe(tmp_audio.name)
-        texto = result.get("text", "").strip()
-        doc_bio = make_docx_from_text(texto, title=f"Transcripción de video - {original_name}")
-        return send_file(
-            doc_bio,
-            as_attachment=True,
-            download_name=os.path.splitext(original_name)[0] + ".docx",
-            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
-    except Exception as e:
-        return f"Error al procesar video: {e}", 500
-    finally:
-        try:
-            if os.path.exists(tmp_video.name): os.remove(tmp_video.name)
-        except: pass
-        try:
-            if os.path.exists(tmp_audio.name): os.remove(tmp_audio.name)
-        except: pass
 
 @app.route("/subir_archivo", methods=["POST"])
 def subir_archivo():
