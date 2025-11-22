@@ -13,3 +13,5 @@ moviepy
 pillow
 pypdf2
 werkzeug
+imageio
+imageio-ffmpeg
