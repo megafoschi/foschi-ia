@@ -11,10 +11,8 @@ import requests
 import urllib.parse
 from openai import OpenAI
 from werkzeug.utils import secure_filename
-import whisper
 from docx import Document
 import tempfile
-from moviepy.editor import VideoFileClip
 import PyPDF2
 import hashlib
 import shutil
@@ -192,11 +190,6 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
     learn_from_message(usuario, mensaje, texto)
     return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
-# --------- CARGAR WHISPER UNA VEZ ---------
-print("Cargando modelo Whisper base (solo una vez)...")
-WHISPER_MODEL = whisper.load_model("base")
-print("Whisper cargado.")
-
 # ---------------- RUTAS ----------------
 @app.route("/")
 def index():
@@ -265,7 +258,7 @@ def clima():
 def favicon():
     return send_file(os.path.join(STATIC_DIR, 'favicon.ico'))
 
-# ------------------ NUEVAS RUTAS DE SUBIDA ------------------
+# ------------------ RUTAS DE SUBIDA (SIN AUDIO/VIDEO) ------------------
 
 def make_docx_from_text(texto, title="Documento"):
     doc = Document()
@@ -277,37 +270,6 @@ def make_docx_from_text(texto, title="Documento"):
     doc.save(bio)
     bio.seek(0)
     return bio
-
-@app.route("/subir_audio", methods=["POST"])
-def subir_audio():
-    if "audio" not in request.files:
-        return "No se envió archivo de audio", 400
-    archivo = request.files["audio"]
-    if archivo.filename == "":
-        return "Archivo inválido", 400
-    original_name = secure_filename(archivo.filename)
-    tmp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(original_name)[1] or ".mp3")
-    tmp_docx = tempfile.NamedTemporaryFile(delete=False, suffix=".docx")
-    try:
-        archivo.save(tmp_audio.name)
-        result = WHISPER_MODEL.transcribe(tmp_audio.name)
-        texto = result.get("text", "").strip()
-        doc_bio = make_docx_from_text(texto, title=f"Transcripción - {original_name}")
-        return send_file(
-            doc_bio,
-            as_attachment=True,
-            download_name=os.path.splitext(original_name)[0] + ".docx",
-            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
-    except Exception as e:
-        return f"Error al procesar audio: {e}", 500
-    finally:
-        try:
-            if os.path.exists(tmp_audio.name): os.remove(tmp_audio.name)
-        except: pass
-        try:
-            if os.path.exists(tmp_docx.name): os.remove(tmp_docx.name)
-        except: pass
 
 @app.route("/subir_pdf", methods=["POST"])
 def subir_pdf():
@@ -343,42 +305,6 @@ def subir_pdf():
     finally:
         try:
             if os.path.exists(tmp_pdf.name): os.remove(tmp_pdf.name)
-        except: pass
-
-@app.route("/subir_video", methods=["POST"])
-def subir_video():
-    if "video" not in request.files:
-        return "No se envió archivo de video", 400
-    archivo = request.files["video"]
-    if archivo.filename == "":
-        return "Archivo inválido", 400
-    original_name = secure_filename(archivo.filename)
-    tmp_video = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(original_name)[1] or ".mp4")
-    tmp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-    try:
-        archivo.save(tmp_video.name)
-        # extraer audio con moviepy
-        clip = VideoFileClip(tmp_video.name)
-        clip.audio.write_audiofile(tmp_audio.name, logger=None)
-        clip.close()
-        # transcribir con Whisper
-        result = WHISPER_MODEL.transcribe(tmp_audio.name)
-        texto = result.get("text", "").strip()
-        doc_bio = make_docx_from_text(texto, title=f"Transcripción de video - {original_name}")
-        return send_file(
-            doc_bio,
-            as_attachment=True,
-            download_name=os.path.splitext(original_name)[0] + ".docx",
-            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
-    except Exception as e:
-        return f"Error al procesar video: {e}", 500
-    finally:
-        try:
-            if os.path.exists(tmp_video.name): os.remove(tmp_video.name)
-        except: pass
-        try:
-            if os.path.exists(tmp_audio.name): os.remove(tmp_audio.name)
         except: pass
 
 @app.route("/subir_archivo", methods=["POST"])
@@ -529,7 +455,7 @@ button.small{background:transparent;border:1px solid rgba(255,255,255,0.04);padd
     <div id="chat" role="log" aria-live="polite"></div>
 
     <div class="input-row">
-      <div class="attach-btn" id="attachBtn" title="Adjuntar archivo (Audio, PDF, Video, DOCX,...)" onclick="togglePanel()">
+      <div class="attach-btn" id="attachBtn" title="Adjuntar archivo (PDF, DOCX, ...)" onclick="togglePanel()">
         📎
       </div>
 
@@ -548,16 +474,8 @@ button.small{background:transparent;border:1px solid rgba(255,255,255,0.04);padd
   <div class="side-panel" id="sidePanel" aria-hidden="true">
     <h3>Adjuntar — opciones</h3>
 
-    <div class="menu-item" onclick="triggerFile('audio')">
-      <div class="kbd">🎤</div><div>Audio a texto</div>
-    </div>
-
     <div class="menu-item" onclick="triggerFile('pdf')">
       <div class="kbd">📄</div><div>PDF → Texto / DOCX</div>
-    </div>
-
-    <div class="menu-item" onclick="triggerFile('video')">
-      <div class="kbd">🎥</div><div>Video → Transcripción</div>
     </div>
 
     <div class="menu-item" onclick="triggerFile('file')">
@@ -573,9 +491,7 @@ button.small{background:transparent;border:1px solid rgba(255,255,255,0.04);padd
 </div>
 
 <!-- Hidden inputs para cada tipo (son disparadas por JS) -->
-<input id="in_audio" type="file" accept="audio/*" style="display:none"/>
 <input id="in_pdf" type="file" accept="application/pdf" style="display:none"/>
-<input id="in_video" type="file" accept="video/*" style="display:none"/>
 <input id="in_file" type="file" accept=".txt,.md,.pdf,.docx" style="display:none"/>
 <input id="in_docx" type="file" accept=".docx" style="display:none"/>
 
@@ -674,11 +590,9 @@ function togglePanel(open){
   else if(open) sidePanel.classList.add("open"); else sidePanel.classList.remove("open");
 }
 
-// map tipo -> input id and endpoint
+// map tipo -> input id and endpoint (sin audio/video)
 const uploadMap = {
-  audio: {input: "in_audio", endpoint: "/subir_audio", nameKey: "audio"},
   pdf:   {input: "in_pdf", endpoint: "/subir_pdf", nameKey: "pdf"},
-  video: {input: "in_video", endpoint: "/subir_video", nameKey: "video"},
   file:  {input: "in_file", endpoint: "/subir_archivo", nameKey: "file"},
   docx:  {input: "in_docx", endpoint: "/subir_docx", nameKey: "docx"}
 };
