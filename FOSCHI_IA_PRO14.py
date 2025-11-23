@@ -93,10 +93,12 @@ def guardar_en_historial(usuario, entrada, respuesta):
         "usuario": entrada,
         "foschi": respuesta
     })
-    # limitamos historial a últimos 200 items para no crecer indefinidamente
     datos = datos[-200:]
-    with open(path,"w",encoding="utf-8") as f:
-        json.dump(datos,f,ensure_ascii=False,indent=2)
+    try:
+        with open(path,"w",encoding="utf-8") as f:
+            json.dump(datos,f,ensure_ascii=False,indent=2)
+    except Exception as e:
+        print("Error guardando historial:", e)
 
 def cargar_historial(usuario):
     path = os.path.join(DATA_DIR, f"{usuario}.json")
@@ -148,24 +150,24 @@ def load_recordatorios():
         return []
 
 def save_recordatorios(lista):
-    with open(RECORD_FILE, "w", encoding="utf-8") as f:
-        json.dump(lista, f, ensure_ascii=False, indent=2)
+    try:
+        with open(RECORD_FILE, "w", encoding="utf-8") as f:
+            json.dump(lista, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print("Error guardando recordatorios:", e)
 
 def interpretar_fecha_hora(texto):
     """Intenta interpretar frases de tiempo en español. Devuelve datetime (con TZ) o None."""
     ahora = datetime.now(TZ)
 
-    # en X minutos
     m = re.search(r"en (\d+)\s*minutos?", texto)
     if m:
         return ahora + timedelta(minutes=int(m.group(1)))
 
-    # en X horas
     m = re.search(r"en (\d+)\s*horas?", texto)
     if m:
         return ahora + timedelta(hours=int(m.group(1)))
 
-    # mañana a las H o mañana a las H:MM
     m = re.search(r"mañana a las (\d{1,2})(?::(\d{2}))?", texto)
     if m:
         hora = int(m.group(1))
@@ -173,18 +175,15 @@ def interpretar_fecha_hora(texto):
         mañana = (ahora + timedelta(days=1)).replace(hour=hora, minute=minuto, second=0, microsecond=0)
         return mañana
 
-    # hora exacta hoy o "a las HH:MM"
     m = re.search(r"a las (\d{1,2}):(\d{2})", texto)
     if m:
         hora = int(m.group(1))
         minuto = int(m.group(2))
         posible = ahora.replace(hour=hora, minute=minuto, second=0, microsecond=0)
-        # si la hora ya pasó, asumir mañana
         if posible <= ahora:
             posible = posible + timedelta(days=1)
         return posible
 
-    # "el 5 de diciembre a las 18"
     m = re.search(r"el (\d{1,2}) de (\w+) a las (\d{1,2})(?::(\d{2}))?", texto)
     if m:
         dia = int(m.group(1))
@@ -197,7 +196,6 @@ def interpretar_fecha_hora(texto):
         }
         mes = meses.get(mes_texto)
         if mes:
-            # construir fecha con el año actual o el próximo si ya pasó
             año = ahora.year
             try:
                 candidato = datetime(año, mes, dia, hora, minuto)
@@ -245,39 +243,51 @@ def monitor_recordatorios():
             for r in lista:
                 try:
                     cuando = datetime.strptime(r["cuando"], "%Y-%m-%d %H:%M:%S")
-                    # asumimos TZ local
-                    cuando = TZ.localize(quando)
+                    cuando = TZ.localize(cuando)
                 except Exception:
-                    # intentar isoformat parse
                     try:
                         cuando = datetime.fromisoformat(r["cuando"])
                         if cuando.tzinfo is None:
                             cuando = TZ.localize(cuando)
                     except:
-                        # si no se puede parsear, descartamos
                         continue
                 if cuando <= ahora:
                     usuario = r.get("usuario", "anon")
                     motivo = r.get("motivo", "(sin motivo)")
                     aviso_texto = f"⏰ Recordatorio: {motivo}"
-                    # Guardar en historial para que el usuario lo vea en la UI
                     try:
                         guardar_en_historial(usuario, f"[recordatorio] {motivo}", aviso_texto)
                     except Exception:
                         pass
-                    # imprimir en consola (útil si estás viendo logs)
                     print(aviso_texto)
                 else:
                     restantes.append(r)
-            # sobrescribir lista con los que quedan
             save_recordatorios(restantes)
         except Exception as e:
-            # evitar que el hilo muera por un error
             print("Error en monitor_recordatorios:", e)
         time.sleep(30)
 
 # iniciar hilo del monitor (daemon)
 threading.Thread(target=monitor_recordatorios, daemon=True).start()
+
+# ---------------- learn_from_message (registro de memoria) ----------------
+def learn_from_message(usuario, mensaje, respuesta):
+    try:
+        memory = load_json(MEMORY_FILE)
+        if usuario not in memory:
+            memory[usuario] = {"temas": {}, "mensajes": [], "ultima_interaccion": None}
+        # Guardar texto en memoria (limitamos)
+        memory[usuario]["mensajes"].append({"usuario": str(mensaje), "foschi": str(respuesta)})
+        memory[usuario]["mensajes"] = memory[usuario]["mensajes"][-200:]
+        ahora = datetime.now(pytz.timezone("America/Argentina/Buenos_Aires"))
+        memory[usuario]["ultima_interaccion"] = ahora.strftime("%d/%m/%Y %H:%M:%S")
+        # Tópicos simples
+        for palabra in str(mensaje).lower().split():
+            if len(palabra) > 3:
+                memory[usuario]["temas"][palabra] = memory[usuario]["temas"].get(palabra, 0) + 1
+        save_json(MEMORY_FILE, memory)
+    except Exception as e:
+        print("Error en learn_from_message:", e)
 
 # ---------------- RESPUESTA IA ----------------
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
@@ -288,27 +298,21 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
 
     # --- RECORDATORIOS: comandos y detección ---
     try:
-        # listar recordatorios
         if mensaje_lower in ["mis recordatorios", "lista de recordatorios", "ver recordatorios"]:
             recs = listar_recordatorios(usuario)
             if not recs:
                 return {"texto": "📭 No tenés recordatorios pendientes.", "imagenes": [], "borrar_historial": False}
-            texto = "📌 Tus recordatorios:\n" + "\n".join(
-                [f"- {r['motivo']} → {r['cuando']}" for r in recs]
-            )
+            texto = "📌 Tus recordatorios:\n" + "\n".join([f"- {r['motivo']} → {r['cuando']}" for r in recs])
             return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
-        # borrar todos los recordatorios del usuario
         if "borrar recordatorios" in mensaje_lower or "eliminar recordatorios" in mensaje_lower:
             borrar_recordatorios(usuario)
             return {"texto": "🗑️ Listo, eliminé todos tus recordatorios.", "imagenes": [], "borrar_historial": False}
 
-        # crear recordatorio natural
         if mensaje_lower.startswith(("recordame", "haceme acordar", "avisame", "recordá")):
             fecha_hora = interpretar_fecha_hora(mensaje_lower)
             if fecha_hora is None:
                 return {"texto": "⏰ Decime cuándo: ejemplo 'mañana a las 9', 'en 15 minutos' o 'el 5 de diciembre a las 18'.", "imagenes": [], "borrar_historial": False}
-            # extraer motivo
             motivo = mensaje
             for p in ["recordame", "haceme acordar", "avisame", "recordá"]:
                 motivo = re.sub(p, "", motivo, flags=re.IGNORECASE).strip()
@@ -317,7 +321,6 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
             agregar_recordatorio(usuario, motivo, fecha_hora)
             return {"texto": f"✅ Listo, te lo recuerdo el {fecha_hora.strftime('%d/%m %H:%M')}.", "imagenes": [], "borrar_historial": False}
     except Exception as e:
-        # No queremos que errores en recordatorios rompan la IA completa
         print("Error en manejo de recordatorios:", e)
 
     # BORRAR HISTORIAL
@@ -490,7 +493,7 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
     learn_from_message(usuario, mensaje, texto)
     return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
-# ---------------- RUTAS ----------------
+# ---------------- RUTAS / UI ----------------
 HTML_TEMPLATE = """  
 <!doctype html>
 <html>
@@ -536,7 +539,7 @@ small{color:#aaa;}
 </div>
 
 <script>
-// --- JS del chat ---
+// JS del chat (idéntico a tu versión)
 let usuario_id="{{usuario_id}}";
 let vozActiva=true,audioActual=null,mensajeActual=null;
 
@@ -633,7 +636,6 @@ def preguntar():
     lon = data.get("lon")
     tz = data.get("timeZone") or data.get("time_zone") or None
     respuesta = generar_respuesta(mensaje, usuario_id, lat=lat, lon=lon, tz=tz)
-    # Normalizar el guardar historial: si la respuesta es dict con texto
     texto_para_hist = respuesta["texto"] if isinstance(respuesta, dict) and "texto" in respuesta else str(respuesta)
     guardar_en_historial(usuario_id, mensaje, texto_para_hist)
     return jsonify(respuesta)
