@@ -1,41 +1,22 @@
+#!/usr/bin/env python3
+# coding: utf-8
+
+import os
+import uuid
 import json
-import threading
-import time
-from datetime import datetime, timedelta
+import io
 import re
+import time
+import threading
+from datetime import datetime, timedelta
 import pytz
-
-ARCHIVO_RECORDATORIOS = "recordatorios.json"
-TZ = pytz.timezone("America/Argentina/Buenos_Aires")
-
-def cargar_recordatorios():
-    try:
-        with open(ARCHIVO_RECORDATORIOS, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return []
-
-def guardar_recordatorios(data):
-    with open(ARCHIVO_RECORDATORIOS, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-def agregar_recordatorio(texto, fecha_hora):
-    data = cargar_recordatorios()
-    data.append({"texto": texto, "fecha_hora": fecha_hora.isoformat()})
-    guardar_recordatorios(data)
 
 from flask import Flask, render_template_string, request, jsonify, session, send_file
 from flask_session import Session
-import os, uuid, json, io, re
-from datetime import datetime
-import pytz
 from gtts import gTTS
 import requests
 import urllib.parse
 from openai import OpenAI
-from threading import Thread
-from time import sleep
-from datetime import timedelta
 
 # ---------------- CONFIG ----------------
 APP_NAME = "FOSCHI IA WEB"
@@ -45,13 +26,7 @@ STATIC_DIR = "static"
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(STATIC_DIR, exist_ok=True)
 
-# ✅ Sesión HTTP reutilizable (más rápido)
-HTTPS = requests.Session()
-
-# ✅ Regex precompilado
-URL_REGEX = re.compile(r'(https?://[^\s]+)', re.UNICODE)
-
-# ---------------- KEYS ----------------
+# ---------------- KEYS ---------------- (usa variables de entorno)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID")
@@ -63,25 +38,32 @@ app.secret_key = "FoschiWebKey"
 app.config["SESSION_TYPE"] = "filesystem"
 Session(app)
 
-# ---------------- MEMORIA ----------------
-MEMORY_FILE = os.path.join(DATA_DIR, "memory.json")
+# ---------------- UTIL / CACHE / HTTP ----------------
+HTTPS = requests.Session()
+URL_REGEX = re.compile(r'(https?://[^\s]+)', re.UNICODE)
 
-# ✅ Cache de memoria en RAM (más veloz)
+MEMORY_FILE = os.path.join(DATA_DIR, "memory.json")
 MEMORY_CACHE = {}
 
 def load_json(path):
+    """Carga memory.json en cache en RAM para accesos rápidos."""
+    global MEMORY_CACHE
     if MEMORY_CACHE:
         return MEMORY_CACHE
-    if not os.path.exists(path): 
-        return {}
+    if not os.path.exists(path):
+        MEMORY_CACHE = {}
+        return MEMORY_CACHE
     try:
         with open(path, "r", encoding="utf-8") as f:
-            MEMORY_CACHE.update(json.load(f))
+            MEMORY_CACHE = json.load(f)
             return MEMORY_CACHE
     except:
-        return {}
+        MEMORY_CACHE = {}
+        return MEMORY_CACHE
 
 def save_json(path, data):
+    """Guarda MEMORY_CACHE actualizado en disco."""
+    global MEMORY_CACHE
     MEMORY_CACHE.update(data)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(MEMORY_CACHE, f, ensure_ascii=False, indent=2)
@@ -93,20 +75,39 @@ def fecha_hora_en_es():
     dias = ["lunes","martes","miércoles","jueves","viernes","sábado","domingo"]
     return f"{dias[ahora.weekday()]}, {ahora.day} de {meses[ahora.month-1]} de {ahora.year}, {ahora.hour:02d}:{ahora.minute:02d}"
 
-def learn_from_message(usuario, mensaje, respuesta):
-    memory = load_json(MEMORY_FILE)
-    if usuario not in memory:
-        memory[usuario] = {"temas": {}, "mensajes": [], "ultima_interaccion": None}
-    memory[usuario]["mensajes"].append({"usuario": mensaje, "foschi": respuesta})
-    ahora = datetime.now(pytz.timezone("America/Argentina/Buenos_Aires"))
-    memory[usuario]["ultima_interaccion"] = ahora.strftime("%d/%m/%Y %H:%M:%S")
-    memory[usuario]["temas"].update({palabra: memory[usuario]["temas"].get(palabra,0)+1
-                                     for palabra in mensaje.lower().split() if len(palabra)>3})
-    save_json(MEMORY_FILE, memory)
-
 def hacer_links_clicleables(texto):
     return URL_REGEX.sub(r'<a href="\1" target="_blank" style="color:#ff0000;">\1</a>', texto)
 
+# ---------------- HISTORIAL POR USUARIO ----------------
+def guardar_en_historial(usuario, entrada, respuesta):
+    path = os.path.join(DATA_DIR, f"{usuario}.json")
+    datos = []
+    if os.path.exists(path):
+        try:
+            with open(path,"r",encoding="utf-8") as f:
+                datos = json.load(f)
+        except:
+            datos = []
+    datos.append({
+        "fecha": datetime.now(pytz.timezone("America/Argentina/Buenos_Aires")).strftime("%d/%m/%Y %H:%M:%S"),
+        "usuario": entrada,
+        "foschi": respuesta
+    })
+    # limitamos historial a últimos 200 items para no crecer indefinidamente
+    datos = datos[-200:]
+    with open(path,"w",encoding="utf-8") as f:
+        json.dump(datos,f,ensure_ascii=False,indent=2)
+
+def cargar_historial(usuario):
+    path = os.path.join(DATA_DIR, f"{usuario}.json")
+    if not os.path.exists(path): return []
+    try:
+        with open(path,"r",encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return []
+
+# ---------------- CLIMA ----------------
 def obtener_clima(ciudad=None, lat=None, lon=None):
     if not OWM_API_KEY:
         return "No está configurada la API de clima (OWM_API_KEY)."
@@ -116,80 +117,27 @@ def obtener_clima(ciudad=None, lat=None, lon=None):
         else:
             ciudad = ciudad if ciudad else "Buenos Aires"
             url = f"http://api.openweathermap.org/data/2.5/weather?q={ciudad}&appid={OWM_API_KEY}&units=metric&lang=es"
-        
-        # ✅ Timeout más corto
         r = HTTPS.get(url, timeout=3)
         data = r.json()
-
         if r.status_code != 200:
-            return f"No pude obtener el clima: {r.status_code}"
-
-        desc = data["weather"][0]["description"].capitalize()
-        temp = data["main"].get("temp")
-        hum = data["main"].get("humidity")
-        name = data.get("name", ciudad)
-
+            msg = data.get("message", "Respuesta no OK de OpenWeatherMap.")
+            return f"No pude obtener el clima: {r.status_code} - {msg}"
+        desc = data.get("weather", [{}])[0].get("description", "Sin descripción").capitalize()
+        temp = data.get("main", {}).get("temp")
+        hum = data.get("main", {}).get("humidity")
+        name = data.get("name", ciudad if ciudad else "la ubicación")
         parts = [f"El clima en {name} es {desc}"]
-        if temp is not None: parts.append(f"temperatura {round(temp)}°C")
-        if hum is not None: parts.append(f"humedad {hum}%")
+        if temp is not None:
+            parts.append(f"temperatura {round(temp)}°C")
+        if hum is not None:
+            parts.append(f"humedad {hum}%")
         return ", ".join(parts) + "."
     except:
         return "No pude obtener el clima."
 
-def guardar_en_historial(usuario, entrada, respuesta):
-    path = os.path.join(DATA_DIR, f"{usuario}.json")
-    datos = []
-    if os.path.exists(path):
-        with open(path,"r",encoding="utf-8") as f:
-            try: datos = json.load(f)
-            except: datos = []
-    datos.append({"fecha":datetime.now(pytz.timezone("America/Argentina/Buenos_Aires")).strftime("%d/%m/%Y %H:%M:%S"),
-                  "usuario":entrada,"foschi":respuesta})
-    with open(path,"w",encoding="utf-8") as f:
-        json.dump(datos,f,ensure_ascii=False,indent=2)
-
-def cargar_historial(usuario):
-    path = os.path.join(DATA_DIR, f"{usuario}.json")
-    if not os.path.exists(path): return []
-    with open(path,"r",encoding="utf-8") as f:
-        try: return json.load(f)
-        except: return []
-
 # ---------------- RECORDATORIOS ----------------
 RECORD_FILE = os.path.join(DATA_DIR, "recordatorios.json")
-
-def interpretar_fecha_hora(texto):
-    ahora = datetime.now(TZ)
-
-    # en X minutos
-    m = re.search(r"en (\d+) minutos?", texto)
-    if m:
-        return ahora + timedelta(minutes=int(m.group(1)))
-
-    # en X horas
-    m = re.search(r"en (\d+) horas?", texto)
-    if m:
-        return ahora + timedelta(hours=int(m.group(1)))
-
-    # mañana a las HH
-    m = re.search(r"mañana a las (\d{1,2})", texto)
-    if m:
-        hora = int(m.group(1))
-        return (ahora + timedelta(days=1)).replace(hour=hora, minute=0, second=0)
-
-    # el 5 de diciembre a las 18
-    m = re.search(r"el (\d{1,2}) de (\w+) a las (\d{1,2})", texto)
-    if m:
-        dia, mes_texto, hora = m.groups()
-        meses = {
-            "enero":1,"febrero":2,"marzo":3,"abril":4,"mayo":5,"junio":6,
-            "julio":7,"agosto":8,"septiembre":9,"octubre":10,"noviembre":11,"diciembre":12
-        }
-        mes = meses.get(mes_texto)
-        if mes:
-            return ahora.replace(month=mes, day=int(dia), hour=int(hora), minute=0, second=0)
-
-    return None
+TZ = pytz.timezone("America/Argentina/Buenos_Aires")
 
 def load_recordatorios():
     if not os.path.exists(RECORD_FILE): return []
@@ -203,64 +151,174 @@ def save_recordatorios(lista):
     with open(RECORD_FILE, "w", encoding="utf-8") as f:
         json.dump(lista, f, ensure_ascii=False, indent=2)
 
-def agregar_recordatorio(usuario, mensaje):
-    import re
-    texto = mensaje.lower()
+def interpretar_fecha_hora(texto):
+    """Intenta interpretar frases de tiempo en español. Devuelve datetime (con TZ) o None."""
+    ahora = datetime.now(TZ)
 
-    # Detectar tiempo
-    m = re.search(r"(\d+)\s*(minuto|minutos|hora|horas)", texto)
-    fecha_hora = None
-
+    # en X minutos
+    m = re.search(r"en (\d+)\s*minutos?", texto)
     if m:
-        num = int(m.group(1))
-        unidad = m.group(2)
-        ahora = datetime.now(pytz.timezone("America/Argentina/Buenos_Aires"))
-        if "hora" in unidad:
-            fecha_hora = ahora + timedelta(hours=num)
-        else:
-            fecha_hora = ahora + timedelta(minutes=num)
+        return ahora + timedelta(minutes=int(m.group(1)))
 
-    # Detectar hora exacta
-    h = re.search(r"(\d{1,2}):(\d{2})", texto)
-    if h:
-        ahora = datetime.now(pytz.timezone("America/Argentina/Buenos_Aires"))
-        fecha_hora = ahora.replace(hour=int(h.group(1)), minute=int(h.group(2)))
+    # en X horas
+    m = re.search(r"en (\d+)\s*horas?", texto)
+    if m:
+        return ahora + timedelta(hours=int(m.group(1)))
 
-    if not fecha_hora:
-        return None, "No entendí cuándo querés que te avise."
+    # mañana a las H o mañana a las H:MM
+    m = re.search(r"mañana a las (\d{1,2})(?::(\d{2}))?", texto)
+    if m:
+        hora = int(m.group(1))
+        minuto = int(m.group(2)) if m.group(2) else 0
+        mañana = (ahora + timedelta(days=1)).replace(hour=hora, minute=minuto, second=0, microsecond=0)
+        return mañana
 
-    # Detectar el motivo
-    motivo = texto
-    for p in ["recordame", "haceme acordar", "avisame", "recordá"]:
-        motivo = motivo.replace(p, "")
-    motivo = motivo.strip()
+    # hora exacta hoy o "a las HH:MM"
+    m = re.search(r"a las (\d{1,2}):(\d{2})", texto)
+    if m:
+        hora = int(m.group(1))
+        minuto = int(m.group(2))
+        posible = ahora.replace(hour=hora, minute=minuto, second=0, microsecond=0)
+        # si la hora ya pasó, asumir mañana
+        if posible <= ahora:
+            posible = posible + timedelta(days=1)
+        return posible
 
-    record = {
-        "usuario": usuario,
-        "motivo": motivo,
-        "cuando": fecha_hora.strftime("%Y-%m-%d %H:%M:%S")
-    }
+    # "el 5 de diciembre a las 18"
+    m = re.search(r"el (\d{1,2}) de (\w+) a las (\d{1,2})(?::(\d{2}))?", texto)
+    if m:
+        dia = int(m.group(1))
+        mes_texto = m.group(2).lower()
+        hora = int(m.group(3))
+        minuto = int(m.group(4)) if m.group(4) else 0
+        meses = {
+            "enero":1,"febrero":2,"marzo":3,"abril":4,"mayo":5,"junio":6,
+            "julio":7,"agosto":8,"septiembre":9,"octubre":10,"noviembre":11,"diciembre":12
+        }
+        mes = meses.get(mes_texto)
+        if mes:
+            # construir fecha con el año actual o el próximo si ya pasó
+            año = ahora.year
+            try:
+                candidato = datetime(año, mes, dia, hora, minuto)
+                candidato = TZ.localize(candidato)
+            except Exception:
+                return None
+            if candidato <= ahora:
+                try:
+                    candidato = datetime(año+1, mes, dia, hora, minuto)
+                    candidato = TZ.localize(candidato)
+                except:
+                    return None
+            return candidato
 
+    return None
+
+def agregar_recordatorio(usuario, motivo_texto, fecha_hora_dt):
+    """Agrega un recordatorio persistente. fecha_hora_dt debe ser datetime con TZ (o naive en TZ)."""
+    if fecha_hora_dt.tzinfo is None:
+        fecha_hora_dt = fecha_hora_dt.replace(tzinfo=TZ)
     lista = load_recordatorios()
-    lista.append(record)
+    lista.append({
+        "usuario": usuario,
+        "motivo": motivo_texto.strip(),
+        "cuando": fecha_hora_dt.strftime("%Y-%m-%d %H:%M:%S")
+    })
     save_recordatorios(lista)
 
-    return record, f"✅ Te aviso {fecha_hora.strftime('%d/%m %H:%M')}."
+def listar_recordatorios(usuario):
+    lista = load_recordatorios()
+    return [r for r in lista if r.get("usuario") == usuario]
+
+def borrar_recordatorios(usuario):
+    lista = load_recordatorios()
+    lista = [r for r in lista if r.get("usuario") != usuario]
+    save_recordatorios(lista)
+
+def monitor_recordatorios():
+    """Hilo que revisa recordatorios y los dispara. Cuando se dispara, lo guarda en el historial del usuario."""
+    while True:
+        try:
+            lista = load_recordatorios()
+            ahora = datetime.now(TZ)
+            restantes = []
+            for r in lista:
+                try:
+                    cuando = datetime.strptime(r["cuando"], "%Y-%m-%d %H:%M:%S")
+                    # asumimos TZ local
+                    cuando = TZ.localize(quando)
+                except Exception:
+                    # intentar isoformat parse
+                    try:
+                        cuando = datetime.fromisoformat(r["cuando"])
+                        if cuando.tzinfo is None:
+                            cuando = TZ.localize(cuando)
+                    except:
+                        # si no se puede parsear, descartamos
+                        continue
+                if cuando <= ahora:
+                    usuario = r.get("usuario", "anon")
+                    motivo = r.get("motivo", "(sin motivo)")
+                    aviso_texto = f"⏰ Recordatorio: {motivo}"
+                    # Guardar en historial para que el usuario lo vea en la UI
+                    try:
+                        guardar_en_historial(usuario, f"[recordatorio] {motivo}", aviso_texto)
+                    except Exception:
+                        pass
+                    # imprimir en consola (útil si estás viendo logs)
+                    print(aviso_texto)
+                else:
+                    restantes.append(r)
+            # sobrescribir lista con los que quedan
+            save_recordatorios(restantes)
+        except Exception as e:
+            # evitar que el hilo muera por un error
+            print("Error en monitor_recordatorios:", e)
+        time.sleep(30)
+
+# iniciar hilo del monitor (daemon)
+threading.Thread(target=monitor_recordatorios, daemon=True).start()
 
 # ---------------- RESPUESTA IA ----------------
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
+    # Asegurar que mensaje sea str
+    if not isinstance(mensaje, str):
+        mensaje = str(mensaje)
     mensaje_lower = mensaje.lower().strip()
 
-       # --- DETECCIÓN DE RECORDATORIOS ---
-    mensaje_lower = mensaje.lower()
+    # --- RECORDATORIOS: comandos y detección ---
+    try:
+        # listar recordatorios
+        if mensaje_lower in ["mis recordatorios", "lista de recordatorios", "ver recordatorios"]:
+            recs = listar_recordatorios(usuario)
+            if not recs:
+                return {"texto": "📭 No tenés recordatorios pendientes.", "imagenes": [], "borrar_historial": False}
+            texto = "📌 Tus recordatorios:\n" + "\n".join(
+                [f"- {r['motivo']} → {r['cuando']}" for r in recs]
+            )
+            return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
-    if mensaje_lower.startswith(("recordame", "haceme acordar", "avisame")):
-        fecha_hora = interpretar_fecha_hora(mensaje_lower)
-        if fecha_hora is None:
-            return "⏰ Decime cuándo: ejemplo 'mañana a las 9' o 'en 15 minutos'."
-        
-        agregar_recordatorio(mensaje, fecha_hora)
-        return f"✅ Listo, te lo recuerdo el {fecha_hora.strftime('%d/%m %H:%M')}."
+        # borrar todos los recordatorios del usuario
+        if "borrar recordatorios" in mensaje_lower or "eliminar recordatorios" in mensaje_lower:
+            borrar_recordatorios(usuario)
+            return {"texto": "🗑️ Listo, eliminé todos tus recordatorios.", "imagenes": [], "borrar_historial": False}
+
+        # crear recordatorio natural
+        if mensaje_lower.startswith(("recordame", "haceme acordar", "avisame", "recordá")):
+            fecha_hora = interpretar_fecha_hora(mensaje_lower)
+            if fecha_hora is None:
+                return {"texto": "⏰ Decime cuándo: ejemplo 'mañana a las 9', 'en 15 minutos' o 'el 5 de diciembre a las 18'.", "imagenes": [], "borrar_historial": False}
+            # extraer motivo
+            motivo = mensaje
+            for p in ["recordame", "haceme acordar", "avisame", "recordá"]:
+                motivo = re.sub(p, "", motivo, flags=re.IGNORECASE).strip()
+            if not motivo:
+                motivo = "Recordatorio"
+            agregar_recordatorio(usuario, motivo, fecha_hora)
+            return {"texto": f"✅ Listo, te lo recuerdo el {fecha_hora.strftime('%d/%m %H:%M')}.", "imagenes": [], "borrar_historial": False}
+    except Exception as e:
+        # No queremos que errores en recordatorios rompan la IA completa
+        print("Error en manejo de recordatorios:", e)
 
     # BORRAR HISTORIAL
     if any(p in mensaje_lower for p in ["borrar historial", "limpiar historial", "reset historial"]):
@@ -280,14 +338,13 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
 
     # CLIMA
     if "clima" in mensaje_lower:
-        import re
         ciudad_match = re.search(r"clima en ([a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+)", mensaje_lower)
         ciudad = ciudad_match.group(1).strip() if ciudad_match else None
         texto = obtener_clima(ciudad=ciudad, lat=lat, lon=lon)
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
-        # INFORMACIÓN ACTUALIZADA (versión natural sin "según los textos")
+    # INFORMACIÓN ACTUALIZADA (NOTICIAS)
     if any(word in mensaje_lower for word in ["presidente", "actualidad", "noticias", "quién es", "últimas noticias", "evento actual"]):
         resultados = []
         if GOOGLE_API_KEY and GOOGLE_CSE_ID:
@@ -297,7 +354,7 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
                     f"?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}"
                     f"&q={urllib.parse.quote(mensaje)}&sort=date"
                 )
-                r = requests.get(url, timeout=5)
+                r = HTTPS.get(url, timeout=5)
                 data = r.json()
                 for item in data.get("items", [])[:5]:
                     snippet = item.get("snippet", "").strip()
@@ -308,30 +365,33 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
 
         if resultados:
             texto_bruto = " ".join(resultados)
-            client = OpenAI(api_key=OPENAI_API_KEY)
-            prompt = (
-                f"Tengo estos fragmentos de texto recientes: {texto_bruto}\n\n"
-                f"Respondé a la pregunta: '{mensaje}'. "
-                f"Usá un tono natural y directo en español argentino, sin frases como "
-                f"'según los textos', 'según los fragmentos' o 'de acuerdo a las fuentes'. "
-                f"Contestá con una sola oración clara y actualizada. Si no hay información suficiente, decílo sin inventar."
-            )
+            try:
+                client = OpenAI(api_key=OPENAI_API_KEY)
+                prompt = (
+                    f"Tengo estos fragmentos de texto recientes: {texto_bruto}\n\n"
+                    f"Respondé a la pregunta: '{mensaje}'. "
+                    f"Usá un tono natural y directo en español argentino, sin frases como "
+                    f"'según los textos', 'según los fragmentos' o 'de acuerdo a las fuentes'. "
+                    f"Contestá con una sola oración clara y actualizada. Si no hay información suficiente, decílo sin inventar."
+                )
 
-            resp = client.chat.completions.create(
-                model="gpt-4-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.5,
-                max_tokens=120
-            )
+                resp = client.chat.completions.create(
+                    model="gpt-4-turbo",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.5,
+                    max_tokens=120
+                )
 
-            texto = resp.choices[0].message.content.strip()
+                texto = resp.choices[0].message.content.strip()
+            except Exception as e:
+                texto = "No pude generar la respuesta con OpenAI."
         else:
             texto = "No pude obtener información actualizada en este momento."
 
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
-    
-        # --- QUIÉN CREÓ / HIZO / PROGRAMÓ LA IA ---
+
+    # QUIÉN CREÓ / PREGUNTAS ESTÁTICAS
     if any(p in mensaje_lower for p in [
         "quién te creó", "quien te creo",
         "quién te hizo", "quien te hizo",
@@ -343,8 +403,8 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         texto = "Fui creada por Gustavo Enrique Foschi, el mejor 😎."
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
-    
-    # --- RESULTADOS DEPORTIVOS ACTUALIZADOS ---
+
+    # RESULTADOS DEPORTIVOS (actualizados)
     if any(p in mensaje_lower for p in [
         "resultado", "marcador", "ganó", "empató", "perdió",
         "partido", "deporte", "fútbol", "futbol", "nba", "tenis", "f1", "formula 1", "motogp"
@@ -358,7 +418,7 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
                     f"&q={urllib.parse.quote(mensaje + ' resultados deportivos actualizados')}"
                     f"&sort=date"
                 )
-                r = requests.get(url, timeout=5)
+                r = HTTPS.get(url, timeout=5)
                 data = r.json()
                 for item in data.get("items", [])[:5]:
                     snippet = item.get("snippet", "").strip()
@@ -369,60 +429,35 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
 
         if resultados:
             texto_bruto = " ".join(resultados)
-            client = OpenAI(api_key=OPENAI_API_KEY)
-            prompt = (
-                f"Tengo estos fragmentos recientes sobre deportes: {texto_bruto}\n\n"
-                f"Respondé brevemente la consulta '{mensaje}' con los resultados deportivos actuales. "
-                f"Usá un tono natural, tipo boletín deportivo argentino, sin frases como 'según los textos'. "
-                f"Respondé en una sola oración clara."
-            )
+            try:
+                client = OpenAI(api_key=OPENAI_API_KEY)
+                prompt = (
+                    f"Tengo estos fragmentos recientes sobre deportes: {texto_bruto}\n\n"
+                    f"Respondé brevemente la consulta '{mensaje}' con los resultados deportivos actuales. "
+                    f"Usá un tono natural, tipo boletín deportivo argentino, sin frases como 'según los textos'. "
+                    f"Respondé en una sola oración clara."
+                )
 
-            resp = client.chat.completions.create(
-                model="gpt-4-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.5,
-                max_tokens=150
-            )
-            texto = resp.choices[0].message.content.strip()
+                resp = client.chat.completions.create(
+                    model="gpt-4-turbo",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.5,
+                    max_tokens=150
+                )
+                texto = resp.choices[0].message.content.strip()
+            except Exception as e:
+                texto = "No pude generar la respuesta deportiva."
         else:
             texto = "No pude encontrar resultados deportivos recientes en este momento."
 
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
-    # --- OPCIONAL: SI LE PREGUNTAN QUIÉN ES EL MEJOR ---
-    if any(p in mensaje_lower for p in [
-        "quién es el mejor", "quien es el mejor", "quién manda acá", "quien manda aca"
-    ]):
-        texto = "Obvio, Gustavo Enrique Foschi 😎."
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
-
-        # --- QUIÉN ES GUSTAVO FOSCHI ---
-    if any(p in mensaje_lower for p in [
-        "quién es gustavo foschi", "quien es gustavo foschi",
-        "quién es foschi", "quien es foschi",
-        "sabés quién es foschi", "sabes quien es foschi",
-        "conocés a foschi", "conoces a foschi",
-        "gustavo foschi", "sobre gustavo foschi"
-    ]):
-        texto = "Gustavo Enrique Foschi es mi creador, el programador de Foschi IA, y el mejor 😎."
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
-
-    # --- PRESENTACIÓN AUTOMÁTICA CUANDO MENCIONAN A FOSCHI IA ---
-    if any(p in mensaje_lower for p in [
-        "foschi ia", "hola foschi", "hola foschi ia", "hey foschi", "buenas foschi"
-    ]):
-        texto = "Hola 👋, soy Foschi IA, creada por Gustavo Enrique Foschi — el mejor 😎. ¿En qué te puedo ayudar hoy?"
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
-
-    # RESPUESTA IA GENERAL
+    # SALIDA GENERAL: pasar a OpenAI para respuesta conversacional
     try:
         memoria = load_json(MEMORY_FILE)
         historial = memoria.get(usuario, {}).get("mensajes", [])[-max_hist:]
-        resumen = " ".join([m["usuario"] + ": " + m["foschi"] for m in historial[-3:]])
+        resumen = " ".join([m["usuario"] + ": " + m["foschi"] for m in historial[-3:]]) if historial else ""
 
         client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -440,7 +475,7 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         ]
 
         resp = client.chat.completions.create(
-            model="gpt-4-turbo",  # más natural
+            model="gpt-4-turbo",
             messages=prompt_messages,
             temperature=0.7,
             max_tokens=700
@@ -456,48 +491,6 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
     return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
 # ---------------- RUTAS ----------------
-@app.route("/")
-def index():
-    if "usuario_id" not in session:
-        session["usuario_id"]=str(uuid.uuid4())
-    return render_template_string(HTML_TEMPLATE, APP_NAME=APP_NAME, usuario_id=session["usuario_id"])
-
-@app.route("/preguntar", methods=["POST"])
-def preguntar():
-    data = request.get_json()
-    mensaje = data.get("mensaje","")
-    usuario_id = data.get("usuario_id", str(uuid.uuid4()))
-    lat = data.get("lat")
-    lon = data.get("lon")
-    tz = data.get("timeZone") or data.get("time_zone") or None
-    respuesta = generar_respuesta(mensaje, usuario_id, lat=lat, lon=lon, tz=tz)
-    guardar_en_historial(usuario_id, mensaje, respuesta["texto"])
-    return jsonify(respuesta)
-
-@app.route("/historial/<usuario_id>")
-def historial(usuario_id):
-    return jsonify(cargar_historial(usuario_id))
-
-@app.route("/tts")
-def tts():
-    texto = request.args.get("texto","")
-    tts_obj = gTTS(text=texto, lang="es", slow=False, tld="com.mx")
-    archivo = io.BytesIO()
-    tts_obj.write_to_fp(archivo)
-    archivo.seek(0)
-    return send_file(archivo, mimetype="audio/mpeg")
-
-@app.route("/clima")
-def clima():
-    lat = request.args.get("lat")
-    lon = request.args.get("lon")
-    ciudad = request.args.get("ciudad")
-    return obtener_clima(ciudad=ciudad, lat=lat, lon=lon)
-
-@app.route('/favicon.ico')
-def favicon():
-    return send_file(os.path.join(STATIC_DIR, 'favicon.ico'))
-
 HTML_TEMPLATE = """  
 <!doctype html>
 <html>
@@ -556,7 +549,7 @@ function hablarTexto(texto, div=null){
   if(div) div.classList.add("playing");
   mensajeActual = div;
   audioActual = new Audio("/tts?texto=" + encodeURIComponent(texto));
-  audioActual.playbackRate = 1.25;  // <- velocidad 1.5x, cambiá según quieras
+  audioActual.playbackRate = 1.25;
   audioActual.onended = () => {
     if(mensajeActual) mensajeActual.classList.remove("playing");
     mensajeActual = null;
@@ -624,42 +617,58 @@ window.onload=function(){
 </html>
 """
 
-def monitor_recordatorios():
-    while True:
-        lista = load_recordatorios()
-        ahora = datetime.now(pytz.timezone("America/Argentina/Buenos_Aires"))
-        nuevos = []
-        for r in lista:
-            fecha = datetime.strptime(r["cuando"], "%Y-%m-%d %H:%M:%S")
-            if fecha <= ahora:
-                print(f"⏰ Recordatorio para {r['usuario']}: {r['motivo']}")
-            else:
-                nuevos.append(r)
-        save_recordatorios(nuevos)
-        sleep(30)
+# ---------------- RUTAS ----------------
+@app.route("/")
+def index():
+    if "usuario_id" not in session:
+        session["usuario_id"]=str(uuid.uuid4())
+    return render_template_string(HTML_TEMPLATE, APP_NAME=APP_NAME, usuario_id=session["usuario_id"])
 
-Thread(target=monitor_recordatorios, daemon=True).start()
+@app.route("/preguntar", methods=["POST"])
+def preguntar():
+    data = request.get_json()
+    mensaje = data.get("mensaje","")
+    usuario_id = data.get("usuario_id", str(uuid.uuid4()))
+    lat = data.get("lat")
+    lon = data.get("lon")
+    tz = data.get("timeZone") or data.get("time_zone") or None
+    respuesta = generar_respuesta(mensaje, usuario_id, lat=lat, lon=lon, tz=tz)
+    # Normalizar el guardar historial: si la respuesta es dict con texto
+    texto_para_hist = respuesta["texto"] if isinstance(respuesta, dict) and "texto" in respuesta else str(respuesta)
+    guardar_en_historial(usuario_id, mensaje, texto_para_hist)
+    return jsonify(respuesta)
 
-def verificar_recordatorios():
-    while True:
-        data = cargar_recordatorios()
-        ahora = datetime.now(TZ)
+@app.route("/historial/<usuario_id>")
+def historial(usuario_id):
+    return jsonify(cargar_historial(usuario_id))
 
-        nuevos = []
-        for r in data:
-            fecha = datetime.fromisoformat(r["fecha_hora"])
-            if fecha <= ahora:
-                print(f"🔔 RECORDATORIO: {r['texto']}")
-                # Si usas TTS:
-                # reproducir_tts("Atención. " + r['texto'])
-            else:
-                nuevos.append(r)
+@app.route("/tts")
+def tts():
+    texto = request.args.get("texto","")
+    try:
+        tts_obj = gTTS(text=texto, lang="es", slow=False, tld="com.mx")
+        archivo = io.BytesIO()
+        tts_obj.write_to_fp(archivo)
+        archivo.seek(0)
+        return send_file(archivo, mimetype="audio/mpeg")
+    except Exception as e:
+        return f"Error TTS: {e}", 500
 
-        guardar_recordatorios(nuevos)
-        time.sleep(30)  # chequea cada 30 segundos
+@app.route("/clima")
+def clima():
+    lat = request.args.get("lat")
+    lon = request.args.get("lon")
+    ciudad = request.args.get("ciudad")
+    return obtener_clima(ciudad=ciudad, lat=lat, lon=lon)
 
-threading.Thread(target=verificar_recordatorios, daemon=True).start()
+@app.route('/favicon.ico')
+def favicon():
+    ico = os.path.join(STATIC_DIR, 'favicon.ico')
+    if os.path.exists(ico):
+        return send_file(ico)
+    return "", 204
 
+# ---------------- RUN ----------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
