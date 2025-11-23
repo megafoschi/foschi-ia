@@ -1,3 +1,29 @@
+import json
+import threading
+import time
+from datetime import datetime, timedelta
+import re
+import pytz
+
+ARCHIVO_RECORDATORIOS = "recordatorios.json"
+TZ = pytz.timezone("America/Argentina/Buenos_Aires")
+
+def cargar_recordatorios():
+    try:
+        with open(ARCHIVO_RECORDATORIOS, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return []
+
+def guardar_recordatorios(data):
+    with open(ARCHIVO_RECORDATORIOS, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+def agregar_recordatorio(texto, fecha_hora):
+    data = cargar_recordatorios()
+    data.append({"texto": texto, "fecha_hora": fecha_hora.isoformat()})
+    guardar_recordatorios(data)
+
 from flask import Flask, render_template_string, request, jsonify, session, send_file
 from flask_session import Session
 import os, uuid, json, io, re
@@ -7,6 +33,9 @@ from gtts import gTTS
 import requests
 import urllib.parse
 from openai import OpenAI
+from threading import Thread
+from time import sleep
+from datetime import timedelta
 
 # ---------------- CONFIG ----------------
 APP_NAME = "FOSCHI IA WEB"
@@ -126,9 +155,112 @@ def cargar_historial(usuario):
         try: return json.load(f)
         except: return []
 
+# ---------------- RECORDATORIOS ----------------
+RECORD_FILE = os.path.join(DATA_DIR, "recordatorios.json")
+
+def interpretar_fecha_hora(texto):
+    ahora = datetime.now(TZ)
+
+    # en X minutos
+    m = re.search(r"en (\d+) minutos?", texto)
+    if m:
+        return ahora + timedelta(minutes=int(m.group(1)))
+
+    # en X horas
+    m = re.search(r"en (\d+) horas?", texto)
+    if m:
+        return ahora + timedelta(hours=int(m.group(1)))
+
+    # mañana a las HH
+    m = re.search(r"mañana a las (\d{1,2})", texto)
+    if m:
+        hora = int(m.group(1))
+        return (ahora + timedelta(days=1)).replace(hour=hora, minute=0, second=0)
+
+    # el 5 de diciembre a las 18
+    m = re.search(r"el (\d{1,2}) de (\w+) a las (\d{1,2})", texto)
+    if m:
+        dia, mes_texto, hora = m.groups()
+        meses = {
+            "enero":1,"febrero":2,"marzo":3,"abril":4,"mayo":5,"junio":6,
+            "julio":7,"agosto":8,"septiembre":9,"octubre":10,"noviembre":11,"diciembre":12
+        }
+        mes = meses.get(mes_texto)
+        if mes:
+            return ahora.replace(month=mes, day=int(dia), hour=int(hora), minute=0, second=0)
+
+    return None
+
+def load_recordatorios():
+    if not os.path.exists(RECORD_FILE): return []
+    try:
+        with open(RECORD_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return []
+
+def save_recordatorios(lista):
+    with open(RECORD_FILE, "w", encoding="utf-8") as f:
+        json.dump(lista, f, ensure_ascii=False, indent=2)
+
+def agregar_recordatorio(usuario, mensaje):
+    import re
+    texto = mensaje.lower()
+
+    # Detectar tiempo
+    m = re.search(r"(\d+)\s*(minuto|minutos|hora|horas)", texto)
+    fecha_hora = None
+
+    if m:
+        num = int(m.group(1))
+        unidad = m.group(2)
+        ahora = datetime.now(pytz.timezone("America/Argentina/Buenos_Aires"))
+        if "hora" in unidad:
+            fecha_hora = ahora + timedelta(hours=num)
+        else:
+            fecha_hora = ahora + timedelta(minutes=num)
+
+    # Detectar hora exacta
+    h = re.search(r"(\d{1,2}):(\d{2})", texto)
+    if h:
+        ahora = datetime.now(pytz.timezone("America/Argentina/Buenos_Aires"))
+        fecha_hora = ahora.replace(hour=int(h.group(1)), minute=int(h.group(2)))
+
+    if not fecha_hora:
+        return None, "No entendí cuándo querés que te avise."
+
+    # Detectar el motivo
+    motivo = texto
+    for p in ["recordame", "haceme acordar", "avisame", "recordá"]:
+        motivo = motivo.replace(p, "")
+    motivo = motivo.strip()
+
+    record = {
+        "usuario": usuario,
+        "motivo": motivo,
+        "cuando": fecha_hora.strftime("%Y-%m-%d %H:%M:%S")
+    }
+
+    lista = load_recordatorios()
+    lista.append(record)
+    save_recordatorios(lista)
+
+    return record, f"✅ Te aviso {fecha_hora.strftime('%d/%m %H:%M')}."
+
 # ---------------- RESPUESTA IA ----------------
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
     mensaje_lower = mensaje.lower().strip()
+
+       # --- DETECCIÓN DE RECORDATORIOS ---
+    mensaje_lower = mensaje.lower()
+
+    if mensaje_lower.startswith(("recordame", "haceme acordar", "avisame")):
+        fecha_hora = interpretar_fecha_hora(mensaje_lower)
+        if fecha_hora is None:
+            return "⏰ Decime cuándo: ejemplo 'mañana a las 9' o 'en 15 minutos'."
+        
+        agregar_recordatorio(mensaje, fecha_hora)
+        return f"✅ Listo, te lo recuerdo el {fecha_hora.strftime('%d/%m %H:%M')}."
 
     # BORRAR HISTORIAL
     if any(p in mensaje_lower for p in ["borrar historial", "limpiar historial", "reset historial"]):
@@ -491,6 +623,42 @@ window.onload=function(){
 </body>
 </html>
 """
+
+def monitor_recordatorios():
+    while True:
+        lista = load_recordatorios()
+        ahora = datetime.now(pytz.timezone("America/Argentina/Buenos_Aires"))
+        nuevos = []
+        for r in lista:
+            fecha = datetime.strptime(r["cuando"], "%Y-%m-%d %H:%M:%S")
+            if fecha <= ahora:
+                print(f"⏰ Recordatorio para {r['usuario']}: {r['motivo']}")
+            else:
+                nuevos.append(r)
+        save_recordatorios(nuevos)
+        sleep(30)
+
+Thread(target=monitor_recordatorios, daemon=True).start()
+
+def verificar_recordatorios():
+    while True:
+        data = cargar_recordatorios()
+        ahora = datetime.now(TZ)
+
+        nuevos = []
+        for r in data:
+            fecha = datetime.fromisoformat(r["fecha_hora"])
+            if fecha <= ahora:
+                print(f"🔔 RECORDATORIO: {r['texto']}")
+                # Si usas TTS:
+                # reproducir_tts("Atención. " + r['texto'])
+            else:
+                nuevos.append(r)
+
+        guardar_recordatorios(nuevos)
+        time.sleep(30)  # chequea cada 30 segundos
+
+threading.Thread(target=verificar_recordatorios, daemon=True).start()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
