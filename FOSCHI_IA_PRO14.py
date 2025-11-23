@@ -1,6 +1,6 @@
 from flask import Flask, render_template_string, request, jsonify, session, send_file
 from flask_session import Session
-import os, uuid, json, io
+import os, uuid, json, io, re
 from datetime import datetime
 import pytz
 from gtts import gTTS
@@ -15,6 +15,12 @@ DATA_DIR = "data"
 STATIC_DIR = "static"
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(STATIC_DIR, exist_ok=True)
+
+# ✅ Sesión HTTP reutilizable (más rápido)
+HTTPS = requests.Session()
+
+# ✅ Regex precompilado
+URL_REGEX = re.compile(r'(https?://[^\s]+)', re.UNICODE)
 
 # ---------------- KEYS ----------------
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -31,26 +37,32 @@ Session(app)
 # ---------------- MEMORIA ----------------
 MEMORY_FILE = os.path.join(DATA_DIR, "memory.json")
 
+# ✅ Cache de memoria en RAM (más veloz)
+MEMORY_CACHE = {}
+
 def load_json(path):
-    if not os.path.exists(path): return {}
+    if MEMORY_CACHE:
+        return MEMORY_CACHE
+    if not os.path.exists(path): 
+        return {}
     try:
         with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            MEMORY_CACHE.update(json.load(f))
+            return MEMORY_CACHE
     except:
         return {}
 
 def save_json(path, data):
+    MEMORY_CACHE.update(data)
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+        json.dump(MEMORY_CACHE, f, ensure_ascii=False, indent=2)
 
 def fecha_hora_en_es():
     tz = pytz.timezone("America/Argentina/Buenos_Aires")
     ahora = datetime.now(tz)
     meses = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"]
     dias = ["lunes","martes","miércoles","jueves","viernes","sábado","domingo"]
-    dia_semana = dias[ahora.weekday()]
-    mes = meses[ahora.month-1]
-    return f"{dia_semana}, {ahora.day} de {mes} de {ahora.year}, {ahora.hour:02d}:{ahora.minute:02d}"
+    return f"{dias[ahora.weekday()]}, {ahora.day} de {meses[ahora.month-1]} de {ahora.year}, {ahora.hour:02d}:{ahora.minute:02d}"
 
 def learn_from_message(usuario, mensaje, respuesta):
     memory = load_json(MEMORY_FILE)
@@ -64,8 +76,7 @@ def learn_from_message(usuario, mensaje, respuesta):
     save_json(MEMORY_FILE, memory)
 
 def hacer_links_clicleables(texto):
-    import re
-    return re.sub(r'(https?://[^\s]+)', r'<a href="\1" target="_blank" style="color:#ff0000;">\1</a>', texto)
+    return URL_REGEX.sub(r'<a href="\1" target="_blank" style="color:#ff0000;">\1</a>', texto)
 
 def obtener_clima(ciudad=None, lat=None, lon=None):
     if not OWM_API_KEY:
@@ -76,20 +87,22 @@ def obtener_clima(ciudad=None, lat=None, lon=None):
         else:
             ciudad = ciudad if ciudad else "Buenos Aires"
             url = f"http://api.openweathermap.org/data/2.5/weather?q={ciudad}&appid={OWM_API_KEY}&units=metric&lang=es"
-        r = requests.get(url, timeout=6)
+        
+        # ✅ Timeout más corto
+        r = HTTPS.get(url, timeout=3)
         data = r.json()
+
         if r.status_code != 200:
-            msg = data.get("message", "Respuesta no OK de OpenWeatherMap.")
-            return f"No pude obtener el clima: {r.status_code} - {msg}"
-        desc = data.get("weather", [{}])[0].get("description", "Sin descripción").capitalize()
-        temp = data.get("main", {}).get("temp")
-        hum = data.get("main", {}).get("humidity")
-        name = data.get("name", ciudad if ciudad else "la ubicación")
+            return f"No pude obtener el clima: {r.status_code}"
+
+        desc = data["weather"][0]["description"].capitalize()
+        temp = data["main"].get("temp")
+        hum = data["main"].get("humidity")
+        name = data.get("name", ciudad)
+
         parts = [f"El clima en {name} es {desc}"]
-        if temp is not None:
-            parts.append(f"temperatura {round(temp)}°C")
-        if hum is not None:
-            parts.append(f"humedad {hum}%")
+        if temp is not None: parts.append(f"temperatura {round(temp)}°C")
+        if hum is not None: parts.append(f"humedad {hum}%")
         return ", ".join(parts) + "."
     except:
         return "No pude obtener el clima."
