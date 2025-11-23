@@ -411,7 +411,7 @@ function hablarTexto(texto, div=null){
   if(div) div.classList.add("playing");
   mensajeActual = div;
   audioActual = new Audio("/tts?texto=" + encodeURIComponent(texto));
-  audioActual.playbackRate = 1.5;  // <- velocidad 1.5x, cambiá según quieras
+  audioActual.playbackRate = 1.25;  // <- velocidad 1.5x, cambiá según quieras
   audioActual.onended = () => {
     if(mensajeActual) mensajeActual.classList.remove("playing");
     mensajeActual = null;
