@@ -495,160 +495,73 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
 
 HTML_TEMPLATE = """  
 <!doctype html>
-<html>
-<head>
-<title>{{APP_NAME}}</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-body{font-family:Arial,system-ui,-apple-system,Segoe UI,Roboto,Helvetica;background:#000;color:#fff;margin:0;padding:0;}
-#chat{width:100%;height:70vh;overflow-y:auto;padding:10px;background:#111;}
-.message{margin:5px 0;padding:8px 12px;border-radius:15px;max-width:80%;word-wrap:break-word;opacity:0;transition:opacity 0.5s,border 0.5s;}
-.message.show{opacity:1;}
-.user{background:#3300ff;color:#fff;margin-left:auto;text-align:right;}
-.ai{background:#00ffff;color:#000;margin-right:auto;text-align:left;}
-a{color:#fff;text-decoration:underline;}
-img{max-width:300px;border-radius:10px;margin:5px 0;}
-input,button{padding:10px;font-size:16px;margin:5px;border:none;border-radius:5px;}
-input[type=text]{width:70%;background:#222;color:#fff;}
-button{background:#333;color:#fff;cursor:pointer;}
-button:hover{background:#555;}
-#vozBtn,#borrarBtn{float:right;margin-right:20px;}
-#logo{width:50px;vertical-align:middle;cursor:pointer;transition: transform 0.5s;}
-#logo:hover{transform:scale(1.15) rotate(6deg);}
-#nombre{font-weight:bold;margin-left:10px;cursor:pointer;}
-small{color:#aaa;}
-.playing{outline:2px solid #fff;}
-</style>
-</head>
-<body>
-<h2 style="text-align:center;margin:10px 0;">
-<img src="/static/logo.png" id="logo" onclick="logoClick()" alt="logo">
-<span id="nombre" onclick="logoClick()">FOSCHI IA</span>
-<button onclick="detenerVoz()" style="margin-left:10px;">⏹️ Detener voz</button>
-<button id="vozBtn" onclick="toggleVoz()">🔊 Voz activada</button>
-<button id="borrarBtn" onclick="borrarPantalla()">🧹 Borrar pantalla</button>
-</h2>
-
-<div id="chat" role="log" aria-live="polite"></div>
-<div style="padding:10px;">
-<input type="text" id="mensaje" placeholder="Escribí tu mensaje o hablá" />
-<button onclick="enviar()">Enviar</button>
-<button onclick="hablar()">🎤 Hablar</button>
-<button onclick="verHistorial()">🗂️ Ver historial</button>
-</div>
-
-<script>
-// JS del chat (idéntico a tu versión)
-let usuario_id="{{usuario_id}}";
-let vozActiva=true,audioActual=null,mensajeActual=null;
-
-function logoClick(){ alert("FOSCHI NUNCA MUERE, TRASCIENDE..."); }
-
-function hablarTexto(texto, div=null){
-  if(!vozActiva) return;
-  detenerVoz();
-  if(mensajeActual) mensajeActual.classList.remove("playing");
-  if(div) div.classList.add("playing");
-  mensajeActual = div;
-  audioActual = new Audio("/tts?texto=" + encodeURIComponent(texto));
-  audioActual.playbackRate = 1.25;
-  audioActual.onended = () => {
-    if(mensajeActual) mensajeActual.classList.remove("playing");
-    mensajeActual = null;
-  };
-  audioActual.play();
+imagenes.forEach(url=>{ const img = document.createElement('img'); img.src = url; div.appendChild(img); });
+c.scroll({top:c.scrollHeight, behavior:'smooth'});
+// auto-voz si es IA
+if(cls==='ai') hablarTexto(stripHtml(html), div);
+setTimeout(()=>div.classList.remove('new'),700);
 }
 
-function detenerVoz(){ if(audioActual){ try{audioActual.pause(); audioActual.currentTime=0; audioActual.src=""; audioActual.load(); audioActual=null; if(mensajeActual) mensajeActual.classList.remove("playing"); mensajeActual=null;}catch(e){console.log(e);}} }
 
-function toggleVoz(estado=null){ vozActiva=estado!==null?estado:!vozActiva; document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada"; }
+// helper para insertar texto sin tags
+function stripHtml(html){ const tmp = document.createElement('div'); tmp.innerHTML = html; return tmp.textContent || tmp.innerText || ''; }
 
-function agregar(msg,cls,imagenes=[]){
-  let c=document.getElementById("chat"),div=document.createElement("div");
-  div.className="message "+cls; div.innerHTML=msg;
-  c.appendChild(div);
-  setTimeout(()=>div.classList.add("show"),50);
-  imagenes.forEach(url=>{ let img=document.createElement("img"); img.src=url; div.appendChild(img); });
-  c.scroll({top:c.scrollHeight,behavior:"smooth"});
-  if(cls==="ai") hablarTexto(msg,div);
-}
+
+function agregar(msg, cls, imagenes=[]){ crearBurbuja(msg, cls, imagenes); }
+
 
 function enviar(){
-  let msg=document.getElementById("mensaje").value.trim(); if(!msg) return;
-  agregar(msg,"user"); document.getElementById("mensaje").value="";
-  fetch("/preguntar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mensaje: msg, usuario_id: usuario_id})})
-  .then(r=>r.json()).then(data=>{ agregar(data.texto,"ai",data.imagenes); if(data.borrar_historial){document.getElementById("chat").innerHTML="";} })
-  .catch(e=>{ agregar("Error al comunicarse con el servidor.","ai"); console.error(e); });
+const msg = document.getElementById('mensaje').value.trim(); if(!msg) return;
+agregar(msg,'user'); document.getElementById('mensaje').value = '';
+fetch('/preguntar', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({mensaje: msg, usuario_id: usuario_id})})
+.then(r=>r.json()).then(data=>{ agregar(data.texto,'ai', data.imagenes || []); if(data.borrar_historial){ document.getElementById('chat').innerHTML = ''; } })
+.catch(e=>{ agregar('Error al comunicarse con el servidor.','ai'); console.error(e); });
 }
 
-document.getElementById("mensaje").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); enviar(); } });
+
+document.getElementById('mensaje').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); enviar(); } });
+
 
 function hablar(){
-  if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window){
-    const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new Rec();
-    recognition.lang='es-AR'; recognition.continuous=false; recognition.interimResults=false;
-    recognition.onresult=function(event){ document.getElementById("mensaje").value=event.results[0][0].transcript.toLowerCase(); enviar(); }
-    recognition.onerror=function(e){console.log(e); alert("Error reconocimiento de voz: " + e.error); }
-    recognition.start();
-  }else{alert("Tu navegador no soporta reconocimiento de voz.");}
+if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window){
+const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+const recognition = new Rec(); recognition.lang='es-AR'; recognition.continuous=false; recognition.interimResults=false;
+recognition.onresult = function(event){ document.getElementById('mensaje').value = event.results[0][0].transcript.toLowerCase(); enviar(); }
+recognition.onerror = function(e){ console.log(e); alert('Error reconocimiento de voz: ' + e.error); }
+recognition.start();
+} else { alert('Tu navegador no soporta reconocimiento de voz.'); }
 }
+
 
 function verHistorial(){
-  fetch("/historial/"+usuario_id).then(r=>r.json()).then(data=>{
-    document.getElementById("chat").innerHTML="";
-    if(data.length===0){agregar("No hay historial todavía.","ai");return;}
-    data.slice(-20).forEach(e=>{ agregar(`<small>${e.fecha}</small><br>${e.usuario}`,"user"); agregar(`<small>${e.fecha}</small><br>${e.foschi}`,"ai"); });
-  });
+fetch('/historial/'+usuario_id).then(r=>r.json()).then(data=>{
+document.getElementById('chat').innerHTML = '';
+if(!data || data.length===0){ agregar('No hay historial todavía.','ai'); return; }
+data.slice(-30).forEach(e=>{ agregar(`<small>${e.fecha}</small><br>${e.usuario}`,'user'); agregar(`<small>${e.fecha}</small><br>${e.foschi}`,'ai'); });
+});
 }
 
-function borrarPantalla(){ document.getElementById("chat").innerHTML=""; }
 
-window.onload=function(){
-  agregar("👋 Hola, soy FOSCHI IA. Obteniendo tu ubicación...","ai");
-  if(navigator.geolocation){
-    navigator.geolocation.getCurrentPosition(pos=>{
-      fetch(`/clima?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`)
-      .then(r=>r.text()).then(clima=>{ agregar(`🌤️ ${clima}`,"ai"); })
-      .catch(e=>{ agregar("No pude obtener el clima automáticamente.","ai"); console.error(e); });
-    },()=>{ agregar("No pude obtener tu ubicación (permiso denegado o error).","ai"); }, {timeout:8000});
-  } else { agregar("Tu navegador no soporta geolocalización.","ai"); }
+function borrarPantalla(){ document.getElementById('chat').innerHTML = ''; }
+
+
+window.onload = function(){
+agregar('👋 Hola, soy FOSCHI IA. Obteniendo tu ubicación...','ai');
+if(navigator.geolocation){
+navigator.geolocation.getCurrentPosition(pos=>{ fetch(`/clima?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`).then(r=>r.text()).then(clima=>{ agregar(`🌤️ ${clima}`,'ai'); }).catch(e=>{ agregar('No pude obtener el clima automáticamente.','ai'); console.error(e); }); }, ()=>{ agregar('No pude obtener tu ubicación (permiso denegado o error).','ai'); }, {timeout:8000});
+} else { agregar('Tu navegador no soporta geolocalización.','ai'); }
 };
 
-// ✅✅✅ RECORDATORIOS AUTOMÁTICOS ✅✅✅
-function chequearRecordatorios() {
-  fetch("/avisos", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ usuario_id: usuario_id })
-  })
-  .then(r => r.json())
-  .then(data => {
-    if (Array.isArray(data) && data.length > 0) {
-      data.forEach(r => {
-        const motivo = r.motivo || "(sin motivo)";
-        agregar(`⏰ Tenés un recordatorio: ${motivo}`, "ai");
-        mostrarNotificacion(`⏰ Tenés un recordatorio`, motivo);
-      });
-    }
-  })
-  .catch(e => console.error("Error avisos:", e));
-}
 
-function mostrarNotificacion(titulo, cuerpo) {
-  if (!("Notification" in window)) return;
-  if (Notification.permission === "granted") {
-    new Notification(titulo, { body: cuerpo });
-  } else if (Notification.permission !== "denied") {
-    Notification.requestPermission().then(perm => {
-      if (perm === "granted") {
-        new Notification(titulo, { body: cuerpo });
-      }
-    });
-  }
+// RECORDATORIOS: comprobar mediante endpoint existente
+function chequearRecordatorios(){
+fetch('/avisos', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({usuario_id: usuario_id})})
+.then(r=>r.json()).then(data=>{
+if(Array.isArray(data) && data.length>0){ data.forEach(r=>{ const motivo = r.motivo || '(sin motivo)'; agregar(`⏰ Tenés un recordatorio: ${motivo}`,'ai'); if('Notification' in window){ if(Notification.permission==='granted'){ new Notification('⏰ Tenés un recordatorio',{ body: motivo }); } else if(Notification.permission!=='denied'){ Notification.requestPermission().then(perm=>{ if(perm==='granted'){ new Notification('⏰ Tenés un recordatorio',{ body: motivo }); } }); } } }); }
+}).catch(e=>console.error('Error avisos:', e));
 }
-
 setInterval(chequearRecordatorios, 10000);
+
 
 </script>
 </body>
