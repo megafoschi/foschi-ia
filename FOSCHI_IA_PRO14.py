@@ -499,314 +499,227 @@ HTML_TEMPLATE = """
 <head>
 <title>{{APP_NAME}}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-
 <style>
-
-/* ---------- ESTILO FUTURISTA NEÓN ----------- */
-
 body{
-    font-family: 'Segoe UI', Roboto, system-ui;
-    background: radial-gradient(circle at center,#02040a 0%, #000000 80%);
+    font-family: Arial, system-ui, -apple-system, Segoe UI, Roboto, Helvetica;
+    background: #05070c;
+    color:#fff;
     margin:0;
     padding:0;
-    color:#c9e6ff;
-    overflow:hidden;
 }
 
-/* Brillo general */
-*{
-    transition: 0.25s ease;
+body::before {
+    content:"";
+    position:fixed;
+    inset:0;
+    background: radial-gradient(circle at 30% 30%, #0ff2 0%, transparent 60%),
+                radial-gradient(circle at 70% 70%, #0af2 0%, transparent 60%);
+    z-index:-1;
+    filter: blur(120px);
 }
-
-/* --- Header futurista --- */
-
-h2{
-    text-align:center;
-    margin:10px 0;
-    color:#9fd5ff;
-    text-shadow:0 0 10px #00aaff;
-}
-
-#logo{
-    width:55px;
-    cursor:pointer;
-    filter: drop-shadow(0 0 8px #00c8ff);
-    transition: transform .4s, filter .4s;
-}
-#logo:hover{
-    transform:scale(1.2) rotate(8deg);
-    filter: drop-shadow(0 0 16px #00eaff);
-}
-
-#nombre{
-    font-weight:bold;
-    margin-left:10px;
-    cursor:pointer;
-    color:#a7e2ff;
-    text-shadow:0 0 6px #00caff;
-}
-
-/* --- Contenedor chat estilo vidrio --- */
 
 #chat{
     width:100%;
-    height:70vh;
+    height: calc(100vh - 140px);
     overflow-y:auto;
-    padding:15px;
-    background: rgba(0,25,40,0.45);
-    backdrop-filter: blur(6px);
-    border-top:2px solid #003b60;
-    border-bottom:2px solid #003b60;
-    box-shadow: inset 0 0 20px #00324f;
+    padding:20px;
+    box-sizing:border-box;
 }
 
-/* ---- Scroll futurista ---- */
-#chat::-webkit-scrollbar{width:6px;}
-#chat::-webkit-scrollbar-thumb{
-    background:#00caff;
-    border-radius:4px;
-}
-#chat::-webkit-scrollbar-track{background:#002233;}
-
-/* ----- Burbujas de mensajes ----- */
-
-.message{
-    margin:7px 0;
-    padding:10px 15px;
-    border-radius:18px;
-    max-width:80%;
-    word-wrap:break-word;
-    opacity:0;
-    transform:translateY(10px);
-    animation: fadeIn .45s forwards;
-    backdrop-filter: blur(4px);
-    border:1px solid transparent;
+.msg-user, .msg-ia{
+    padding:12px 16px;
+    margin:12px 0;
+    border-radius:14px;
+    max-width:85%;
+    backdrop-filter: blur(8px);
 }
 
-@keyframes fadeIn{
-    to{opacity:1; transform:translateY(0);}
-}
-
-/* Usuario */
-.user{
-    background:rgba(0,110,255,0.35);
-    border-color:#005bff;
+.msg-user{
+    background:#0099ff44;
     margin-left:auto;
-    text-align:right;
-    color:#dbe9ff;
-    box-shadow:0 0 10px #004cff;
+    border:1px solid #00b7ff88;
 }
 
-/* IA */
-.ai{
-    background:rgba(0,255,255,0.25);
-    border-color:#00ffee;
-    margin-right:auto;
-    color:#00333a;
-    box-shadow:0 0 10px #00ffe6;
+.msg-ia{
+    background:#00ffc244;
+    border:1px solid #00ffbb88;
 }
 
-/* Burbuja sonando */
-.playing{
-    outline:2px solid #00eaff;
-    box-shadow:0 0 20px #00eaff;
-}
-
-/* --- Imágenes --- */
-
-img{
-    max-width:260px;
-    border-radius:12px;
-    margin:6px 0;
-    box-shadow:0 0 12px #00eaff;
-}
-
-/* --- Inputs y botones futuristas --- */
-
-input,button{
+#input-area{
+    position:fixed;
+    bottom:0;
+    width:100%;
+    background:#000a;
     padding:10px;
-    font-size:16px;
-    margin:5px;
+    box-shadow:0 -3px 20px #000;
+    display:flex;
+    gap:8px;
+}
+
+#texto{
+    flex:1;
+    padding:12px;
+    border:2px solid #0ff6;
+    border-radius:12px;
+    background:#0008;
+    color:#fff;
+    outline:none;
+}
+
+#btn-enviar{
+    padding:12px 18px;
     border:none;
-    border-radius:8px;
-}
-
-input[type=text]{
-    width:70%;
-    background:#001a27;
-    color:#aee8ff;
-    border:1px solid #003c52;
-    box-shadow:0 0 6px #003c52 inset;
-}
-
-button{
-    background:#003d5c;
-    color:#c9e7ff;
+    border-radius:12px;
+    background:#00ffee;
+    color:#000;
+    font-weight:bold;
     cursor:pointer;
-    border:1px solid #006688;
-    box-shadow:0 0 6px #007fa8;
+    transition:0.2s;
 }
-button:hover{
-    background:#005f89;
-    box-shadow:0 0 12px #00baff;
+#btn-enviar:hover{
+    transform:scale(1.05);
 }
 
-#vozBtn,#borrarBtn{
-    float:right;
-    margin-right:20px;
+#logo{
+    width:70px;
+    height:70px;
+    margin:20px auto 10px auto;
+    display:block;
+    cursor:pointer;
+    transition:0.3s;
 }
 
-/* Texto menor */
-small{color:#8fb9cc;}
+#logo:active{
+    transform: scale(0.88) rotate(4deg);
+}
 
+@keyframes pulse {
+    0%{ transform:scale(1); }
+    50%{ transform:scale(1.1); }
+    100%{ transform:scale(1); }
+}
+.logo-pulse{ animation:pulse 0.6s ease; }
+
+#app-title{
+    text-align:center;
+    font-size:22px;
+    margin-bottom:10px;
+    cursor:pointer;
+    color:#0ff;
+    text-shadow:0 0 12px #0ff;
+}
 </style>
 </head>
 
 <body>
 
-<h2>
-    <img src="/static/logo.png" id="logo" onclick="logoClick()" alt="logo">
-    <span id="nombre" onclick="logoClick()">FOSCHI IA</span>
+<audio id="sound-logo" src="/static/click.mp3" preload="auto"></audio>
 
-    <button onclick="detenerVoz()" style="margin-left:10px;">⏹️ Detener voz</button>
-    <button id="vozBtn" onclick="toggleVoz()">🔊 Voz activada</button>
-    <button id="borrarBtn" onclick="borrarPantalla()">🧹 Borrar</button>
-</h2>
+<img id="logo" src="/static/logo.png" onclick="logoClick()">
+<div id="app-title" onclick="logoClick()">{{APP_NAME}}</div>
 
-<div id="chat" role="log" aria-live="polite"></div>
+<div id="chat"></div>
 
-<div style="padding:10px; background:rgba(0,25,40,0.4); border-top:2px solid #003b60;">
-    <input type="text" id="mensaje" placeholder="Escribí tu mensaje..." />
-    <button onclick="enviar()">Enviar</button>
-    <button onclick="hablar()">🎤 Hablar</button>
-    <button onclick="verHistorial()">🗂️ Historial</button>
+<div id="input-area">
+    <input type="text" id="texto" placeholder="Escribe tu mensaje..."
+           onkeydown="if(event.key==='Enter') enviarMensaje();">
+    <button id="btn-enviar" onclick="enviarMensaje()">Enviar</button>
 </div>
 
-<!-- JS ORIGINAL SIN CAMBIOS -->
 <script>
 
-// ========== VARIABLES ==========
-let vozActiva = true;
-let hablando = false;
+/* ------------------- LOGO CLICK ------------------- */
+function logoClick(){
+    const frase = "✨ FOSCHI NUNCA MUERE, TRASCIENDE... ✨";
+    escribirMensajeIA(frase, 35);
 
-// ========== ENVIAR MENSAJE ==========
-function enviar() {
-    const input = document.getElementById("mensaje");
-    let txt = input.value.trim();
-    if (!txt) return;
+    let sonido = document.getElementById("sound-logo");
+    sonido.currentTime = 0;
+    sonido.play();
 
-    agregarMensajeUsuario(txt);
-    input.value = "";
-    input.focus();
-
-    fetch("/chat", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({texto: txt})
-    })
-    .then(res => res.json())
-    .then(data => {
-        agregarMensajeIA(data.respuesta);
-
-        if (vozActiva) reproducirVoz(data.respuesta);
-    })
-    .catch(err => {
-        agregarMensajeIA("⚠️ Error al conectar: " + err);
-    });
+    let lg = document.getElementById("logo");
+    lg.classList.remove("logo-pulse");
+    void lg.offsetWidth;
+    lg.classList.add("logo-pulse");
 }
 
-// ========== ENTER PARA ENVIAR ==========
-document.getElementById("mensaje").addEventListener("keydown", function(e){
-    if (e.key === "Enter") {
-        e.preventDefault();
-        enviar();
-    }
-});
+/* ------------------- TYPING IA ------------------- */
+function escribirMensajeIA(texto, velocidad){
+    let contenedor = document.getElementById("chat");
+    let burbuja = document.createElement("div");
+    burbuja.className = "msg-ia";
+    contenedor.appendChild(burbuja);
 
-// ========== HABLAR (MIC) ==========
-function hablar() {
-    if (hablando) return;
-    hablando = true;
-
-    fetch("/stt", { method: "POST" })
-    .then(res => res.json())
-    .then(data => {
-        hablando = false;
-        if (data.texto) {
-            document.getElementById("mensaje").value = data.texto;
-            enviar();
-        } else {
-            agregarMensajeIA("No pude escuchar nada.");
+    let i = 0;
+    function escribir(){
+        if(i < texto.length){
+            burbuja.innerHTML += texto.charAt(i);
+            i++;
+            contenedor.scrollTop = contenedor.scrollHeight;
+            setTimeout(escribir, velocidad);
         }
+    }
+    escribir();
+}
+
+/* ------------------- AGREGAR MENSAJES ------------------- */
+function agregarMensajeUsuario(msg){
+    let c = document.getElementById("chat");
+    let d = document.createElement("div");
+    d.className="msg-user";
+    d.innerHTML = msg;
+    c.appendChild(d);
+    c.scrollTop = c.scrollHeight;
+}
+
+function agregarMensajeIA(msg){
+    let c = document.getElementById("chat");
+    let d = document.createElement("div");
+    d.className="msg-ia";
+    d.innerHTML = msg.replace(/\n/g,"<br>");
+    c.appendChild(d);
+    c.scrollTop = c.scrollHeight;
+}
+
+/* ------------------- ENVIAR MENSAJE ------------------- */
+function enviarMensaje(){
+    let texto = document.getElementById("texto").value.trim();
+    if(texto==="") return;
+
+    agregarMensajeUsuario(texto);
+    document.getElementById("texto").value = "";
+
+    fetch("/mensaje",{
+        method:"POST",
+        headers:{ "Content-Type":"application/json"},
+        body:JSON.stringify({mensaje:texto})
     })
-    .catch(err => {
-        hablando = false;
-        agregarMensajeIA("Error al usar el micrófono: " + err);
+    .then(r=>r.json())
+    .then(data=>{
+        agregarMensajeIA(data.respuesta);
+        reproducirVoz(data.respuesta);
     });
 }
 
-// ========== RENDER MENSAJES ==========
-function agregarMensajeUsuario(txt) {
-    let div = document.createElement("div");
-    div.className = "message user";
-    div.innerText = txt;
-    document.getElementById("chat").appendChild(div);
-    scroll();
-}
-
-function agregarMensajeIA(txt) {
-    let div = document.createElement("div");
-    div.className = "message ai";
-    div.innerHTML = txt.replace(/\n/g, "<br>");
-    document.getElementById("chat").appendChild(div);
-    scroll();
-}
-
-// ========== SCROLL AUTOMÁTICO ==========
-function scroll() {
-    const chat = document.getElementById("chat");
-    setTimeout(() => chat.scrollTop = chat.scrollHeight, 50);
-}
-
-// ========== TTS ==========
-function reproducirVoz(txt) {
+/* ------------------- TTS ------------------- */
+function reproducirVoz(txt){
     fetch("/tts?texto=" + encodeURIComponent(txt))
-    .then(res => res.blob())
+    .then(r => r.blob())
     .then(blob => {
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        audio.play();
+        let url = URL.createObjectURL(blob);
+        new Audio(url).play();
     });
 }
 
-// ========== BOTÓN: Activar / Desactivar Voz ==========
-function toggleVoz() {
-    vozActiva = !vozActiva;
-    document.getElementById("vozBtn").innerText =
-        vozActiva ? "🔊 Voz activada" : "🔇 Voz desactivada";
-}
-
-// ========== DETENER VOZ ==========
-function detenerVoz() {
-    document.querySelectorAll("audio").forEach(a => a.pause());
-}
-
-// ========== BORRAR PANTALLA ==========
-function borrarPantalla() {
-    document.getElementById("chat").innerHTML = "";
-}
-
-// ========== LOGO CLICK ==========
-function logoClick() {
-    agregarMensajeIA("Soy Foschi IA, listo para asistirte 😎⚡");
-}
-
-// ========== HISTORIAL ==========
-function verHistorial() {
-    fetch("/historial")
-    .then(r => r.json())
-    .then(hist => {
-        agregarMensajeIA("<b>Historial:</b><br>" + hist.join("<br>"));
+/* ------------------- MIC ------------------- */
+function hablar(){
+    fetch("/stt",{method:"POST"})
+    .then(r=>r.json())
+    .then(data=>{
+        if(data.texto){
+            document.getElementById("texto").value = data.texto;
+            enviarMensaje();
+        }
     });
 }
 
