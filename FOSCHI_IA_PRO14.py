@@ -684,9 +684,133 @@ small{color:#8fb9cc;}
 
 <!-- JS ORIGINAL SIN CAMBIOS -->
 <script>
-(ACÁ VA TU JS COMPLETO TAL COMO LO PEGASTE)
-</script>
 
+// ========== VARIABLES ==========
+let vozActiva = true;
+let hablando = false;
+
+// ========== ENVIAR MENSAJE ==========
+function enviar() {
+    const input = document.getElementById("mensaje");
+    let txt = input.value.trim();
+    if (!txt) return;
+
+    agregarMensajeUsuario(txt);
+    input.value = "";
+    input.focus();
+
+    fetch("/chat", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({texto: txt})
+    })
+    .then(res => res.json())
+    .then(data => {
+        agregarMensajeIA(data.respuesta);
+
+        if (vozActiva) reproducirVoz(data.respuesta);
+    })
+    .catch(err => {
+        agregarMensajeIA("⚠️ Error al conectar: " + err);
+    });
+}
+
+// ========== ENTER PARA ENVIAR ==========
+document.getElementById("mensaje").addEventListener("keydown", function(e){
+    if (e.key === "Enter") {
+        e.preventDefault();
+        enviar();
+    }
+});
+
+// ========== HABLAR (MIC) ==========
+function hablar() {
+    if (hablando) return;
+    hablando = true;
+
+    fetch("/stt", { method: "POST" })
+    .then(res => res.json())
+    .then(data => {
+        hablando = false;
+        if (data.texto) {
+            document.getElementById("mensaje").value = data.texto;
+            enviar();
+        } else {
+            agregarMensajeIA("No pude escuchar nada.");
+        }
+    })
+    .catch(err => {
+        hablando = false;
+        agregarMensajeIA("Error al usar el micrófono: " + err);
+    });
+}
+
+// ========== RENDER MENSAJES ==========
+function agregarMensajeUsuario(txt) {
+    let div = document.createElement("div");
+    div.className = "message user";
+    div.innerText = txt;
+    document.getElementById("chat").appendChild(div);
+    scroll();
+}
+
+function agregarMensajeIA(txt) {
+    let div = document.createElement("div");
+    div.className = "message ai";
+    div.innerHTML = txt.replace(/\n/g, "<br>");
+    document.getElementById("chat").appendChild(div);
+    scroll();
+}
+
+// ========== SCROLL AUTOMÁTICO ==========
+function scroll() {
+    const chat = document.getElementById("chat");
+    setTimeout(() => chat.scrollTop = chat.scrollHeight, 50);
+}
+
+// ========== TTS ==========
+function reproducirVoz(txt) {
+    fetch("/tts?texto=" + encodeURIComponent(txt))
+    .then(res => res.blob())
+    .then(blob => {
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.play();
+    });
+}
+
+// ========== BOTÓN: Activar / Desactivar Voz ==========
+function toggleVoz() {
+    vozActiva = !vozActiva;
+    document.getElementById("vozBtn").innerText =
+        vozActiva ? "🔊 Voz activada" : "🔇 Voz desactivada";
+}
+
+// ========== DETENER VOZ ==========
+function detenerVoz() {
+    document.querySelectorAll("audio").forEach(a => a.pause());
+}
+
+// ========== BORRAR PANTALLA ==========
+function borrarPantalla() {
+    document.getElementById("chat").innerHTML = "";
+}
+
+// ========== LOGO CLICK ==========
+function logoClick() {
+    agregarMensajeIA("Soy Foschi IA, listo para asistirte 😎⚡");
+}
+
+// ========== HISTORIAL ==========
+function verHistorial() {
+    fetch("/historial")
+    .then(r => r.json())
+    .then(hist => {
+        agregarMensajeIA("<b>Historial:</b><br>" + hist.join("<br>"));
+    });
+}
+
+</script>
 </body>
 </html>
 """
