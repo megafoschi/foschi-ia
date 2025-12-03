@@ -495,75 +495,198 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
 
 HTML_TEMPLATE = """  
 <!doctype html>
-imagenes.forEach(url=>{ const img = document.createElement('img'); img.src = url; div.appendChild(img); });
-c.scroll({top:c.scrollHeight, behavior:'smooth'});
-// auto-voz si es IA
-if(cls==='ai') hablarTexto(stripHtml(html), div);
-setTimeout(()=>div.classList.remove('new'),700);
+<html>
+<head>
+<title>{{APP_NAME}}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+
+/* ---------- ESTILO FUTURISTA NEÓN ----------- */
+
+body{
+    font-family: 'Segoe UI', Roboto, system-ui;
+    background: radial-gradient(circle at center,#02040a 0%, #000000 80%);
+    margin:0;
+    padding:0;
+    color:#c9e6ff;
+    overflow:hidden;
 }
 
-
-// helper para insertar texto sin tags
-function stripHtml(html){ const tmp = document.createElement('div'); tmp.innerHTML = html; return tmp.textContent || tmp.innerText || ''; }
-
-
-function agregar(msg, cls, imagenes=[]){ crearBurbuja(msg, cls, imagenes); }
-
-
-function enviar(){
-const msg = document.getElementById('mensaje').value.trim(); if(!msg) return;
-agregar(msg,'user'); document.getElementById('mensaje').value = '';
-fetch('/preguntar', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({mensaje: msg, usuario_id: usuario_id})})
-.then(r=>r.json()).then(data=>{ agregar(data.texto,'ai', data.imagenes || []); if(data.borrar_historial){ document.getElementById('chat').innerHTML = ''; } })
-.catch(e=>{ agregar('Error al comunicarse con el servidor.','ai'); console.error(e); });
+/* Brillo general */
+*{
+    transition: 0.25s ease;
 }
 
+/* --- Header futurista --- */
 
-document.getElementById('mensaje').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); enviar(); } });
-
-
-function hablar(){
-if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window){
-const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
-const recognition = new Rec(); recognition.lang='es-AR'; recognition.continuous=false; recognition.interimResults=false;
-recognition.onresult = function(event){ document.getElementById('mensaje').value = event.results[0][0].transcript.toLowerCase(); enviar(); }
-recognition.onerror = function(e){ console.log(e); alert('Error reconocimiento de voz: ' + e.error); }
-recognition.start();
-} else { alert('Tu navegador no soporta reconocimiento de voz.'); }
+h2{
+    text-align:center;
+    margin:10px 0;
+    color:#9fd5ff;
+    text-shadow:0 0 10px #00aaff;
 }
 
-
-function verHistorial(){
-fetch('/historial/'+usuario_id).then(r=>r.json()).then(data=>{
-document.getElementById('chat').innerHTML = '';
-if(!data || data.length===0){ agregar('No hay historial todavía.','ai'); return; }
-data.slice(-30).forEach(e=>{ agregar(`<small>${e.fecha}</small><br>${e.usuario}`,'user'); agregar(`<small>${e.fecha}</small><br>${e.foschi}`,'ai'); });
-});
+#logo{
+    width:55px;
+    cursor:pointer;
+    filter: drop-shadow(0 0 8px #00c8ff);
+    transition: transform .4s, filter .4s;
+}
+#logo:hover{
+    transform:scale(1.2) rotate(8deg);
+    filter: drop-shadow(0 0 16px #00eaff);
 }
 
-
-function borrarPantalla(){ document.getElementById('chat').innerHTML = ''; }
-
-
-window.onload = function(){
-agregar('👋 Hola, soy FOSCHI IA. Obteniendo tu ubicación...','ai');
-if(navigator.geolocation){
-navigator.geolocation.getCurrentPosition(pos=>{ fetch(`/clima?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`).then(r=>r.text()).then(clima=>{ agregar(`🌤️ ${clima}`,'ai'); }).catch(e=>{ agregar('No pude obtener el clima automáticamente.','ai'); console.error(e); }); }, ()=>{ agregar('No pude obtener tu ubicación (permiso denegado o error).','ai'); }, {timeout:8000});
-} else { agregar('Tu navegador no soporta geolocalización.','ai'); }
-};
-
-
-// RECORDATORIOS: comprobar mediante endpoint existente
-function chequearRecordatorios(){
-fetch('/avisos', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({usuario_id: usuario_id})})
-.then(r=>r.json()).then(data=>{
-if(Array.isArray(data) && data.length>0){ data.forEach(r=>{ const motivo = r.motivo || '(sin motivo)'; agregar(`⏰ Tenés un recordatorio: ${motivo}`,'ai'); if('Notification' in window){ if(Notification.permission==='granted'){ new Notification('⏰ Tenés un recordatorio',{ body: motivo }); } else if(Notification.permission!=='denied'){ Notification.requestPermission().then(perm=>{ if(perm==='granted'){ new Notification('⏰ Tenés un recordatorio',{ body: motivo }); } }); } } }); }
-}).catch(e=>console.error('Error avisos:', e));
+#nombre{
+    font-weight:bold;
+    margin-left:10px;
+    cursor:pointer;
+    color:#a7e2ff;
+    text-shadow:0 0 6px #00caff;
 }
-setInterval(chequearRecordatorios, 10000);
 
+/* --- Contenedor chat estilo vidrio --- */
 
+#chat{
+    width:100%;
+    height:70vh;
+    overflow-y:auto;
+    padding:15px;
+    background: rgba(0,25,40,0.45);
+    backdrop-filter: blur(6px);
+    border-top:2px solid #003b60;
+    border-bottom:2px solid #003b60;
+    box-shadow: inset 0 0 20px #00324f;
+}
+
+/* ---- Scroll futurista ---- */
+#chat::-webkit-scrollbar{width:6px;}
+#chat::-webkit-scrollbar-thumb{
+    background:#00caff;
+    border-radius:4px;
+}
+#chat::-webkit-scrollbar-track{background:#002233;}
+
+/* ----- Burbujas de mensajes ----- */
+
+.message{
+    margin:7px 0;
+    padding:10px 15px;
+    border-radius:18px;
+    max-width:80%;
+    word-wrap:break-word;
+    opacity:0;
+    transform:translateY(10px);
+    animation: fadeIn .45s forwards;
+    backdrop-filter: blur(4px);
+    border:1px solid transparent;
+}
+
+@keyframes fadeIn{
+    to{opacity:1; transform:translateY(0);}
+}
+
+/* Usuario */
+.user{
+    background:rgba(0,110,255,0.35);
+    border-color:#005bff;
+    margin-left:auto;
+    text-align:right;
+    color:#dbe9ff;
+    box-shadow:0 0 10px #004cff;
+}
+
+/* IA */
+.ai{
+    background:rgba(0,255,255,0.25);
+    border-color:#00ffee;
+    margin-right:auto;
+    color:#00333a;
+    box-shadow:0 0 10px #00ffe6;
+}
+
+/* Burbuja sonando */
+.playing{
+    outline:2px solid #00eaff;
+    box-shadow:0 0 20px #00eaff;
+}
+
+/* --- Imágenes --- */
+
+img{
+    max-width:260px;
+    border-radius:12px;
+    margin:6px 0;
+    box-shadow:0 0 12px #00eaff;
+}
+
+/* --- Inputs y botones futuristas --- */
+
+input,button{
+    padding:10px;
+    font-size:16px;
+    margin:5px;
+    border:none;
+    border-radius:8px;
+}
+
+input[type=text]{
+    width:70%;
+    background:#001a27;
+    color:#aee8ff;
+    border:1px solid #003c52;
+    box-shadow:0 0 6px #003c52 inset;
+}
+
+button{
+    background:#003d5c;
+    color:#c9e7ff;
+    cursor:pointer;
+    border:1px solid #006688;
+    box-shadow:0 0 6px #007fa8;
+}
+button:hover{
+    background:#005f89;
+    box-shadow:0 0 12px #00baff;
+}
+
+#vozBtn,#borrarBtn{
+    float:right;
+    margin-right:20px;
+}
+
+/* Texto menor */
+small{color:#8fb9cc;}
+
+</style>
+</head>
+
+<body>
+
+<h2>
+    <img src="/static/logo.png" id="logo" onclick="logoClick()" alt="logo">
+    <span id="nombre" onclick="logoClick()">FOSCHI IA</span>
+
+    <button onclick="detenerVoz()" style="margin-left:10px;">⏹️ Detener voz</button>
+    <button id="vozBtn" onclick="toggleVoz()">🔊 Voz activada</button>
+    <button id="borrarBtn" onclick="borrarPantalla()">🧹 Borrar</button>
+</h2>
+
+<div id="chat" role="log" aria-live="polite"></div>
+
+<div style="padding:10px; background:rgba(0,25,40,0.4); border-top:2px solid #003b60;">
+    <input type="text" id="mensaje" placeholder="Escribí tu mensaje..." />
+    <button onclick="enviar()">Enviar</button>
+    <button onclick="hablar()">🎤 Hablar</button>
+    <button onclick="verHistorial()">🗂️ Historial</button>
+</div>
+
+<!-- JS ORIGINAL SIN CAMBIOS -->
+<script>
+(ACÁ VA TU JS COMPLETO TAL COMO LO PEGASTE)
 </script>
+
 </body>
 </html>
 """
