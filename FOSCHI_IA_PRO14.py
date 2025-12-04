@@ -500,155 +500,228 @@ HTML_TEMPLATE = """
 <title>{{APP_NAME}}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-body{font-family:Arial,system-ui,-apple-system,Segoe UI,Roboto,Helvetica;background:#000;color:#fff;margin:0;padding:0;}
-#chat{width:100%;height:70vh;overflow-y:auto;padding:10px;background:#111;}
-.message{margin:5px 0;padding:8px 12px;border-radius:15px;max-width:80%;word-wrap:break-word;opacity:0;transition:opacity 0.5s,border 0.5s;}
-.message.show{opacity:1;}
-.user{background:#3300ff;color:#fff;margin-left:auto;text-align:right;}
-.ai{background:#00ffff;color:#000;margin-right:auto;text-align:left;}
-a{color:#fff;text-decoration:underline;}
-img{max-width:300px;border-radius:10px;margin:5px 0;}
-input,button{padding:10px;font-size:16px;margin:5px;border:none;border-radius:5px;}
-input[type=text]{width:70%;background:#222;color:#fff;}
-button{background:#333;color:#fff;cursor:pointer;}
-button:hover{background:#555;}
-#vozBtn,#borrarBtn{float:right;margin-right:20px;}
-#logo{width:50px;vertical-align:middle;cursor:pointer;transition: transform 0.5s;}
-#logo:hover{transform:scale(1.15) rotate(6deg);}
-#nombre{font-weight:bold;margin-left:10px;cursor:pointer;}
-small{color:#aaa;}
-.playing{outline:2px solid #fff;}
+body{
+    font-family: Arial, system-ui, -apple-system, Segoe UI, Roboto, Helvetica;
+    background: #05070c;
+    color:#fff;
+    margin:0;
+    padding:0;
+}
+
+body::before {
+    content:"";
+    position:fixed;
+    inset:0;
+    background: radial-gradient(circle at 30% 30%, #0ff2 0%, transparent 60%),
+                radial-gradient(circle at 70% 70%, #0af2 0%, transparent 60%);
+    z-index:-1;
+    filter: blur(120px);
+}
+
+#chat{
+    width:100%;
+    height: calc(100vh - 140px);
+    overflow-y:auto;
+    padding:20px;
+    box-sizing:border-box;
+}
+
+.msg-user, .msg-ia{
+    padding:12px 16px;
+    margin:12px 0;
+    border-radius:14px;
+    max-width:85%;
+    backdrop-filter: blur(8px);
+}
+
+.msg-user{
+    background:#0099ff44;
+    margin-left:auto;
+    border:1px solid #00b7ff88;
+}
+
+.msg-ia{
+    background:#00ffc244;
+    border:1px solid #00ffbb88;
+}
+
+#input-area{
+    position:fixed;
+    bottom:0;
+    width:100%;
+    background:#000a;
+    padding:10px;
+    box-shadow:0 -3px 20px #000;
+    display:flex;
+    gap:8px;
+}
+
+#texto{
+    flex:1;
+    padding:12px;
+    border:2px solid #0ff6;
+    border-radius:12px;
+    background:#0008;
+    color:#fff;
+    outline:none;
+}
+
+#btn-enviar{
+    padding:12px 18px;
+    border:none;
+    border-radius:12px;
+    background:#00ffee;
+    color:#000;
+    font-weight:bold;
+    cursor:pointer;
+    transition:0.2s;
+}
+#btn-enviar:hover{
+    transform:scale(1.05);
+}
+
+#logo{
+    width:70px;
+    height:70px;
+    margin:20px auto 10px auto;
+    display:block;
+    cursor:pointer;
+    transition:0.3s;
+}
+
+#logo:active{
+    transform: scale(0.88) rotate(4deg);
+}
+
+@keyframes pulse {
+    0%{ transform:scale(1); }
+    50%{ transform:scale(1.1); }
+    100%{ transform:scale(1); }
+}
+.logo-pulse{ animation:pulse 0.6s ease; }
+
+#app-title{
+    text-align:center;
+    font-size:22px;
+    margin-bottom:10px;
+    cursor:pointer;
+    color:#0ff;
+    text-shadow:0 0 12px #0ff;
+}
 </style>
 </head>
-<body>
-<h2 style="text-align:center;margin:10px 0;">
-<img src="/static/logo.png" id="logo" onclick="logoClick()" alt="logo">
-<span id="nombre" onclick="logoClick()">FOSCHI IA</span>
-<button onclick="detenerVoz()" style="margin-left:10px;">⏹️ Detener voz</button>
-<button id="vozBtn" onclick="toggleVoz()">🔊 Voz activada</button>
-<button id="borrarBtn" onclick="borrarPantalla()">🧹 Borrar pantalla</button>
-</h2>
 
-<div id="chat" role="log" aria-live="polite"></div>
-<div style="padding:10px;">
-<input type="text" id="mensaje" placeholder="Escribí tu mensaje o hablá" />
-<button onclick="enviar()">Enviar</button>
-<button onclick="hablar()">🎤 Hablar</button>
-<button onclick="verHistorial()">🗂️ Ver historial</button>
+<body>
+
+<audio id="sound-logo" src="/static/click.mp3" preload="auto"></audio>
+
+<img id="logo" src="/static/logo.png" onclick="logoClick()">
+<div id="app-title" onclick="logoClick()">{{APP_NAME}}</div>
+
+<div id="chat"></div>
+
+<div id="input-area">
+    <input type="text" id="texto" placeholder="Escribe tu mensaje..."
+           onkeydown="if(event.key==='Enter') enviarMensaje();">
+    <button id="btn-enviar" onclick="enviarMensaje()">Enviar</button>
 </div>
 
 <script>
-// JS del chat (idéntico a tu versión)
-let usuario_id="{{usuario_id}}";
-let vozActiva=true,audioActual=null,mensajeActual=null;
 
-function logoClick(){ alert("FOSCHI NUNCA MUERE, TRASCIENDE..."); }
+/* ------------------- LOGO CLICK ------------------- */
+function logoClick(){
+    const frase = "✨ FOSCHI NUNCA MUERE, TRASCIENDE... ✨";
+    escribirMensajeIA(frase, 35);
 
-function hablarTexto(texto, div=null){
-  if(!vozActiva) return;
-  detenerVoz();
-  if(mensajeActual) mensajeActual.classList.remove("playing");
-  if(div) div.classList.add("playing");
-  mensajeActual = div;
-  audioActual = new Audio("/tts?texto=" + encodeURIComponent(texto));
-  audioActual.playbackRate = 1.25;
-  audioActual.onended = () => {
-    if(mensajeActual) mensajeActual.classList.remove("playing");
-    mensajeActual = null;
-  };
-  audioActual.play();
+    let sonido = document.getElementById("sound-logo");
+    sonido.currentTime = 0;
+    sonido.play();
+
+    let lg = document.getElementById("logo");
+    lg.classList.remove("logo-pulse");
+    void lg.offsetWidth;
+    lg.classList.add("logo-pulse");
 }
 
-function detenerVoz(){ if(audioActual){ try{audioActual.pause(); audioActual.currentTime=0; audioActual.src=""; audioActual.load(); audioActual=null; if(mensajeActual) mensajeActual.classList.remove("playing"); mensajeActual=null;}catch(e){console.log(e);}} }
+/* ------------------- TYPING IA ------------------- */
+function escribirMensajeIA(texto, velocidad){
+    let contenedor = document.getElementById("chat");
+    let burbuja = document.createElement("div");
+    burbuja.className = "msg-ia";
+    contenedor.appendChild(burbuja);
 
-function toggleVoz(estado=null){ vozActiva=estado!==null?estado:!vozActiva; document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada"; }
-
-function agregar(msg,cls,imagenes=[]){
-  let c=document.getElementById("chat"),div=document.createElement("div");
-  div.className="message "+cls; div.innerHTML=msg;
-  c.appendChild(div);
-  setTimeout(()=>div.classList.add("show"),50);
-  imagenes.forEach(url=>{ let img=document.createElement("img"); img.src=url; div.appendChild(img); });
-  c.scroll({top:c.scrollHeight,behavior:"smooth"});
-  if(cls==="ai") hablarTexto(msg,div);
-}
-
-function enviar(){
-  let msg=document.getElementById("mensaje").value.trim(); if(!msg) return;
-  agregar(msg,"user"); document.getElementById("mensaje").value="";
-  fetch("/preguntar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mensaje: msg, usuario_id: usuario_id})})
-  .then(r=>r.json()).then(data=>{ agregar(data.texto,"ai",data.imagenes); if(data.borrar_historial){document.getElementById("chat").innerHTML="";} })
-  .catch(e=>{ agregar("Error al comunicarse con el servidor.","ai"); console.error(e); });
-}
-
-document.getElementById("mensaje").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); enviar(); } });
-
-function hablar(){
-  if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window){
-    const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new Rec();
-    recognition.lang='es-AR'; recognition.continuous=false; recognition.interimResults=false;
-    recognition.onresult=function(event){ document.getElementById("mensaje").value=event.results[0][0].transcript.toLowerCase(); enviar(); }
-    recognition.onerror=function(e){console.log(e); alert("Error reconocimiento de voz: " + e.error); }
-    recognition.start();
-  }else{alert("Tu navegador no soporta reconocimiento de voz.");}
-}
-
-function verHistorial(){
-  fetch("/historial/"+usuario_id).then(r=>r.json()).then(data=>{
-    document.getElementById("chat").innerHTML="";
-    if(data.length===0){agregar("No hay historial todavía.","ai");return;}
-    data.slice(-20).forEach(e=>{ agregar(`<small>${e.fecha}</small><br>${e.usuario}`,"user"); agregar(`<small>${e.fecha}</small><br>${e.foschi}`,"ai"); });
-  });
-}
-
-function borrarPantalla(){ document.getElementById("chat").innerHTML=""; }
-
-window.onload=function(){
-  agregar("👋 Hola, soy FOSCHI IA. Obteniendo tu ubicación...","ai");
-  if(navigator.geolocation){
-    navigator.geolocation.getCurrentPosition(pos=>{
-      fetch(`/clima?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`)
-      .then(r=>r.text()).then(clima=>{ agregar(`🌤️ ${clima}`,"ai"); })
-      .catch(e=>{ agregar("No pude obtener el clima automáticamente.","ai"); console.error(e); });
-    },()=>{ agregar("No pude obtener tu ubicación (permiso denegado o error).","ai"); }, {timeout:8000});
-  } else { agregar("Tu navegador no soporta geolocalización.","ai"); }
-};
-
-// ✅✅✅ RECORDATORIOS AUTOMÁTICOS ✅✅✅
-function chequearRecordatorios() {
-  fetch("/avisos", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ usuario_id: usuario_id })
-  })
-  .then(r => r.json())
-  .then(data => {
-    if (Array.isArray(data) && data.length > 0) {
-      data.forEach(r => {
-        const motivo = r.motivo || "(sin motivo)";
-        agregar(`⏰ Tenés un recordatorio: ${motivo}`, "ai");
-        mostrarNotificacion(`⏰ Tenés un recordatorio`, motivo);
-      });
+    let i = 0;
+    function escribir(){
+        if(i < texto.length){
+            burbuja.innerHTML += texto.charAt(i);
+            i++;
+            contenedor.scrollTop = contenedor.scrollHeight;
+            setTimeout(escribir, velocidad);
+        }
     }
-  })
-  .catch(e => console.error("Error avisos:", e));
+    escribir();
 }
 
-function mostrarNotificacion(titulo, cuerpo) {
-  if (!("Notification" in window)) return;
-  if (Notification.permission === "granted") {
-    new Notification(titulo, { body: cuerpo });
-  } else if (Notification.permission !== "denied") {
-    Notification.requestPermission().then(perm => {
-      if (perm === "granted") {
-        new Notification(titulo, { body: cuerpo });
-      }
+/* ------------------- AGREGAR MENSAJES ------------------- */
+function agregarMensajeUsuario(msg){
+    let c = document.getElementById("chat");
+    let d = document.createElement("div");
+    d.className="msg-user";
+    d.innerHTML = msg;
+    c.appendChild(d);
+    c.scrollTop = c.scrollHeight;
+}
+
+function agregarMensajeIA(msg){
+    let c = document.getElementById("chat");
+    let d = document.createElement("div");
+    d.className="msg-ia";
+    d.innerHTML = msg.replace(/\n/g,"<br>");
+    c.appendChild(d);
+    c.scrollTop = c.scrollHeight;
+}
+
+/* ------------------- ENVIAR MENSAJE ------------------- */
+function enviarMensaje(){
+    let texto = document.getElementById("texto").value.trim();
+    if(texto==="") return;
+
+    agregarMensajeUsuario(texto);
+    document.getElementById("texto").value = "";
+
+    fetch("/mensaje",{
+        method:"POST",
+        headers:{ "Content-Type":"application/json"},
+        body:JSON.stringify({mensaje:texto})
+    })
+    .then(r=>r.json())
+    .then(data=>{
+        agregarMensajeIA(data.respuesta);
+        reproducirVoz(data.respuesta);
     });
-  }
 }
 
-setInterval(chequearRecordatorios, 10000);
+/* ------------------- TTS ------------------- */
+function reproducirVoz(txt){
+    fetch("/tts?texto=" + encodeURIComponent(txt))
+    .then(r => r.blob())
+    .then(blob => {
+        let url = URL.createObjectURL(blob);
+        new Audio(url).play();
+    });
+}
+
+/* ------------------- MIC ------------------- */
+function hablar(){
+    fetch("/stt",{method:"POST"})
+    .then(r=>r.json())
+    .then(data=>{
+        if(data.texto){
+            document.getElementById("texto").value = data.texto;
+            enviarMensaje();
+        }
+    });
+}
 
 </script>
 </body>
