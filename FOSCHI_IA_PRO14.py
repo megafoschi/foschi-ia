@@ -499,29 +499,139 @@ HTML_TEMPLATE = """
 <head>
 <title>{{APP_NAME}}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+
 <style>
-body{font-family:Arial,system-ui,-apple-system,Segoe UI,Roboto,Helvetica;background:#000;color:#fff;margin:0;padding:0;}
-#chat{width:100%;height:70vh;overflow-y:auto;padding:10px;background:#111;}
-.message{margin:5px 0;padding:8px 12px;border-radius:15px;max-width:80%;word-wrap:break-word;opacity:0;transition:opacity 0.5s,border 0.5s;}
-.message.show{opacity:1;}
-.user{background:#3300ff;color:#fff;margin-left:auto;text-align:right;}
-.ai{background:#00ffff;color:#000;margin-right:auto;text-align:left;}
-a{color:#fff;text-decoration:underline;}
-img{max-width:300px;border-radius:10px;margin:5px 0;}
-input,button{padding:10px;font-size:16px;margin:5px;border:none;border-radius:5px;}
-input[type=text]{width:70%;background:#222;color:#fff;}
-button{background:#333;color:#fff;cursor:pointer;}
-button:hover{background:#555;}
-#vozBtn,#borrarBtn{float:right;margin-right:20px;}
-#logo{width:50px;vertical-align:middle;cursor:pointer;transition: transform 0.5s;}
-#logo:hover{transform:scale(1.15) rotate(6deg);}
-#nombre{font-weight:bold;margin-left:10px;cursor:pointer;}
-small{color:#aaa;}
-.playing{outline:2px solid #fff;}
+body{
+ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+ background:#000814;
+ color:#00eaff;
+ margin:0;
+ padding:0;
+ text-shadow:0 0 6px #00eaff;
+}
+
+#chat{
+ width:100%;
+ height:70vh;
+ overflow-y:auto;
+ padding:10px;
+ background: linear-gradient(#00111a,#000814);
+ border-top:2px solid #00eaff44;
+ border-bottom:2px solid #00eaff44;
+ box-shadow: inset 0 0 15px #00eaff55;
+}
+
+.message{
+ margin:5px 0;
+ padding:8px 12px;
+ border-radius:15px;
+ max-width:80%;
+ word-wrap:break-word;
+ opacity:0;
+ transition:opacity 0.5s, box-shadow 0.5s, background 0.5s;
+ font-size:15px;
+}
+
+.message.show{ opacity:1; }
+
+.user{
+ background:rgba(51,0,255,0.3);
+ color:#b4b7ff;
+ margin-left:auto;
+ text-align:right;
+ border:1px solid #4455ff;
+ box-shadow:0 0 8px #3344ff;
+}
+
+.ai{
+ background:rgba(0,255,255,0.2);
+ color:#00eaff;
+ margin-right:auto;
+ text-align:left;
+ border:1px solid #00eaff;
+ box-shadow:0 0 10px #00eaff;
+}
+
+a{
+ color:#00eaff;
+ text-decoration:underline;
+}
+
+img{
+ max-width:300px;
+ border-radius:10px;
+ margin:5px 0;
+ box-shadow:0 0 10px #00eaff88;
+ border:1px solid #00eaff55;
+}
+
+input,button{
+ padding:10px;
+ font-size:16px;
+ margin:5px;
+ border:none;
+ border-radius:5px;
+ outline:none;
+}
+
+input[type=text]{
+ width:70%;
+ background:#00121d;
+ color:#00eaff;
+ border:1px solid #003344;
+ box-shadow:0 0 6px #00eaff55 inset;
+}
+
+button{
+ background:#001f2e;
+ color:#00eaff;
+ cursor:pointer;
+ border:1px solid #006688;
+ text-shadow:0 0 4px #00eaff;
+ box-shadow:0 0 8px #0099bb;
+ transition:0.25s;
+}
+
+button:hover{
+ background:#003547;
+ box-shadow:0 0 14px #00eaff;
+}
+
+#vozBtn,#borrarBtn{
+ float:right;
+ margin-right:20px;
+}
+
+#logo{
+ width:50px;
+ vertical-align:middle;
+ cursor:pointer;
+ transition: transform 0.5s, filter 0.5s;
+ filter: drop-shadow(0 0 8px #00eaff);
+}
+
+#logo:hover{
+ transform:scale(1.15) rotate(6deg);
+ filter:drop-shadow(0 0 14px #00eaff);
+}
+
+#nombre{
+ font-weight:bold;
+ margin-left:10px;
+ cursor:pointer;
+ font-size:24px;
+ letter-spacing:1px;
+ color:#00eaff;
+ text-shadow:0 0 12px #00eaff;
+}
+
+small{ color:#7ddfff; }
+.playing{ outline:2px solid #00eaff; box-shadow:0 0 14px #00eaff; }
 </style>
 </head>
+
 <body>
-<h2 style="text-align:center;margin:10px 0;">
+<h2 style="text-align:center;margin:10px 0; text-shadow:0 0 12px #00eaff;">
 <img src="/static/logo.png" id="logo" onclick="logoClick()" alt="logo">
 <span id="nombre" onclick="logoClick()">FOSCHI IA</span>
 <button onclick="detenerVoz()" style="margin-left:10px;">⏹️ Detener voz</button>
@@ -538,7 +648,6 @@ small{color:#aaa;}
 </div>
 
 <script>
-// JS del chat (idéntico a tu versión)
 let usuario_id="{{usuario_id}}";
 let vozActiva=true,audioActual=null,mensajeActual=null;
 
@@ -615,7 +724,6 @@ window.onload=function(){
   } else { agregar("Tu navegador no soporta geolocalización.","ai"); }
 };
 
-// ✅✅✅ RECORDATORIOS AUTOMÁTICOS ✅✅✅
 function chequearRecordatorios() {
   fetch("/avisos", {
     method: "POST",
@@ -649,7 +757,6 @@ function mostrarNotificacion(titulo, cuerpo) {
 }
 
 setInterval(chequearRecordatorios, 10000);
-
 </script>
 </body>
 </html>
