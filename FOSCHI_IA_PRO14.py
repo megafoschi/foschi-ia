@@ -17,6 +17,7 @@ from gtts import gTTS
 import requests
 import urllib.parse
 from openai import OpenAI
+client = OpenAI()
 
 # ---------------- CONFIG ----------------
 APP_NAME = "FOSCHI IA WEB"
@@ -566,12 +567,19 @@ img{
 }
 
 input,button{
- padding:10px;
- font-size:16px;
- margin:5px;
- border:none;
- border-radius:5px;
- outline:none;
+    padding:10px;
+    font-size:16px;
+    margin:5px;
+    border:none;
+    border-radius:5px;
+    background:#001d29;
+    color:#00eaff;
+    box-shadow:0 0 6px #00eaff88;
+}
+
+input:focus,button:active{
+    outline:none;
+    box-shadow:0 0 10px #00eaff;
 }
 
 input[type=text]{
@@ -880,7 +888,6 @@ def tts():
     except Exception as e:
         return f"Error TTS: {e}", 500
 
-
 @app.route("/clima")
 def clima():
     lat = request.args.get("lat")
@@ -910,6 +917,8 @@ def avisos():
             restantes.append(r)
     save_recordatorios(restantes)
     return jsonify(vencidos)
+
+# ---------------- AUDIO A WORD DOCX ----------------
 from werkzeug.utils import secure_filename
 from docx import Document
 
@@ -926,6 +935,8 @@ def upload_audio():
     temp_path = os.path.join("temp", f"{uuid.uuid4()}_{filename}")
     os.makedirs("temp", exist_ok=True)
     file.save(temp_path)
+
+    docx_path = None  # PREVENIR ERROR EN finally
 
     try:
         # ---- TRANSCRIPCIÓN OPENAI ----
@@ -962,10 +973,12 @@ def upload_audio():
         return f"Error en transcripción: {str(e)}", 500
 
     finally:
-        # Limpiar el docx después de enviar
-        if os.path.exists(docx_path):
-            try: os.remove(docx_path)
-            except: pass
+        # Limpiar archivo después de la descarga
+        if docx_path and os.path.exists(docx_path):
+            try:
+                os.remove(docx_path)
+            except:
+                pass
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
