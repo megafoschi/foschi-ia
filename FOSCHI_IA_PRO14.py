@@ -910,6 +910,62 @@ def avisos():
             restantes.append(r)
     save_recordatorios(restantes)
     return jsonify(vencidos)
+from werkzeug.utils import secure_filename
+from docx import Document
+
+@app.route("/upload_audio", methods=["POST"])
+def upload_audio():
+    if "audio" not in request.files:
+        return "No se envió archivo", 400
+    
+    file = request.files["audio"]
+    usuario_id = request.form.get("usuario_id", "anon")
+
+    # Guardar archivo temporal
+    filename = secure_filename(file.filename)
+    temp_path = os.path.join("temp", f"{uuid.uuid4()}_{filename}")
+    os.makedirs("temp", exist_ok=True)
+    file.save(temp_path)
+
+    try:
+        # ---- TRANSCRIPCIÓN OPENAI ----
+        with open(temp_path, "rb") as f:
+            transcript = client.audio.transcriptions.create(
+                model="gpt-4o-transcribe",
+                file=f,
+            )
+
+        texto_transcrito = transcript.text
+        
+        # ---- CREAR DOCX ----
+        nombre_docx = filename.rsplit(".", 1)[0] + ".docx"
+        docx_path = os.path.join("temp", nombre_docx)
+
+        doc = Document()
+        doc.add_heading("Transcripción de audio", level=1)
+        doc.add_paragraph(texto_transcrito)
+        doc.add_page_break()
+        doc.save(docx_path)
+
+        # ---- BORRAR ARCHIVO DE AUDIO ----
+        os.remove(temp_path)
+
+        # ---- ENVIAR DOCX ----
+        return send_file(
+            docx_path,
+            as_attachment=True,
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            download_name=nombre_docx
+        )
+
+    except Exception as e:
+        return f"Error en transcripción: {str(e)}", 500
+
+    finally:
+        # Limpiar el docx después de enviar
+        if os.path.exists(docx_path):
+            try: os.remove(docx_path)
+            except: pass
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
