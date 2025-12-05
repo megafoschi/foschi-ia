@@ -627,6 +627,31 @@ button:hover{
 
 small{ color:#7ddfff; }
 .playing{ outline:2px solid #00eaff; box-shadow:0 0 14px #00eaff; }
+
+/* Estilos para el clip a la izquierda */
+#inputBar {
+  display:flex;
+  align-items:center;
+  gap:6px;
+  padding:10px;
+}
+#clipBtn {
+  width:44px;
+  height:44px;
+  border-radius:8px;
+  background:#001f2e;
+  border:1px solid #006688;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  box-shadow:0 0 8px #0099bb;
+  font-size:20px;
+}
+#clipBtn:hover{ background:#003547; }
+#audioInput {
+  display:none;
+}
 </style>
 </head>
 
@@ -640,11 +665,18 @@ small{ color:#7ddfff; }
 </h2>
 
 <div id="chat" role="log" aria-live="polite"></div>
-<div style="padding:10px;">
-<input type="text" id="mensaje" placeholder="Escribí tu mensaje o hablá" />
-<button onclick="enviar()">Enviar</button>
-<button onclick="hablar()">🎤 Hablar</button>
-<button onclick="verHistorial()">🗂️ Ver historial</button>
+
+<!-- Barra de entrada: clip a la izquierda, input central, botones a la derecha -->
+<div id="inputBar">
+  <!-- Clip (izquierda) -->
+  <div id="clipBtn" title="Adjuntar audio (mp3 / wav)" onclick="document.getElementById('audioInput').click();">📎</div>
+  <input id="audioInput" type="file" accept=".mp3,audio/*,.wav" />
+
+  <!-- Campo de texto (igual que antes) -->
+  <input type="text" id="mensaje" placeholder="Escribí tu mensaje o hablá" />
+  <button onclick="enviar()">Enviar</button>
+  <button onclick="hablar()">🎤 Hablar</button>
+  <button onclick="verHistorial()">🗂️ Ver historial</button>
 </div>
 
 <script>
@@ -724,6 +756,56 @@ window.onload=function(){
   } else { agregar("Tu navegador no soporta geolocalización.","ai"); }
 };
 
+// --- NUEVO: manejar subida automática del audio, transcribir y forzar descarga del .docx ---
+document.getElementById("audioInput").addEventListener("change", async (ev) => {
+  const file = ev.target.files[0];
+  if(!file) return;
+  // mostrar mensaje en chat
+  agregar(`Subiendo y transcribiendo: <b>${file.name}</b> ...`, "user");
+  try {
+    const fd = new FormData();
+    fd.append("audio", file);
+    fd.append("usuario_id", usuario_id);
+    const resp = await fetch("/upload_audio", { method: "POST", body: fd });
+    if(!resp.ok){
+      const txt = await resp.text();
+      agregar("Error en transcripción: " + txt, "ai");
+      return;
+    }
+    const blob = await resp.blob();
+
+    // intentar obtener filename desde headers
+    let filename = file.name.replace(/\\.[^.]+$/, '') + ".docx";
+    const cd = resp.headers.get("Content-Disposition");
+    if(cd){
+      const m = cd.match(/filename\\*=UTF-8''([^;]+)|filename=\\"?([^\\";]+)\\"?/);
+      if(m){
+        filename = decodeURIComponent(m[1] || m[2] || filename);
+      }
+    }
+
+    // forzar descarga automática
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    agregar(`✅ Transcripción lista: <b>${filename}</b> (descargada)`, "ai");
+
+  } catch (e){
+    console.error(e);
+    agregar("Error al subir/transcribir el audio.", "ai");
+  } finally {
+    // limpiar input para permitir re-subir mismo archivo si hace falta
+    ev.target.value = "";
+  }
+});
+// --- fin nuevo ---
+
 function chequearRecordatorios() {
   fetch("/avisos", {
     method: "POST",
@@ -797,6 +879,74 @@ def tts():
         return send_file(archivo, mimetype="audio/mpeg")
     except Exception as e:
         return f"Error TTS: {e}", 500
+
+@app.route("/tts")
+def tts():
+    texto = request.args.get("texto","")
+    try:
+        tts_obj = gTTS(text=texto, lang="es", slow=False, tld="com.mx")
+        archivo = io.BytesIO()
+        tts_obj.write_to_fp(archivo)
+        archivo.seek(0)
+        return send_file(archivo, mimetype="audio/mpeg")
+    except Exception as e:
+        return f"Error TTS: {e}", 500
+
+
+# =============================
+#  RUTA PARA TRANSCRIBIR AUDIO
+# =============================
+
+from docx import Document
+from werkzeug.utils import secure_filename
+import tempfile
+import shutil
+import threading
+
+@app.route("/upload_audio", methods=["POST"])
+def upload_audio():
+    if "audio" not in request.files:
+        return jsonify({"error": "No se envió ningún archivo"}), 400
+
+    audio_file = request.files["audio"]
+    if audio_file.filename == "":
+        return jsonify({"error": "Archivo sin nombre"}), 400
+
+    filename = secure_filename(audio_file.filename)
+
+    temp_dir = tempfile.mkdtemp()
+    audio_path = os.path.join(temp_dir, filename)
+    audio_file.save(audio_path)
+
+    # ======== WHISPER API =========
+    client = OpenAI()
+    with open(audio_path, "rb") as f:
+        transcript = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=f
+        )
+
+    # ========= CREAR WORD =========
+    docx_filename = filename.rsplit(".", 1)[0] + ".docx"
+    docx_path = os.path.join(temp_dir, docx_filename)
+
+    doc = Document()
+    doc.add_heading("Transcripción de audio", level=1)
+    doc.add_paragraph(transcript.text)
+    doc.save(docx_path)
+
+    response = send_file(docx_path, as_attachment=True, download_name=docx_filename)
+
+    # ======= LIMPIAR SERVIDOR =======
+    def cleanup():
+        try:
+            shutil.rmtree(temp_dir)
+        except:
+            pass
+
+    threading.Thread(target=cleanup).start()
+
+    return response
 
 @app.route("/clima")
 def clima():
