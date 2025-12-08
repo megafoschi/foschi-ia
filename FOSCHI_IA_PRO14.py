@@ -19,13 +19,20 @@ import urllib.parse
 from openai import OpenAI
 client = OpenAI()
 
+# --- librerías adicionales para documentos ---
+import PyPDF2
+from docx import Document as DocxDocument  # para crear / leer .docx
+import docx as docx_reader  # para leer .docx (Document ya importado para crear)
+
 # ---------------- CONFIG ----------------
 APP_NAME = "FOSCHI IA WEB"
 CREADOR = "Gustavo Enrique Foschi"
 DATA_DIR = "data"
 STATIC_DIR = "static"
+TEMP_DIR = os.path.join(DATA_DIR, "temp_docs")
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(STATIC_DIR, exist_ok=True)
+os.makedirs(TEMP_DIR, exist_ok=True)
 
 # ---------------- KEYS ---------------- (usa variables de entorno)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -494,14 +501,15 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
     learn_from_message(usuario, mensaje, texto)
     return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
+# ---------------- Plantilla HTML (modificada para menu clip + subir pdf/docx) ----------------
 HTML_TEMPLATE = """  
 <!doctype html>
 <html>
 <head>
 <title>{{APP_NAME}}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-
 <style>
+/* (mantengo tus estilos originales...) */
 body{
  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
  background:#000814;
@@ -510,7 +518,6 @@ body{
  padding:0;
  text-shadow:0 0 6px #00eaff;
 }
-
 #chat{
  width:100%;
  height:70vh;
@@ -521,7 +528,6 @@ body{
  border-bottom:2px solid #00eaff44;
  box-shadow: inset 0 0 15px #00eaff55;
 }
-
 .message{
  margin:5px 0;
  padding:8px 12px;
@@ -532,9 +538,7 @@ body{
  transition:opacity 0.5s, box-shadow 0.5s, background 0.5s;
  font-size:15px;
 }
-
 .message.show{ opacity:1; }
-
 .user{
  background:rgba(51,0,255,0.3);
  color:#b4b7ff;
@@ -543,7 +547,6 @@ body{
  border:1px solid #4455ff;
  box-shadow:0 0 8px #3344ff;
 }
-
 .ai{
  background:rgba(0,255,255,0.2);
  color:#00eaff;
@@ -552,114 +555,28 @@ body{
  border:1px solid #00eaff;
  box-shadow:0 0 10px #00eaff;
 }
+a{ color:#00eaff; text-decoration:underline; }
+img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00eaff88; border:1px solid #00eaff55; }
+input,button{ padding:10px; font-size:16px; margin:5px; border:none; border-radius:5px; background:#001d29; color:#00eaff; box-shadow:0 0 6px #00eaff88; }
+input:focus,button:active{ outline:none; box-shadow:0 0 10px #00eaff; }
+input[type=text]{ width:70%; background:#00121d; color:#00eaff; border:1px solid #003344; box-shadow:0 0 6px #00eaff55 inset; }
+button{ background:#001f2e; color:#00eaff; cursor:pointer; border:1px solid #006688; text-shadow:0 0 4px #00eaff; box-shadow:0 0 8px #0099bb; transition:0.25s; }
+button:hover{ background:#003547; box-shadow:0 0 14px #00eaff; }
+#vozBtn,#borrarBtn{ float:right; margin-right:20px; }
+#logo{ width:50px; vertical-align:middle; cursor:pointer; transition: transform 0.5s, filter 0.5s; filter: drop-shadow(0 0 8px #00eaff); }
+#logo:hover{ transform:scale(1.15) rotate(6deg); filter:drop-shadow(0 0 14px #00eaff); }
+#nombre{ font-weight:bold; margin-left:10px; cursor:pointer; font-size:24px; letter-spacing:1px; color:#00eaff; text-shadow:0 0 12px #00eaff; }
+small{ color:#7ddfff; } .playing{ outline:2px solid #00eaff; box-shadow:0 0 14px #00eaff; }
 
-a{
- color:#00eaff;
- text-decoration:underline;
-}
-
-img{
- max-width:300px;
- border-radius:10px;
- margin:5px 0;
- box-shadow:0 0 10px #00eaff88;
- border:1px solid #00eaff55;
-}
-
-input,button{
-    padding:10px;
-    font-size:16px;
-    margin:5px;
-    border:none;
-    border-radius:5px;
-    background:#001d29;
-    color:#00eaff;
-    box-shadow:0 0 6px #00eaff88;
-}
-
-input:focus,button:active{
-    outline:none;
-    box-shadow:0 0 10px #00eaff;
-}
-
-input[type=text]{
- width:70%;
- background:#00121d;
- color:#00eaff;
- border:1px solid #003344;
- box-shadow:0 0 6px #00eaff55 inset;
-}
-
-button{
- background:#001f2e;
- color:#00eaff;
- cursor:pointer;
- border:1px solid #006688;
- text-shadow:0 0 4px #00eaff;
- box-shadow:0 0 8px #0099bb;
- transition:0.25s;
-}
-
-button:hover{
- background:#003547;
- box-shadow:0 0 14px #00eaff;
-}
-
-#vozBtn,#borrarBtn{
- float:right;
- margin-right:20px;
-}
-
-#logo{
- width:50px;
- vertical-align:middle;
- cursor:pointer;
- transition: transform 0.5s, filter 0.5s;
- filter: drop-shadow(0 0 8px #00eaff);
-}
-
-#logo:hover{
- transform:scale(1.15) rotate(6deg);
- filter:drop-shadow(0 0 14px #00eaff);
-}
-
-#nombre{
- font-weight:bold;
- margin-left:10px;
- cursor:pointer;
- font-size:24px;
- letter-spacing:1px;
- color:#00eaff;
- text-shadow:0 0 12px #00eaff;
-}
-
-small{ color:#7ddfff; }
-.playing{ outline:2px solid #00eaff; box-shadow:0 0 14px #00eaff; }
-
-/* Estilos para el clip a la izquierda */
-#inputBar {
-  display:flex;
-  align-items:center;
-  gap:6px;
-  padding:10px;
-}
-#clipBtn {
-  width:44px;
-  height:44px;
-  border-radius:8px;
-  background:#001f2e;
-  border:1px solid #006688;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  cursor:pointer;
-  box-shadow:0 0 8px #0099bb;
-  font-size:20px;
-}
+/* Estilos para el clip y su menú */
+#inputBar { display:flex; align-items:center; gap:6px; padding:10px; position:relative; }
+#clipBtn { width:44px; height:44px; border-radius:8px; background:#001f2e; border:1px solid #006688; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 0 8px #0099bb; font-size:20px; }
 #clipBtn:hover{ background:#003547; }
-#audioInput {
-  display:none;
-}
+#adjuntos_menu { position:absolute; left:6px; top:-120px; display:none; background:#001f2e; border:1px solid #003547; padding:8px; border-radius:8px; box-shadow:0 6px 16px rgba(0,0,0,0.6); z-index:50; }
+#adjuntos_menu button{ display:block; width:160px; margin:6px; text-align:left; }
+.hidden_file_input{ display:none; }
+.summary-options { margin-top:6px; display:flex; gap:6px; flex-wrap:wrap; }
+.summary-options button{ padding:6px 10px; font-size:14px; }
 </style>
 </head>
 
@@ -677,8 +594,16 @@ small{ color:#7ddfff; }
 <!-- Barra de entrada: clip a la izquierda, input central, botones a la derecha -->
 <div id="inputBar">
   <!-- Clip (izquierda) -->
-  <div id="clipBtn" title="Adjuntar audio (mp3 / wav)" onclick="document.getElementById('audioInput').click();">📎</div>
-  <input id="audioInput" type="file" accept=".mp3,audio/*,.wav" />
+  <div style="position:relative;">
+    <div id="clipBtn" title="Adjuntar" onclick="toggleAdjuntosMenu()">📎</div>
+    <div id="adjuntos_menu" aria-hidden="true">
+      <button onclick="document.getElementById('audioInput').click()">🎵 Subir Audio (mp3/wav)</button>
+      <button onclick="document.getElementById('archivo_pdf_word').click()">📄 Subir PDF / WORD</button>
+    </div>
+  </div>
+
+  <input id="audioInput" class="hidden_file_input" type="file" accept=".mp3,audio/*,.wav" />
+  <input id="archivo_pdf_word" class="hidden_file_input" type="file" accept=".pdf,.docx" />
 
   <!-- Campo de texto (igual que antes) -->
   <input type="text" id="mensaje" placeholder="Escribí tu mensaje o hablá" />
@@ -720,6 +645,7 @@ function agregar(msg,cls,imagenes=[]){
   imagenes.forEach(url=>{ let img=document.createElement("img"); img.src=url; div.appendChild(img); });
   c.scroll({top:c.scrollHeight,behavior:"smooth"});
   if(cls==="ai") hablarTexto(msg,div);
+  return div;
 }
 
 function enviar(){
@@ -764,11 +690,28 @@ window.onload=function(){
   } else { agregar("Tu navegador no soporta geolocalización.","ai"); }
 };
 
-// --- NUEVO: manejar subida automática del audio, transcribir y forzar descarga del .docx ---
+/* --- MENU ADJUNTOS --- */
+function toggleAdjuntosMenu(){
+  const m = document.getElementById("adjuntos_menu");
+  m.style.display = m.style.display === "block" ? "none" : "block";
+  // cerrar automáticamente al hacer clic afuera
+  if(m.style.display === "block"){
+    setTimeout(()=>{ window.addEventListener('click', closeMenuOnClickOutside); }, 50);
+  }
+}
+function closeMenuOnClickOutside(e){
+  const menu = document.getElementById("adjuntos_menu");
+  const clip = document.getElementById("clipBtn");
+  if(!menu.contains(e.target) && !clip.contains(e.target)){
+    menu.style.display = "none";
+    window.removeEventListener('click', closeMenuOnClickOutside);
+  }
+}
+
+/* --- SUBIR AUDIO (tu flujo existente) --- */
 document.getElementById("audioInput").addEventListener("change", async (ev) => {
   const file = ev.target.files[0];
   if(!file) return;
-  // mostrar mensaje en chat
   agregar(`Subiendo y transcribiendo: <b>${file.name}</b> ...`, "user");
   try {
     const fd = new FormData();
@@ -781,8 +724,6 @@ document.getElementById("audioInput").addEventListener("change", async (ev) => {
       return;
     }
     const blob = await resp.blob();
-
-    // intentar obtener filename desde headers
     let filename = file.name.replace(/\\.[^.]+$/, '') + ".docx";
     const cd = resp.headers.get("Content-Disposition");
     if(cd){
@@ -791,28 +732,89 @@ document.getElementById("audioInput").addEventListener("change", async (ev) => {
         filename = decodeURIComponent(m[1] || m[2] || filename);
       }
     }
-
-    // forzar descarga automática
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-
+    const a = document.createElement("a"); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
     agregar(`✅ Transcripción lista: <b>${filename}</b> (descargada)`, "ai");
-
   } catch (e){
     console.error(e);
     agregar("Error al subir/transcribir el audio.", "ai");
   } finally {
-    // limpiar input para permitir re-subir mismo archivo si hace falta
     ev.target.value = "";
   }
 });
-// --- fin nuevo ---
+
+/* --- SUBIR PDF / DOCX: primer paso = enviar archivo y obtener doc_id --- */
+document.getElementById("archivo_pdf_word").addEventListener("change", async (ev) => {
+  const file = ev.target.files[0];
+  if(!file) return;
+  const msgDiv = agregar(`Subiendo documento: <b>${file.name}</b> ...`, "user");
+  try {
+    const fd = new FormData();
+    fd.append("archivo", file);
+    fd.append("usuario_id", usuario_id);
+    const resp = await fetch("/upload_doc", { method: "POST", body: fd });
+    if(!resp.ok){
+      const txt = await resp.text();
+      agregar("Error al subir documento: " + txt, "ai");
+      return;
+    }
+    const data = await resp.json(); // { doc_id, name, snippet }
+    // mostrar opciones para tipo de resumen (breve / normal / profundo)
+    const optHtml = `
+      <div class="summary-options" id="opts_${data.doc_id}">
+        <span style="margin-right:6px;">Elegí tipo de resumen para <b>${data.name}</b>:</span>
+        <button onclick="requestSummary('${data.doc_id}','breve')">🔹 Breve</button>
+        <button onclick="requestSummary('${data.doc_id}','normal')">🔸 Normal</button>
+        <button onclick="requestSummary('${data.doc_id}','profundo')">🔺 Profundo</button>
+        <button onclick="cancelDoc('${data.doc_id}')">✖️ Cancelar</button>
+      </div>
+    `;
+    const container = agregar(optHtml,"ai");
+    // guardar referencia en el elemento para posible uso (no necesario)
+  } catch (e){
+    console.error(e);
+    agregar("Error subiendo documento.", "ai");
+  } finally {
+    ev.target.value = "";
+  }
+});
+
+/* --- Solicitar resumen: envía doc_id + modo y descarga el .docx generado --- */
+async function requestSummary(doc_id, modo){
+  // Mostrar aviso
+  const status = agregar(`Generando resumen (${modo})...`, "user");
+  try {
+    const resp = await fetch("/resumir_doc", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ doc_id: doc_id, modo: modo, usuario_id: usuario_id })
+    });
+    if(!resp.ok){
+      const txt = await resp.text();
+      agregar("Error generando resumen: " + txt, "ai");
+      return;
+    }
+    const blob = await resp.blob();
+    // nombre con fecha: Resumen_YYYY-MM-DD.docx
+    const hoy = new Date();
+    const yyyy = hoy.getFullYear();
+    const mm = String(hoy.getMonth()+1).padStart(2,'0');
+    const dd = String(hoy.getDate()).padStart(2,'0');
+    const filename = `Resumen_${yyyy}-${mm}-${dd}.docx`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    agregar(`✅ Resumen generado y descargado: <b>${filename}</b>`, "ai");
+  } catch (e){
+    console.error(e);
+    agregar("Error al solicitar el resumen.", "ai");
+  }
+}
+
+/* permitir cancelar/ocultar opciones si el usuario lo desea */
+function cancelDoc(doc_id){
+  const el = document.getElementById(`opts_${doc_id}`);
+  if(el) el.remove();
+}
 
 function chequearRecordatorios() {
   fetch("/avisos", {
@@ -918,9 +920,8 @@ def avisos():
     save_recordatorios(restantes)
     return jsonify(vencidos)
 
-# ---------------- AUDIO A WORD DOCX ----------------
+# ---------------- AUDIO A WORD DOCX (mantenido como estaba) ----------------
 from werkzeug.utils import secure_filename
-from docx import Document
 
 @app.route("/upload_audio", methods=["POST"])
 def upload_audio():
@@ -952,7 +953,7 @@ def upload_audio():
         nombre_docx = filename.rsplit(".", 1)[0] + ".docx"
         docx_path = os.path.join("temp", nombre_docx)
 
-        doc = Document()
+        doc = DocxDocument()
         doc.add_heading("Transcripción de audio", level=1)
         doc.add_paragraph(texto_transcrito)
         doc.add_page_break()
@@ -979,6 +980,185 @@ def upload_audio():
                 os.remove(docx_path)
             except:
                 pass
+
+# ---------------- NUEVOS ENDPOINTS: subir documento (extraer texto) y resumir (crear .docx) ----------------
+def extract_text_from_pdf(path):
+    text = ""
+    try:
+        with open(path, "rb") as f:
+            reader = PyPDF2.PdfReader(f)
+            for page in reader.pages:
+                try:
+                    p = page.extract_text()
+                    if p:
+                        text += p + "\n"
+                except:
+                    continue
+    except Exception as e:
+        print("Error leyendo PDF:", e)
+    return text
+
+def extract_text_from_docx(path):
+    text = ""
+    try:
+        doc = docx_reader.Document(path)
+        for p in doc.paragraphs:
+            if p.text:
+                text += p.text + "\n"
+    except Exception as e:
+        print("Error leyendo DOCX:", e)
+    return text
+
+@app.route("/upload_doc", methods=["POST"])
+def upload_doc():
+    """Recibe PDF o DOCX, extrae texto y guarda temporalmente. Devuelve doc_id que luego se usa para pedir resumen."""
+    if "archivo" not in request.files:
+        return "No se envió archivo", 400
+    file = request.files["archivo"]
+    usuario_id = request.form.get("usuario_id", "anon")
+    filename = secure_filename(file.filename)
+    if filename == "":
+        return "Archivo sin nombre", 400
+    ext = filename.rsplit(".",1)[-1].lower()
+    if ext not in ["pdf", "docx"]:
+        return "Formato no permitido. Solo PDF o DOCX.", 400
+
+    doc_id = str(uuid.uuid4())
+    saved_name = f"{doc_id}_{filename}"
+    temp_path = os.path.join(TEMP_DIR, saved_name)
+    try:
+        file.save(temp_path)
+    except Exception as e:
+        return f"Error guardando archivo temporal: {e}", 500
+
+    # extraer texto
+    if ext == "pdf":
+        text = extract_text_from_pdf(temp_path)
+    else:
+        text = extract_text_from_docx(temp_path)
+
+    if not text or len(text.strip()) == 0:
+        # limpiar archivo
+        try:
+            os.remove(temp_path)
+        except:
+            pass
+        return "No pude extraer texto del documento.", 400
+
+    # guardar texto en fichero temporal .txt
+    txt_path = os.path.join(TEMP_DIR, f"{doc_id}.txt")
+    try:
+        with open(txt_path, "w", encoding="utf-8") as f:
+            f.write(text)
+    except Exception as e:
+        return f"Error guardando texto temporal: {e}", 500
+
+    # devolvemos doc_id y un snippet para mostrar
+    snippet = text[:800].replace("\n"," ") + ("..." if len(text)>800 else "")
+    return jsonify({"doc_id": doc_id, "name": filename, "snippet": snippet})
+
+@app.route("/resumir_doc", methods=["POST"])
+def resumir_doc():
+    """
+    Recibe JSON { doc_id, modo, usuario_id }.
+    modo: 'breve', 'normal', 'profundo'
+    Devuelve un .docx con el resumen (send_file).
+    """
+    data = request.get_json() or {}
+    doc_id = data.get("doc_id")
+    modo = data.get("modo", "normal")
+    usuario_id = data.get("usuario_id", "anon")
+
+    if not doc_id:
+        return "Falta doc_id", 400
+    txt_path = os.path.join(TEMP_DIR, f"{doc_id}.txt")
+    # local file original (para eliminar)
+    # any temp saved doc name begins with doc_id_
+    try:
+        if not os.path.exists(txt_path):
+            return "Documento temporal no encontrado (subilo nuevamente).", 404
+        with open(txt_path, "r", encoding="utf-8") as f:
+            texto = f.read()
+    except Exception as e:
+        return f"Error leyendo texto temporal: {e}", 500
+
+    # construir prompt según modo
+    if modo == "breve":
+        instrucciones = "Resumí el siguiente texto en 4-6 líneas muy concisas, en español claro y directo, con puntos numerados si aplica."
+    elif modo == "profundo":
+        instrucciones = "Hacé un resumen detallado del siguiente texto: explicá los puntos clave, sub-puntos, y posibles conclusiones. Usá viñetas y subtítulos cuando corresponda. Mantené un estilo formal y completo."
+    else:  # normal
+        instrucciones = "Resumí el siguiente texto en puntos claros y ordenados, abarcando las ideas importantes y destacando conclusiones."
+
+    # acotar texto si es muy largo (mejor enviar en trozos o truncar — aquí hacemos truncamiento prudente)
+    max_chars = 120000  # límite prudente para no mandar textos enormes (ajustable)
+    if len(texto) > max_chars:
+        texto_envio = texto[:max_chars] + "\n\n[El documento original fue truncado por tamaño.]\n"
+    else:
+        texto_envio = texto
+
+    prompt = f"{instrucciones}\n\n--- TEXTO A RESUMIR ---\n\n{texto_envio}"
+
+    # Llamada a OpenAI
+    try:
+        client_local = OpenAI(api_key=OPENAI_API_KEY)
+        resp = client_local.chat.completions.create(
+            model="gpt-4-turbo",
+            messages=[{"role":"user","content": prompt}],
+            temperature=0.3,
+            max_tokens=1000
+        )
+        resumen = resp.choices[0].message.content.strip()
+    except Exception as e:
+        return f"No pude generar el resumen: {e}", 500
+
+    # Crear DOCX con el resumen
+    fecha = datetime.now().strftime("%Y-%m-%d")
+    resumen_filename = f"Resumen_{fecha}.docx"
+    resumen_path = os.path.join(TEMP_DIR, f"{doc_id}_resumen_{fecha}.docx")
+    try:
+        doc = DocxDocument()
+        doc.add_heading("Resumen del Documento", level=1)
+        # agregar texto manteniendo saltos
+        for linea in resumen.split("\n"):
+            if linea.strip() == "":
+                doc.add_paragraph("")  # separador
+            else:
+                doc.add_paragraph(linea)
+        doc.save(resumen_path)
+    except Exception as e:
+        return f"Error creando archivo Word: {e}", 500
+
+    # Limpiar archivos temporales relacionados al doc_id (texto y original)
+    try:
+        # eliminar txt
+        if os.path.exists(txt_path):
+            os.remove(txt_path)
+        # eliminar archivo original (empieza con doc_id_)
+        for f in os.listdir(TEMP_DIR):
+            if f.startswith(doc_id + "_"):
+                try:
+                    os.remove(os.path.join(TEMP_DIR, f))
+                except:
+                    pass
+    except:
+        pass
+
+    # Enviar el archivo .docx generado
+    try:
+        return send_file(
+            resumen_path,
+            as_attachment=True,
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            download_name=resumen_filename
+        )
+    finally:
+        # intentamos eliminar el docx luego de enviado
+        try:
+            if os.path.exists(resumen_path):
+                os.remove(resumen_path)
+        except:
+            pass
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
