@@ -11,7 +11,7 @@ import threading
 from datetime import datetime, timedelta
 import pytz
 
-from flask import Flask, render_template_string, request, jsonify, session, send_file
+from flask import Flask, render_template_string, request, jsonify, session, send_file, after_this_request
 from flask_session import Session
 from gtts import gTTS
 import requests
@@ -920,7 +920,7 @@ def avisos():
     save_recordatorios(restantes)
     return jsonify(vencidos)
 
-# ---------------- AUDIO A WORD DOCX (mantenido como estaba) ----------------
+# ---------------- AUDIO A WORD DOCX ----------------
 from werkzeug.utils import secure_filename
 
 @app.route("/upload_audio", methods=["POST"])
@@ -933,6 +933,8 @@ def upload_audio():
 
     # Guardar archivo temporal
     filename = secure_filename(file.filename)
+    if not filename:
+        return "Nombre de archivo inválido", 400
     temp_path = os.path.join("temp", f"{uuid.uuid4()}_{filename}")
     os.makedirs("temp", exist_ok=True)
     file.save(temp_path)
@@ -947,8 +949,8 @@ def upload_audio():
                 file=f,
             )
 
-        texto_transcrito = transcript.text
-        
+        texto_transcrito = transcript.text if hasattr(transcript, "text") else str(transcript)
+
         # ---- CREAR DOCX ----
         nombre_docx = filename.rsplit(".", 1)[0] + ".docx"
         docx_path = os.path.join("temp", nombre_docx)
@@ -959,8 +961,20 @@ def upload_audio():
         doc.add_page_break()
         doc.save(docx_path)
 
-        # ---- BORRAR ARCHIVO DE AUDIO ----
-        os.remove(temp_path)
+        # --- programar limpieza después de responder ---
+        @after_this_request
+        def _cleanup(response):
+            try:
+                if os.path.exists(docx_path):
+                    os.remove(docx_path)
+            except Exception:
+                pass
+            try:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except Exception:
+                pass
+            return response
 
         # ---- ENVIAR DOCX ----
         return send_file(
@@ -971,15 +985,18 @@ def upload_audio():
         )
 
     except Exception as e:
-        return f"Error en transcripción: {str(e)}", 500
-
-    finally:
-        # Limpiar archivo después de la descarga
-        if docx_path and os.path.exists(docx_path):
-            try:
+        # intentar limpiar si algo quedó
+        try:
+            if docx_path and os.path.exists(docx_path):
                 os.remove(docx_path)
-            except:
-                pass
+        except:
+            pass
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        except:
+            pass
+        return f"Error en transcripción: {str(e)}", 500
 
 # ---------------- NUEVOS ENDPOINTS: subir documento (extraer texto) y resumir (crear .docx) ----------------
 def extract_text_from_pdf(path):
@@ -1051,6 +1068,11 @@ def upload_doc():
         with open(txt_path, "w", encoding="utf-8") as f:
             f.write(text)
     except Exception as e:
+        # limpiar archivo original
+        try:
+            os.remove(temp_path)
+        except:
+            pass
         return f"Error guardando texto temporal: {e}", 500
 
     # devolvemos doc_id y un snippet para mostrar
@@ -1129,36 +1151,39 @@ def resumir_doc():
     except Exception as e:
         return f"Error creando archivo Word: {e}", 500
 
-    # Limpiar archivos temporales relacionados al doc_id (texto y original)
-    try:
-        # eliminar txt
-        if os.path.exists(txt_path):
-            os.remove(txt_path)
-        # eliminar archivo original (empieza con doc_id_)
-        for f in os.listdir(TEMP_DIR):
-            if f.startswith(doc_id + "_"):
-                try:
-                    os.remove(os.path.join(TEMP_DIR, f))
-                except:
-                    pass
-    except:
-        pass
-
-    # Enviar el archivo .docx generado
-    try:
-        return send_file(
-            resumen_path,
-            as_attachment=True,
-            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            download_name=resumen_filename
-        )
-    finally:
-        # intentamos eliminar el docx luego de enviado
+    # programar limpieza después de la respuesta (resumen, txt y originales)
+    @after_this_request
+    def _cleanup(response):
         try:
             if os.path.exists(resumen_path):
                 os.remove(resumen_path)
-        except:
+        except Exception:
             pass
+        # eliminar txt temporal
+        try:
+            if os.path.exists(txt_path):
+                os.remove(txt_path)
+        except Exception:
+            pass
+        # eliminar cualquier archivo original que empiece con doc_id_
+        try:
+            for f in os.listdir(TEMP_DIR):
+                if f.startswith(doc_id + "_"):
+                    try:
+                        os.remove(os.path.join(TEMP_DIR, f))
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        return response
+
+    # Enviar el archivo .docx generado
+    return send_file(
+        resumen_path,
+        as_attachment=True,
+        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        download_name=resumen_filename
+    )
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
