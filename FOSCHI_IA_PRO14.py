@@ -562,7 +562,7 @@ body{
   box-shadow:0 0 12px #00eaff66;
 }
 #logo{
-  width:120px;
+  width:60px; /* Ajustable */
   cursor:pointer;
   transition: transform 0.5s, filter 0.5s;
   filter: drop-shadow(0 0 12px #00eaff);
@@ -597,6 +597,7 @@ body{
   border-top:2px solid #00eaff44;
   border-bottom:2px solid #00eaff44;
   box-shadow: inset 0 0 15px #00eaff55;
+  padding-bottom:120px; /* para que nunca tape la barra inferior */
 }
 
 /* --- MENSAJES --- */
@@ -694,9 +695,9 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
 
 /* --- AJUSTES RESPONSIVE PARA MÓVIL --- */
 @media (max-width:600px){
-  #inputBar input[type=text]{ font-size:18px; padding:12px; }
-  #inputBar button{ font-size:16px; padding:10px; }
-  #logo{ width:140px; } /* logo más grande en móvil */
+  #inputBar input[type=text]{ font-size:20px; padding:14px; }
+  #inputBar button{ font-size:16px; padding:8px; }
+  #logo{ width:80px; } /* más grande vertical */
 }
 </style>
 </head>
@@ -719,14 +720,14 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
   <div style="position:relative;">
     <div id="clipBtn" title="Adjuntar" onclick="toggleAdjuntosMenu()">📎</div>
     <div id="adjuntos_menu" aria-hidden="true">
-      <button onclick="document.getElementById('audioInput').click()">🎵 Subir Audio (mp3/wav)</button>
-      <button onclick="document.getElementById('archivo_pdf_word').click()">📄 Subir PDF / WORD</button>
+      <button onclick="checkPremiumAudio()">🎵 Subir Audio (mp3/wav)</button>
+      <button onclick="checkPremiumDoc()">📄 Subir PDF / WORD</button>
     </div>
   </div>
   <input id="audioInput" class="hidden_file_input" type="file" accept=".mp3,audio/*,.wav" />
   <input id="archivo_pdf_word" class="hidden_file_input" type="file" accept=".pdf,.docx" />
   <input type="text" id="mensaje" placeholder="Escribí tu mensaje o hablá" />
-  <button onclick="enviar()">Enviar</button>
+  <button onclick="checkQuestionLimit()">Enviar</button>
   <button onclick="hablar()">🎤 Hablar</button>
   <button onclick="verHistorial()">🗂️ Historial</button>
 </div>
@@ -734,6 +735,8 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
 <script>
 let usuario_id="{{usuario_id}}";
 let vozActiva=true,audioActual=null,mensajeActual=null;
+let MAX_NO_PREMIUM=5, preguntasHoy=0;
+let esPremium=false; // cambiar según tu backend
 
 function logoClick(){ alert("FOSCHI NUNCA MUERE, TRASCIENDE..."); }
 function toggleVoz(estado=null){ vozActiva=estado!==null?estado:!vozActiva; document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada"; }
@@ -750,16 +753,6 @@ function agregar(msg,cls,imagenes=[]){
   return div;
 }
 
-function enviar(){
-  let msg=document.getElementById("mensaje").value.trim(); if(!msg) return;
-  agregar(msg,"user"); document.getElementById("mensaje").value="";
-  fetch("/preguntar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mensaje: msg, usuario_id: usuario_id})})
-  .then(r=>r.json()).then(data=>{ agregar(data.texto,"ai",data.imagenes); if(data.borrar_historial){document.getElementById("chat").innerHTML="";} })
-  .catch(e=>{ agregar("Error al comunicarse con el servidor.","ai"); console.error(e); });
-}
-
-document.getElementById("mensaje").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); enviar(); } });
-
 function hablarTexto(texto, div=null){
   if(!vozActiva) return;
   detenerVoz();
@@ -772,23 +765,30 @@ function hablarTexto(texto, div=null){
   audioActual.play();
 }
 
-/* --- FUNCIONES PREMIUM Y ADJUNTOS --- */
-function irPremium(){
-  fetch(`/premium?usuario_id=${usuario_id}`)
-    .then(r=>r.json())
-    .then(d=>{ window.open(d.qr,"_blank"); });
+/* --- CHECK PREGUNTA LÍMITE --- */
+function checkQuestionLimit(){
+  if(!esPremium && preguntasHoy>=MAX_NO_PREMIUM){
+    alert(`Solo podes hacer ${MAX_NO_PREMIUM} preguntas por día. Hacé upgrade a Premium 💎`);
+    return;
+  }
+  preguntasHoy++;
+  enviar();
 }
-function toggleAdjuntosMenu(){
-  const m = document.getElementById("adjuntos_menu");
-  m.style.display = m.style.display === "block" ? "none" : "block";
-  if(m.style.display==="block"){ setTimeout(()=>window.addEventListener('click', closeMenuOnClickOutside),50); }
+
+/* --- CHECK OPCIONES PREMIUM --- */
+function checkPremiumAudio(){ if(!esPremium){ alert("Esta opción es Premium. Hacé upgrade para usarla 💎"); return; } document.getElementById('audioInput').click(); }
+function checkPremiumDoc(){ if(!esPremium){ alert("Esta opción es Premium. Hacé upgrade para usarla 💎"); return; } document.getElementById('archivo_pdf_word').click(); }
+
+/* --- ENVIAR MENSAJE --- */
+function enviar(){
+  let msg=document.getElementById("mensaje").value.trim(); if(!msg) return;
+  agregar(msg,"user"); document.getElementById("mensaje").value="";
+  fetch("/preguntar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mensaje: msg, usuario_id: usuario_id})})
+  .then(r=>r.json()).then(data=>{ agregar(data.texto,"ai",data.imagenes); })
+  .catch(e=>{ agregar("Error al comunicarse con el servidor.","ai"); console.error(e); });
 }
-function closeMenuOnClickOutside(e){
-  const menu = document.getElementById("adjuntos_menu");
-  const clip = document.getElementById("clipBtn");
-  if(!menu.contains(e.target) && !clip.contains(e.target)){ menu.style.display="none"; window.removeEventListener('click', closeMenuOnClickOutside); }
-}
-function borrarPantalla(){ document.getElementById("chat").innerHTML=""; }
+
+document.getElementById("mensaje").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); checkQuestionLimit(); } });
 
 /* --- RECONOCIMIENTO DE VOZ --- */
 function hablar(){
@@ -796,7 +796,7 @@ function hablar(){
     const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new Rec();
     recognition.lang='es-AR'; recognition.continuous=false; recognition.interimResults=false;
-    recognition.onresult=function(event){ document.getElementById("mensaje").value=event.results[0][0].transcript.toLowerCase(); enviar(); }
+    recognition.onresult=function(event){ document.getElementById("mensaje").value=event.results[0][0].transcript.toLowerCase(); checkQuestionLimit(); }
     recognition.onerror=function(e){console.log(e); alert("Error reconocimiento de voz: " + e.error);}
     recognition.start();
   }else{alert("Tu navegador no soporta reconocimiento de voz.");}
@@ -811,57 +811,24 @@ function verHistorial(){
   });
 }
 
-/* --- SUBIR AUDIO --- */
-document.getElementById("audioInput").addEventListener("change", async (ev) => {
-  const file = ev.target.files[0]; if(!file) return;
-  agregar(`Subiendo y transcribiendo: <b>${file.name}</b> ...`, "user");
-  try{
-    const fd = new FormData(); fd.append("audio", file); fd.append("usuario_id", usuario_id);
-    const resp = await fetch("/upload_audio",{ method:"POST", body:fd });
-    if(!resp.ok){ const txt = await resp.text(); agregar("Error en transcripción: "+txt,"ai"); return; }
-    const blob = await resp.blob(); let filename=file.name.replace(/\.[^.]+$/,'')+".docx";
-    const cd=resp.headers.get("Content-Disposition"); if(cd){ const m=cd.match(/filename\*=UTF-8''([^;]+)|filename="([^"]+)"/); if(m){ filename=decodeURIComponent(m[1]||m[2]||filename); }}
-    const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-    agregar(`✅ Transcripción lista: <b>${filename}</b>`,"ai");
-  }catch(e){ console.error(e); agregar("Error al subir/transcribir el audio.","ai"); } finally{ ev.target.value=""; }
-});
-
-/* --- SUBIR PDF/DOCX --- */
-document.getElementById("archivo_pdf_word").addEventListener("change", async (ev) => {
-  const file = ev.target.files[0]; if(!file) return;
-  agregar(`Subiendo documento: <b>${file.name}</b> ...`, "user");
-  try{
-    const fd = new FormData(); fd.append("archivo", file); fd.append("usuario_id", usuario_id);
-    const resp = await fetch("/upload_doc",{ method:"POST", body:fd });
-    if(!resp.ok){ const txt=await resp.text(); agregar("Error al subir documento: "+txt,"ai"); return; }
-    const data=await resp.json();
-    const optHtml=`<div class="summary-options" id="opts_${data.doc_id}">
-        <span style="margin-right:6px;">Elegí tipo de resumen para <b>${data.name}</b>:</span>
-        <button onclick="requestSummary('${data.doc_id}','breve')">🔹 Breve</button>
-        <button onclick="requestSummary('${data.doc_id}','normal')">🔸 Normal</button>
-        <button onclick="requestSummary('${data.doc_id}','profundo')">🔺 Profundo</button>
-        <button onclick="cancelDoc('${data.doc_id}')">✖️ Cancelar</button>
-      </div>`;
-    agregar(optHtml,"ai");
-  }catch(e){ console.error(e); agregar("Error subiendo documento.","ai"); } finally{ ev.target.value=""; }
-});
-
-/* --- SOLICITAR RESUMEN --- */
-async function requestSummary(doc_id,modo){
-  const status = agregar(`Generando resumen (${modo})...`,"user");
-  try{
-    const resp=await fetch("/resumir_doc",{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({doc_id,modo,usuario_id}) });
-    if(!resp.ok){ const txt=await resp.text(); agregar("Error generando resumen: "+txt,"ai"); return; }
-    const blob=await resp.blob();
-    const hoy=new Date();
-    const filename=`Resumen_${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-${String(hoy.getDate()).padStart(2,'0')}.docx`;
-    const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-    agregar(`✅ Resumen generado y descargado: <b>${filename}</b>`,"ai");
-  }catch(e){ console.error(e); agregar("Error al solicitar el resumen.","ai"); }
+/* --- PREMIUM --- */
+function irPremium(){
+  fetch(`/premium?usuario_id=${usuario_id}`)
+    .then(r=>r.json())
+    .then(d=>{ window.open(d.qr,"_blank"); });
 }
 
-/* --- CANCELAR OPCIONES --- */
-function cancelDoc(doc_id){ const el=document.getElementById(`opts_${doc_id}`); if(el) el.remove(); }
+/* --- MENU ADJUNTOS --- */
+function toggleAdjuntosMenu(){
+  const m = document.getElementById("adjuntos_menu");
+  m.style.display = m.style.display === "block" ? "none" : "block";
+  if(m.style.display==="block"){ setTimeout(()=>window.addEventListener('click', closeMenuOnClickOutside),50); }
+}
+function closeMenuOnClickOutside(e){
+  const menu = document.getElementById("adjuntos_menu");
+  const clip = document.getElementById("clipBtn");
+  if(!menu.contains(e.target) && !clip.contains(e.target)){ menu.style.display="none"; window.removeEventListener('click', closeMenuOnClickOutside); }
+}
 
 /* --- RECORDATORIOS --- */
 function chequearRecordatorios(){
