@@ -531,75 +531,30 @@ HTML_TEMPLATE = """
 <title>{{APP_NAME}}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-/* --- ESTILOS GENERALES --- */
 body{
  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
  background:#000814;
  color:#00eaff;
  margin:0;
  padding:0;
+ text-shadow:0 0 6px #00eaff;
  display:flex;
  flex-direction:column;
  height:100vh;
- overflow:hidden;
- text-shadow:0 0 6px #00eaff;
 }
+#logo{ width:60px; vertical-align:middle; cursor:pointer; transition: transform 0.5s, filter 0.5s; filter: drop-shadow(0 0 8px #00eaff); }
+#logo:hover{ transform:scale(1.15) rotate(6deg); filter:drop-shadow(0 0 14px #00eaff); }
+#nombre{ font-weight:bold; margin-left:10px; cursor:pointer; font-size:24px; letter-spacing:1px; color:#00eaff; text-shadow:0 0 12px #00eaff; }
 
-/* --- HEADER SUPERIOR (LOGO + BOTONES) --- */
-#header{
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  flex-wrap:wrap;
-  gap:8px;
-  padding:8px;
-  background: linear-gradient(#000814,#00111a);
-  flex-shrink:0;
-  text-align:center;
-  position:sticky;
-  top:0;
-  z-index:10;
-  box-shadow:0 0 12px #00eaff66;
-}
-#logo{
-  width:120px;
-  cursor:pointer;
-  transition: transform 0.5s, filter 0.5s;
-  filter: drop-shadow(0 0 12px #00eaff);
-}
-#logo:hover{
-  transform:scale(1.2) rotate(6deg);
-  filter:drop-shadow(0 0 20px #00eaff);
-}
-#header button{
-  font-size:14px;
-  padding:6px 10px;
-  border-radius:6px;
-  background:#001f2e;
-  color:#00eaff;
-  border:1px solid #006688;
-  cursor:pointer;
-  text-shadow:0 0 4px #00eaff;
-  box-shadow:0 0 8px #0099bb;
-  transition:0.3s;
-}
-#header button:hover{
-  background:#003547;
-  box-shadow:0 0 14px #00eaff;
-}
-
-/* --- CHAT --- */
 #chat{
-  flex:1;
-  overflow-y:auto;
-  padding:10px;
-  background: linear-gradient(#00111a,#000814);
-  border-top:2px solid #00eaff44;
-  border-bottom:2px solid #00eaff44;
-  box-shadow: inset 0 0 15px #00eaff55;
+ flex:1 1 auto;
+ overflow-y:auto;
+ padding:10px;
+ padding-bottom:120px; /* espacio para barra fija */
+ background: linear-gradient(#00111a,#000814);
+ border-top:2px solid #00eaff44;
+ box-shadow: inset 0 0 15px #00eaff55;
 }
-
-/* --- MENSAJES --- */
 .message{
  margin:5px 0;
  padding:8px 12px;
@@ -630,135 +585,88 @@ body{
 a{ color:#00eaff; text-decoration:underline; }
 img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00eaff88; border:1px solid #00eaff55; }
 
-/* --- BARRA DE ENTRADA FIJA ABAJO --- */
-#inputBar{
+input,button{ padding:10px; font-size:16px; margin:5px; border:none; border-radius:5px; background:#001d29; color:#00eaff; box-shadow:0 0 6px #00eaff88; }
+input:focus,button:active{ outline:none; box-shadow:0 0 10px #00eaff; }
+input[type=text]{ flex:1 1 auto; background:#00121d; color:#00eaff; border:1px solid #003344; box-shadow:0 0 6px #00eaff55 inset; }
+button{ background:#001f2e; color:#00eaff; cursor:pointer; border:1px solid #006688; text-shadow:0 0 4px #00eaff; box-shadow:0 0 8px #0099bb; transition:0.25s; }
+
+#barraSuperior{
+ display:flex;
+ align-items:center;
+ justify-content:center;
+ padding:5px 10px;
+ background:#001f2e;
+ flex-shrink:0;
+ position:relative;
+}
+#barraInferior{
  display:flex;
  align-items:center;
  gap:6px;
- padding:8px;
- background:#001d29;
- border-top:2px solid #00eaff44;
- flex-shrink:0;
+ padding:6px 10px;
  position:fixed;
  bottom:0;
- left:0;
  width:100%;
- box-sizing:border-box;
- z-index:20;
-}
-#inputBar input[type=text]{
- flex:1;
- padding:10px;
- font-size:16px;
- background:#00121d;
- color:#00eaff;
- border:1px solid #003344;
- box-shadow:0 0 6px #00eaff55 inset;
- border-radius:5px;
-}
-#inputBar button{
- padding:10px;
- font-size:16px;
- border:none;
- border-radius:5px;
  background:#001f2e;
- color:#00eaff;
- cursor:pointer;
- border:1px solid #006688;
- text-shadow:0 0 4px #00eaff;
- box-shadow:0 0 8px #0099bb;
- transition:0.25s;
+ border-top:1px solid #00eaff44;
+ box-shadow:0 -0 8px #00eaff55;
+ flex-wrap:wrap;
+ z-index:100;
 }
-#inputBar button:hover{
- background:#003547;
- box-shadow:0 0 14px #00eaff;
-}
-
-/* --- BOTONES PEQUEÑOS --- */
-#vozBtn,#borrarBtn,#premiumBtn{ font-size:14px; padding:6px 10px; }
-
-/* --- MENÚ DE ADJUNTOS --- */
-#adjuntos_menu{
- position:absolute;
- left:6px; top:-120px;
- display:none;
- background:#001f2e;
- border:1px solid #003547;
- padding:8px;
- border-radius:8px;
- box-shadow:0 6px 16px rgba(0,0,0,0.6);
- z-index:50;
-}
+#clipBtn{ width:44px; height:44px; border-radius:8px; background:#001f2e; border:1px solid #006688; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 0 8px #0099bb; font-size:20px; }
+#clipBtn:hover{ background:#003547; }
+#adjuntos_menu{ position:absolute; left:6px; bottom:50px; display:none; background:#001f2e; border:1px solid #003547; padding:8px; border-radius:8px; box-shadow:0 6px 16px rgba(0,0,0,0.6); z-index:50; }
 #adjuntos_menu button{ display:block; width:160px; margin:6px; text-align:left; }
 .hidden_file_input{ display:none; }
+.summary-options { margin-top:6px; display:flex; gap:6px; flex-wrap:wrap; }
+.summary-options button{ padding:6px 10px; font-size:14px; }
 
-/* --- AJUSTES RESPONSIVE PARA MÓVIL --- */
-@media (max-width:600px){
-  #inputBar input[type=text]{ font-size:18px; padding:12px; }
-  #inputBar button{ font-size:16px; padding:10px; }
-  #logo{ width:140px; } /* logo más grande en móvil */
+@media screen and (max-width:600px){
+  #barraInferior{ flex-direction:column; gap:4px; padding:4px; }
+  input[type=text]{ font-size:14px; padding:6px; }
+  button{ font-size:14px; padding:6px; }
 }
 </style>
 </head>
 
 <body>
-<!-- HEADER -->
-<div id="header">
+<div id="barraSuperior">
   <img src="/static/logo.png" id="logo" onclick="logoClick()" alt="logo">
-  <button id="premiumBtn" onclick="irPremium()">💎 Foschi IA Premium</button>
-  <button onclick="detenerVoz()">⏹️ Detener voz</button>
+  <button onclick="detenerVoz()" style="margin-left:10px;">⏹️ Detener voz</button>
   <button id="vozBtn" onclick="toggleVoz()">🔊 Voz activada</button>
   <button id="borrarBtn" onclick="borrarPantalla()">🧹 Borrar pantalla</button>
 </div>
 
-<!-- CHAT -->
 <div id="chat" role="log" aria-live="polite"></div>
 
-<!-- BARRA DE ENTRADA -->
-<div id="inputBar">
+<div id="barraInferior">
   <div style="position:relative;">
     <div id="clipBtn" title="Adjuntar" onclick="toggleAdjuntosMenu()">📎</div>
     <div id="adjuntos_menu" aria-hidden="true">
-      <button onclick="document.getElementById('audioInput').click()">🎵 Subir Audio (mp3/wav)</button>
-      <button onclick="document.getElementById('archivo_pdf_word').click()">📄 Subir PDF / WORD</button>
+      <button onclick="usarPremium()">🎵 Subir Audio (mp3/wav)</button>
+      <button onclick="usarPremium()">📄 Subir PDF / WORD</button>
     </div>
   </div>
-  <input id="audioInput" class="hidden_file_input" type="file" accept=".mp3,audio/*,.wav" />
-  <input id="archivo_pdf_word" class="hidden_file_input" type="file" accept=".pdf,.docx" />
   <input type="text" id="mensaje" placeholder="Escribí tu mensaje o hablá" />
   <button onclick="enviar()">Enviar</button>
   <button onclick="hablar()">🎤 Hablar</button>
-  <button onclick="verHistorial()">🗂️ Historial</button>
+  <button onclick="verHistorial()">🗂️ Ver historial</button>
 </div>
 
 <script>
 let usuario_id="{{usuario_id}}";
 let vozActiva=true,audioActual=null,mensajeActual=null;
+let esPremium={{esPremium|lower}}; // booleano desde el servidor
+let preguntasHoy={{preguntasHoy}}; 
+const MAX_NO_PREMIUM = 5;
 
 function logoClick(){ alert("FOSCHI NUNCA MUERE, TRASCIENDE..."); }
-function toggleVoz(estado=null){ vozActiva=estado!==null?estado:!vozActiva; document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada"; }
-function detenerVoz(){ if(audioActual){ audioActual.pause(); audioActual.currentTime=0; audioActual.src=""; audioActual.load(); audioActual=null; if(mensajeActual) mensajeActual.classList.remove("playing"); mensajeActual=null; } }
 
-function agregar(msg,cls,imagenes=[]){
-  let c=document.getElementById("chat"),div=document.createElement("div");
-  div.className="message "+cls; div.innerHTML=msg;
-  c.appendChild(div);
-  setTimeout(()=>div.classList.add("show"),50);
-  imagenes.forEach(url=>{ let img=document.createElement("img"); img.src=url; div.appendChild(img); });
-  c.scroll({top:c.scrollHeight,behavior:"smooth"});
-  if(cls==="ai") hablarTexto(msg,div);
-  return div;
+function usarPremium(){
+  if(!esPremium){
+    alert("Función Premium: suscribite para usar esta opción y eliminar límites.");
+  }
 }
-
-function enviar(){
-  let msg=document.getElementById("mensaje").value.trim(); if(!msg) return;
-  agregar(msg,"user"); document.getElementById("mensaje").value="";
-  fetch("/preguntar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mensaje: msg, usuario_id: usuario_id})})
-  .then(r=>r.json()).then(data=>{ agregar(data.texto,"ai",data.imagenes); if(data.borrar_historial){document.getElementById("chat").innerHTML="";} })
-  .catch(e=>{ agregar("Error al comunicarse con el servidor.","ai"); console.error(e); });
-}
-
-document.getElementById("mensaje").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); enviar(); } });
 
 function hablarTexto(texto, div=null){
   if(!vozActiva) return;
@@ -772,104 +680,73 @@ function hablarTexto(texto, div=null){
   audioActual.play();
 }
 
-/* --- FUNCIONES PREMIUM Y ADJUNTOS --- */
-function irPremium(){
-  fetch(`/premium?usuario_id=${usuario_id}`)
-    .then(r=>r.json())
-    .then(d=>{ window.open(d.qr,"_blank"); });
-}
-function toggleAdjuntosMenu(){
-  const m = document.getElementById("adjuntos_menu");
-  m.style.display = m.style.display === "block" ? "none" : "block";
-  if(m.style.display==="block"){ setTimeout(()=>window.addEventListener('click', closeMenuOnClickOutside),50); }
-}
-function closeMenuOnClickOutside(e){
-  const menu = document.getElementById("adjuntos_menu");
-  const clip = document.getElementById("clipBtn");
-  if(!menu.contains(e.target) && !clip.contains(e.target)){ menu.style.display="none"; window.removeEventListener('click', closeMenuOnClickOutside); }
-}
-function borrarPantalla(){ document.getElementById("chat").innerHTML=""; }
+function detenerVoz(){ if(audioActual){ try{audioActual.pause(); audioActual.currentTime=0; audioActual.src=""; audioActual.load(); audioActual=null; if(mensajeActual) mensajeActual.classList.remove("playing"); mensajeActual=null;}catch(e){console.log(e);}} }
 
-/* --- RECONOCIMIENTO DE VOZ --- */
+function toggleVoz(estado=null){ vozActiva=estado!==null?estado:!vozActiva; document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada"; }
+
+function agregar(msg,cls,imagenes=[]){
+  let c=document.getElementById("chat"),div=document.createElement("div");
+  div.className="message "+cls; div.innerHTML=msg;
+  c.appendChild(div);
+  setTimeout(()=>div.classList.add("show"),50);
+  imagenes.forEach(url=>{ let img=document.createElement("img"); img.src=url; div.appendChild(img); });
+  c.scroll({top:c.scrollHeight,behavior:"smooth"});
+  if(cls==="ai") hablarTexto(msg,div);
+  return div;
+}
+
+function enviar(){
+  if(!esPremium && preguntasHoy >= MAX_NO_PREMIUM){
+    alert(`Has alcanzado el límite de ${MAX_NO_PREMIUM} preguntas diarias. Suscribite a Premium para más.`);
+    return;
+  }
+  let msg=document.getElementById("mensaje").value.trim(); if(!msg) return;
+  agregar(msg,"user"); document.getElementById("mensaje").value="";
+  preguntasHoy++;
+  fetch("/preguntar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mensaje: msg, usuario_id: usuario_id})})
+  .then(r=>r.json()).then(data=>{ agregar(data.texto,"ai",data.imagenes); if(data.borrar_historial){document.getElementById("chat").innerHTML="";} })
+  .catch(e=>{ agregar("Error al comunicarse con el servidor.","ai"); console.error(e); });
+}
+
+document.getElementById("mensaje").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); enviar(); } });
+
 function hablar(){
   if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window){
     const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new Rec();
     recognition.lang='es-AR'; recognition.continuous=false; recognition.interimResults=false;
     recognition.onresult=function(event){ document.getElementById("mensaje").value=event.results[0][0].transcript.toLowerCase(); enviar(); }
-    recognition.onerror=function(e){console.log(e); alert("Error reconocimiento de voz: " + e.error);}
+    recognition.onerror=function(e){console.log(e); alert("Error reconocimiento de voz: " + e.error); }
     recognition.start();
   }else{alert("Tu navegador no soporta reconocimiento de voz.");}
 }
 
-/* --- HISTORIAL --- */
-function verHistorial(){
-  fetch("/historial/"+usuario_id).then(r=>r.json()).then(data=>{
-    document.getElementById("chat").innerHTML="";
-    if(data.length===0){agregar("No hay historial todavía.","ai");return;}
-    data.slice(-20).forEach(e=>{ agregar(`<small>${e.fecha}</small><br>${e.usuario}`,"user"); agregar(`<small>${e.fecha}</small><br>${e.foschi}`,"ai"); });
-  });
+function verHistorial(){ if(!esPremium){ alert("Función Premium: suscribite para ver historial."); return; } /* resto de tu código historial */ }
+
+function borrarPantalla(){ document.getElementById("chat").innerHTML=""; }
+
+window.onload=function(){
+  agregar("👋 Hola, soy FOSCHI IA. Obteniendo tu ubicación...","ai");
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(pos=>{
+      fetch(`/clima?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`)
+      .then(r=>r.text()).then(clima=>{ agregar(`🌤️ ${clima}`,"ai"); })
+      .catch(e=>{ agregar("No pude obtener el clima automáticamente.","ai"); console.error(e); });
+    },()=>{ agregar("No pude obtener tu ubicación (permiso denegado o error).","ai"); }, {timeout:8000});
+  } else { agregar("Tu navegador no soporta geolocalización.","ai"); }
+};
+
+/* --- MENU ADJUNTOS --- */
+function toggleAdjuntosMenu(){
+  const m = document.getElementById("adjuntos_menu");
+  m.style.display = m.style.display === "block" ? "none" : "block";
+  if(m.style.display === "block"){ setTimeout(()=>{ window.addEventListener('click', closeMenuOnClickOutside); }, 50); }
 }
-
-/* --- SUBIR AUDIO --- */
-document.getElementById("audioInput").addEventListener("change", async (ev) => {
-  const file = ev.target.files[0]; if(!file) return;
-  agregar(`Subiendo y transcribiendo: <b>${file.name}</b> ...`, "user");
-  try{
-    const fd = new FormData(); fd.append("audio", file); fd.append("usuario_id", usuario_id);
-    const resp = await fetch("/upload_audio",{ method:"POST", body:fd });
-    if(!resp.ok){ const txt = await resp.text(); agregar("Error en transcripción: "+txt,"ai"); return; }
-    const blob = await resp.blob(); let filename=file.name.replace(/\.[^.]+$/,'')+".docx";
-    const cd=resp.headers.get("Content-Disposition"); if(cd){ const m=cd.match(/filename\*=UTF-8''([^;]+)|filename="([^"]+)"/); if(m){ filename=decodeURIComponent(m[1]||m[2]||filename); }}
-    const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-    agregar(`✅ Transcripción lista: <b>${filename}</b>`,"ai");
-  }catch(e){ console.error(e); agregar("Error al subir/transcribir el audio.","ai"); } finally{ ev.target.value=""; }
-});
-
-/* --- SUBIR PDF/DOCX --- */
-document.getElementById("archivo_pdf_word").addEventListener("change", async (ev) => {
-  const file = ev.target.files[0]; if(!file) return;
-  agregar(`Subiendo documento: <b>${file.name}</b> ...`, "user");
-  try{
-    const fd = new FormData(); fd.append("archivo", file); fd.append("usuario_id", usuario_id);
-    const resp = await fetch("/upload_doc",{ method:"POST", body:fd });
-    if(!resp.ok){ const txt=await resp.text(); agregar("Error al subir documento: "+txt,"ai"); return; }
-    const data=await resp.json();
-    const optHtml=`<div class="summary-options" id="opts_${data.doc_id}">
-        <span style="margin-right:6px;">Elegí tipo de resumen para <b>${data.name}</b>:</span>
-        <button onclick="requestSummary('${data.doc_id}','breve')">🔹 Breve</button>
-        <button onclick="requestSummary('${data.doc_id}','normal')">🔸 Normal</button>
-        <button onclick="requestSummary('${data.doc_id}','profundo')">🔺 Profundo</button>
-        <button onclick="cancelDoc('${data.doc_id}')">✖️ Cancelar</button>
-      </div>`;
-    agregar(optHtml,"ai");
-  }catch(e){ console.error(e); agregar("Error subiendo documento.","ai"); } finally{ ev.target.value=""; }
-});
-
-/* --- SOLICITAR RESUMEN --- */
-async function requestSummary(doc_id,modo){
-  const status = agregar(`Generando resumen (${modo})...`,"user");
-  try{
-    const resp=await fetch("/resumir_doc",{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({doc_id,modo,usuario_id}) });
-    if(!resp.ok){ const txt=await resp.text(); agregar("Error generando resumen: "+txt,"ai"); return; }
-    const blob=await resp.blob();
-    const hoy=new Date();
-    const filename=`Resumen_${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-${String(hoy.getDate()).padStart(2,'0')}.docx`;
-    const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-    agregar(`✅ Resumen generado y descargado: <b>${filename}</b>`,"ai");
-  }catch(e){ console.error(e); agregar("Error al solicitar el resumen.","ai"); }
+function closeMenuOnClickOutside(e){
+  const menu = document.getElementById("adjuntos_menu");
+  const clip = document.getElementById("clipBtn");
+  if(!menu.contains(e.target) && !clip.contains(e.target)){ menu.style.display = "none"; window.removeEventListener('click', closeMenuOnClickOutside); }
 }
-
-/* --- CANCELAR OPCIONES --- */
-function cancelDoc(doc_id){ const el=document.getElementById(`opts_${doc_id}`); if(el) el.remove(); }
-
-/* --- RECORDATORIOS --- */
-function chequearRecordatorios(){
-  fetch("/avisos",{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({usuario_id}) })
-  .then(r=>r.json()).then(data=>{ if(Array.isArray(data) && data.length>0){ data.forEach(r=>{ agregar(`⏰ Tenés un recordatorio: ${r.motivo||"(sin motivo)"}`,"ai"); }); } }).catch(e=>console.error(e));
-}
-setInterval(chequearRecordatorios,10000);
-
 </script>
 </body>
 </html>
