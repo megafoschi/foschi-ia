@@ -15,3 +15,6 @@ pypdf2
 werkzeug
 imageio
 imageio-ffmpeg
+mercadopago==2.3.0
+requests==2.31.0
+
