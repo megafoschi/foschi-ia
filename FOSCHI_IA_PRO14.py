@@ -562,7 +562,7 @@ body{
   box-shadow:0 0 12px #00eaff66;
 }
 #logo{
-  width:60px; /* Ajustable */
+  width:120px;
   cursor:pointer;
   transition: transform 0.5s, filter 0.5s;
   filter: drop-shadow(0 0 12px #00eaff);
@@ -597,7 +597,7 @@ body{
   border-top:2px solid #00eaff44;
   border-bottom:2px solid #00eaff44;
   box-shadow: inset 0 0 15px #00eaff55;
-  padding-bottom:120px; /* para que nunca tape la barra inferior */
+  padding-bottom:120px; /* espacio para la barra inferior */
 }
 
 /* --- MENSAJES --- */
@@ -693,11 +693,19 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
 #adjuntos_menu button{ display:block; width:160px; margin:6px; text-align:left; }
 .hidden_file_input{ display:none; }
 
+/* --- MENÚ PREMIUM --- */
+#premiumMenu button{
+  display:block;
+  width:120px;
+  margin:4px 0;
+  text-align:left;
+}
+
 /* --- AJUSTES RESPONSIVE PARA MÓVIL --- */
 @media (max-width:600px){
-  #inputBar input[type=text]{ font-size:20px; padding:14px; }
-  #inputBar button{ font-size:16px; padding:8px; }
-  #logo{ width:80px; } /* más grande vertical */
+  #inputBar input[type=text]{ font-size:18px; padding:12px; }
+  #inputBar button{ font-size:16px; padding:10px; }
+  #logo{ width:140px; } /* logo más grande en móvil */
 }
 </style>
 </head>
@@ -706,7 +714,15 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
 <!-- HEADER -->
 <div id="header">
   <img src="/static/logo.png" id="logo" onclick="logoClick()" alt="logo">
-  <button id="premiumBtn" onclick="irPremium()">💎 Foschi IA Premium</button>
+
+  <div id="premiumContainer" style="position:relative;">
+    <button id="premiumBtn" onclick="togglePremiumMenu()">💎 Foschi IA Premium</button>
+    <div id="premiumMenu" style="display:none;position:absolute;top:36px;left:0;background:#001f2e;border:1px solid #003547;border-radius:6px;padding:6px;box-shadow:0 6px 16px rgba(0,0,0,0.6);z-index:100;">
+      <button onclick="irPremium('mensual')">💎 Pago Mensual</button>
+      <button onclick="irPremium('anual')">💎 Pago Anual</button>
+    </div>
+  </div>
+
   <button onclick="detenerVoz()">⏹️ Detener voz</button>
   <button id="vozBtn" onclick="toggleVoz()">🔊 Voz activada</button>
   <button id="borrarBtn" onclick="borrarPantalla()">🧹 Borrar pantalla</button>
@@ -720,14 +736,14 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
   <div style="position:relative;">
     <div id="clipBtn" title="Adjuntar" onclick="toggleAdjuntosMenu()">📎</div>
     <div id="adjuntos_menu" aria-hidden="true">
-      <button onclick="checkPremiumAudio()">🎵 Subir Audio (mp3/wav)</button>
-      <button onclick="checkPremiumDoc()">📄 Subir PDF / WORD</button>
+      <button onclick="checkPremium('audio')">🎵 Subir Audio (mp3/wav)</button>
+      <button onclick="checkPremium('doc')">📄 Subir PDF / WORD</button>
     </div>
   </div>
   <input id="audioInput" class="hidden_file_input" type="file" accept=".mp3,audio/*,.wav" />
   <input id="archivo_pdf_word" class="hidden_file_input" type="file" accept=".pdf,.docx" />
   <input type="text" id="mensaje" placeholder="Escribí tu mensaje o hablá" />
-  <button onclick="checkQuestionLimit()">Enviar</button>
+  <button onclick="checkDailyLimit()">Enviar</button>
   <button onclick="hablar()">🎤 Hablar</button>
   <button onclick="verHistorial()">🗂️ Historial</button>
 </div>
@@ -735,13 +751,18 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
 <script>
 let usuario_id="{{usuario_id}}";
 let vozActiva=true,audioActual=null,mensajeActual=null;
-let MAX_NO_PREMIUM=5, preguntasHoy=0;
-let esPremium=false; // cambiar según tu backend
+let MAX_NO_PREMIUM = 5;
+let preguntasHoy = 0; // ajustar desde backend según usuario real
+let isPremium = false; // ajustar desde backend
 
+/* --- LOGO --- */
 function logoClick(){ alert("FOSCHI NUNCA MUERE, TRASCIENDE..."); }
+
+/* --- VOZ --- */
 function toggleVoz(estado=null){ vozActiva=estado!==null?estado:!vozActiva; document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada"; }
 function detenerVoz(){ if(audioActual){ audioActual.pause(); audioActual.currentTime=0; audioActual.src=""; audioActual.load(); audioActual=null; if(mensajeActual) mensajeActual.classList.remove("playing"); mensajeActual=null; } }
 
+/* --- AGREGAR MENSAJES --- */
 function agregar(msg,cls,imagenes=[]){
   let c=document.getElementById("chat"),div=document.createElement("div");
   div.className="message "+cls; div.innerHTML=msg;
@@ -752,6 +773,26 @@ function agregar(msg,cls,imagenes=[]){
   if(cls==="ai") hablarTexto(msg,div);
   return div;
 }
+
+/* --- ENVIAR MENSAJE CON LÍMITE --- */
+function checkDailyLimit(){
+  if(!isPremium && preguntasHoy>=MAX_NO_PREMIUM){
+    alert(`⚠️ Has alcanzado el límite de ${MAX_NO_PREMIUM} preguntas diarias. Pasá a Premium para más.`);
+    return;
+  }
+  enviar();
+  if(!isPremium) preguntasHoy++;
+}
+
+function enviar(){
+  let msg=document.getElementById("mensaje").value.trim(); if(!msg) return;
+  agregar(msg,"user"); document.getElementById("mensaje").value="";
+  fetch("/preguntar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mensaje: msg, usuario_id: usuario_id})})
+  .then(r=>r.json()).then(data=>{ agregar(data.texto,"ai",data.imagenes); if(data.borrar_historial){document.getElementById("chat").innerHTML="";} })
+  .catch(e=>{ agregar("Error al comunicarse con el servidor.","ai"); console.error(e); });
+}
+
+document.getElementById("mensaje").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); checkDailyLimit(); } });
 
 function hablarTexto(texto, div=null){
   if(!vozActiva) return;
@@ -765,60 +806,40 @@ function hablarTexto(texto, div=null){
   audioActual.play();
 }
 
-/* --- CHECK PREGUNTA LÍMITE --- */
-function checkQuestionLimit(){
-  if(!esPremium && preguntasHoy>=MAX_NO_PREMIUM){
-    alert(`Solo podes hacer ${MAX_NO_PREMIUM} preguntas por día. Hacé upgrade a Premium 💎`);
+/* --- PREMIUM --- */
+function togglePremiumMenu(){
+  const menu = document.getElementById("premiumMenu");
+  menu.style.display = (menu.style.display === "block") ? "none" : "block";
+  if(menu.style.display==="block"){ setTimeout(()=>window.addEventListener('click', closePremiumMenuOnClickOutside),50); }
+}
+function closePremiumMenuOnClickOutside(e){
+  const menu = document.getElementById("premiumMenu");
+  const btn = document.getElementById("premiumBtn");
+  if(!menu.contains(e.target) && !btn.contains(e.target)){
+    menu.style.display="none";
+    window.removeEventListener('click', closePremiumMenuOnClickOutside);
+  }
+}
+function irPremium(tipo){
+  fetch(`/premium?usuario_id=${usuario_id}&tipo=${tipo}`)
+    .then(r=>r.json())
+    .then(d=>{
+      window.open(d.qr,"_blank");
+      document.getElementById("premiumMenu").style.display="none";
+    });
+}
+
+/* --- OPCIONES PREMIUM BLOQUEADAS PARA FREE --- */
+function checkPremium(tipo){
+  if(!isPremium){
+    alert("⚠️ Esta función requiere Premium. Pasá a Premium para usarla.");
     return;
   }
-  preguntasHoy++;
-  enviar();
+  if(tipo==='audio') document.getElementById('audioInput').click();
+  if(tipo==='doc') document.getElementById('archivo_pdf_word').click();
 }
 
-/* --- CHECK OPCIONES PREMIUM --- */
-function checkPremiumAudio(){ if(!esPremium){ alert("Esta opción es Premium. Hacé upgrade para usarla 💎"); return; } document.getElementById('audioInput').click(); }
-function checkPremiumDoc(){ if(!esPremium){ alert("Esta opción es Premium. Hacé upgrade para usarla 💎"); return; } document.getElementById('archivo_pdf_word').click(); }
-
-/* --- ENVIAR MENSAJE --- */
-function enviar(){
-  let msg=document.getElementById("mensaje").value.trim(); if(!msg) return;
-  agregar(msg,"user"); document.getElementById("mensaje").value="";
-  fetch("/preguntar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mensaje: msg, usuario_id: usuario_id})})
-  .then(r=>r.json()).then(data=>{ agregar(data.texto,"ai",data.imagenes); })
-  .catch(e=>{ agregar("Error al comunicarse con el servidor.","ai"); console.error(e); });
-}
-
-document.getElementById("mensaje").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); checkQuestionLimit(); } });
-
-/* --- RECONOCIMIENTO DE VOZ --- */
-function hablar(){
-  if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window){
-    const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new Rec();
-    recognition.lang='es-AR'; recognition.continuous=false; recognition.interimResults=false;
-    recognition.onresult=function(event){ document.getElementById("mensaje").value=event.results[0][0].transcript.toLowerCase(); checkQuestionLimit(); }
-    recognition.onerror=function(e){console.log(e); alert("Error reconocimiento de voz: " + e.error);}
-    recognition.start();
-  }else{alert("Tu navegador no soporta reconocimiento de voz.");}
-}
-
-/* --- HISTORIAL --- */
-function verHistorial(){
-  fetch("/historial/"+usuario_id).then(r=>r.json()).then(data=>{
-    document.getElementById("chat").innerHTML="";
-    if(data.length===0){agregar("No hay historial todavía.","ai");return;}
-    data.slice(-20).forEach(e=>{ agregar(`<small>${e.fecha}</small><br>${e.usuario}`,"user"); agregar(`<small>${e.fecha}</small><br>${e.foschi}`,"ai"); });
-  });
-}
-
-/* --- PREMIUM --- */
-function irPremium(){
-  fetch(`/premium?usuario_id=${usuario_id}`)
-    .then(r=>r.json())
-    .then(d=>{ window.open(d.qr,"_blank"); });
-}
-
-/* --- MENU ADJUNTOS --- */
+/* --- MENÚ DE ADJUNTOS --- */
 function toggleAdjuntosMenu(){
   const m = document.getElementById("adjuntos_menu");
   m.style.display = m.style.display === "block" ? "none" : "block";
@@ -830,13 +851,33 @@ function closeMenuOnClickOutside(e){
   if(!menu.contains(e.target) && !clip.contains(e.target)){ menu.style.display="none"; window.removeEventListener('click', closeMenuOnClickOutside); }
 }
 
+/* --- HISTORIAL --- */
+function verHistorial(){
+  fetch("/historial/"+usuario_id).then(r=>r.json()).then(data=>{
+    document.getElementById("chat").innerHTML="";
+    if(data.length===0){agregar("No hay historial todavía.","ai");return;}
+    data.slice(-20).forEach(e=>{ agregar(`<small>${e.fecha}</small><br>${e.usuario}`,"user"); agregar(`<small>${e.fecha}</small><br>${e.foschi}`,"ai"); });
+  });
+}
+
+/* --- RECONOCIMIENTO DE VOZ --- */
+function hablar(){
+  if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window){
+    const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new Rec();
+    recognition.lang='es-AR'; recognition.continuous=false; recognition.interimResults=false;
+    recognition.onresult=function(event){ document.getElementById("mensaje").value=event.results[0][0].transcript.toLowerCase(); checkDailyLimit(); }
+    recognition.onerror=function(e){console.log(e); alert("Error reconocimiento de voz: " + e.error);}
+    recognition.start();
+  }else{alert("Tu navegador no soporta reconocimiento de voz.");}
+}
+
 /* --- RECORDATORIOS --- */
 function chequearRecordatorios(){
   fetch("/avisos",{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({usuario_id}) })
   .then(r=>r.json()).then(data=>{ if(Array.isArray(data) && data.length>0){ data.forEach(r=>{ agregar(`⏰ Tenés un recordatorio: ${r.motivo||"(sin motivo)"}`,"ai"); }); } }).catch(e=>console.error(e));
 }
 setInterval(chequearRecordatorios,10000);
-
 </script>
 </body>
 </html>
