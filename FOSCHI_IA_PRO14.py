@@ -11,6 +11,7 @@ import threading
 from datetime import datetime, timedelta
 import pytz
 
+from suscripciones import usuario_premium, aviso_vencimiento
 from flask import Flask, render_template_string, request, jsonify, session, send_file, after_this_request
 from flask_session import Session
 from gtts import gTTS
@@ -298,12 +299,24 @@ def learn_from_message(usuario, mensaje, respuesta):
         print("Error en learn_from_message:", e)
 
 # ---------------- RESPUESTA IA ----------------
+
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
-    # Asegurar que mensaje sea str
+       
+    # Bloqueo por no premium
+    if not usuario_premium(usuario):
+        if len(mensaje) > 200:
+            return {
+                "texto": "🔒 Esta función es solo para usuarios Premium.\n\n💎 Activá Foschi IA Premium desde el botón superior para seguir.",
+                "imagenes": [],
+                "borrar_historial": False
+            }
+
+    # Asegurar string
     if not isinstance(mensaje, str):
         mensaje = str(mensaje)
-    mensaje_lower = mensaje.lower().strip()
 
+    mensaje_lower = mensaje.lower().strip()
+           
     # --- RECORDATORIOS: comandos y detección ---
     try:
         if mensaje_lower in ["mis recordatorios", "lista de recordatorios", "ver recordatorios"]:
@@ -497,9 +510,18 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
     except Exception as e:
         texto = f"No pude generar respuesta: {e}"
 
-    texto = hacer_links_clicleables(texto)
+        texto = hacer_links_clicleables(texto)
+
+    aviso = aviso_vencimiento(usuario)
+    if aviso:
+        texto += "\n\n" + aviso
+
     learn_from_message(usuario, mensaje, texto)
-    return {"texto": texto, "imagenes": [], "borrar_historial": False}
+    return {
+        "texto": texto,
+        "imagenes": [],
+        "borrar_historial": False
+    }
 
 # ---------------- Plantilla HTML (modificada para menu clip + subir pdf/docx) ----------------
 HTML_TEMPLATE = """  
@@ -518,6 +540,7 @@ body{
  padding:0;
  text-shadow:0 0 6px #00eaff;
 }
+<button onclick="irPremium()" style="margin-left:10px;">💎 Foschi IA Premium</button>
 #chat{
  width:100%;
  height:70vh;
@@ -583,7 +606,7 @@ small{ color:#7ddfff; } .playing{ outline:2px solid #00eaff; box-shadow:0 0 14px
 <body>
 <h2 style="text-align:center;margin:10px 0; text-shadow:0 0 12px #00eaff;">
 <img src="/static/logo.png" id="logo" onclick="logoClick()" alt="logo">
-<span id="nombre" onclick="logoClick()">FOSCHI IA</span>
+# <span id="nombre" onclick="logoClick()">FOSCHI IA</span>
 <button onclick="detenerVoz()" style="margin-left:10px;">⏹️ Detener voz</button>
 <button id="vozBtn" onclick="toggleVoz()">🔊 Voz activada</button>
 <button id="borrarBtn" onclick="borrarPantalla()">🧹 Borrar pantalla</button>
@@ -611,6 +634,16 @@ small{ color:#7ddfff; } .playing{ outline:2px solid #00eaff; box-shadow:0 0 14px
   <button onclick="hablar()">🎤 Hablar</button>
   <button onclick="verHistorial()">🗂️ Ver historial</button>
 </div>
+
+<script>
+function irPremium(){
+  fetch(`/premium?usuario_id=${usuario_id}`)
+    .then(r=>r.json())
+    .then(d=>{
+      window.open(d.qr,"_blank");
+    });
+}
+</script>
 
 <script>
 let usuario_id="{{usuario_id}}";
@@ -855,6 +888,105 @@ setInterval(chequearRecordatorios, 10000);
 """
 
 # ---------------- RUTAS ----------------
+import mercadopago
+
+sdk = mercadopago.SDK(
+    "APP_USR-5793113592542665-010411-d99204938ad36578d1c7d45ef1e352e1-3111235582"
+)
+
+@app.route("/premium")
+def premium():
+    usuario = request.args.get("usuario_id")
+    pref = {
+        "items": [{
+            "title": "Foschi IA Premium – 30 días",
+            "quantity": 1,
+            "unit_price": 5000
+        }],
+        "external_reference": usuario,
+        "notification_url": "https://foschi-ia.onrender.com/webhook/mp"
+    }
+    res = sdk.preference().create(pref)
+    return jsonify({"qr": res["response"]["init_point"]})
+
+from suscripciones import activar_premium
+
+@app.route("/premium/anual")
+def premium_anual():
+    usuario = request.args.get("usuario_id")
+    pref = {
+        "items": [{
+            "title": "Foschi IA Premium – 12 meses",
+            "quantity": 1,
+            "unit_price": 48000  # ej: 12x con descuento
+        }],
+        "external_reference": usuario,
+        "notification_url": "https://foschi-ia.onrender.com/webhook/mp"
+    }
+    res = sdk.preference().create(pref)
+    return jsonify({"qr": res["response"]["init_point"]})
+
+@app.route("/webhook/mp", methods=["POST"])
+def webhook_mp():
+    data = request.json
+
+    if not data or "data" not in data:
+        return "ok"
+
+    payment_id = data["data"].get("id")
+    if not payment_id:
+        return "ok"
+
+    payment = sdk.payment().get(payment_id)
+    info = payment["response"]
+
+    if info.get("status") == "approved":
+        usuario = info.get("external_reference")
+        if usuario:
+            activar_premium(usuario)
+
+            from pagos import registrar_pago
+
+            monto = info.get("transaction_amount", 0)
+            payment_id = info.get("id")
+
+            plan = "anual" if monto >= 30000 else "mensual"
+
+            registrar_pago(usuario, monto, plan, payment_id)
+
+    return "ok"
+
+    payment = sdk.payment().get(payment_id)
+    info = payment["response"]
+
+    if info.get("status") == "approved":
+        usuario = info.get("external_reference")
+        plan = "anual" if info["transaction_amount"] > 10000 else "mensual"
+
+        if usuario:
+            activar_premium(usuario)
+
+            # 🔹 GUARDAR PAGO
+            from datetime import datetime
+            import json, os
+
+            archivo = "pagos.json"
+            pagos = {}
+
+            if os.path.exists(archivo):
+                pagos = json.load(open(archivo))
+
+            pagos[usuario] = {
+                "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "plan": plan,
+                "payment_id": str(payment_id),
+                "status": "approved"
+            }
+
+            json.dump(pagos, open(archivo, "w"), indent=2)
+
+    return "ok"
+
 @app.route("/")
 def index():
     if "usuario_id" not in session:
@@ -919,6 +1051,46 @@ def avisos():
             restantes.append(r)
     save_recordatorios(restantes)
     return jsonify(vencidos)
+
+@app.route("/admin/pagos")
+def admin_pagos():
+    import json, os
+
+    # 🔐 clave simple (después se mejora)
+    if request.args.get("key") != "foschi_admin_2026":
+        return "Acceso denegado", 403
+
+    archivo = "pagos.json"
+    if not os.path.exists(archivo):
+        return "<h2>No hay pagos todavía</h2>"
+
+    pagos = json.load(open(archivo))
+
+    html = """
+    <h2>💎 Pagos Foschi IA</h2>
+    <table border="1" cellpadding="8">
+      <tr>
+        <th>Usuario</th>
+        <th>Plan</th>
+        <th>Fecha</th>
+        <th>Payment ID</th>
+        <th>Status</th>
+      </tr>
+    """
+
+    for u, p in pagos.items():
+        html += f"""
+        <tr>
+          <td>{u}</td>
+          <td>{p['plan']}</td>
+          <td>{p['fecha']}</td>
+          <td>{p['payment_id']}</td>
+          <td>{p['status']}</td>
+        </tr>
+        """
+
+    html += "</table>"
+    return html
 
 # ---------------- AUDIO A WORD DOCX ----------------
 from werkzeug.utils import secure_filename
