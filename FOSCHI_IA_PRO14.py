@@ -531,204 +531,208 @@ HTML_TEMPLATE = """
 <title>{{APP_NAME}}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-
-/* ======================================================
-   VARIABLES DE TEMA
-====================================================== */
-:root{
-  --bg-main:#000814;
-  --bg-secondary:#00111a;
-  --text-main:#00eaff;
-  --border-main:#00eaff55;
-  --button-bg:#001f2e;
-  --button-text:#00eaff;
-  --shadow-main:#00eaff88;
-}
-
-body.day{
-  --bg-main:#ffffff;
-  --bg-secondary:#f2f2f2;
-  --text-main:#000000;
-  --border-main:#cccccc;
-  --button-bg:#eaeaea;
-  --button-text:#000000;
-  --shadow-main:rgba(0,0,0,0.15);
-}
-
-/* ======================================================
-   ESTILOS GENERALES
-====================================================== */
+/* --- ESTILOS GENERALES --- */
 body{
- font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
- background:var(--bg-main);
- color:var(--text-main);
- margin:0;
- padding:0;
- display:flex;
- flex-direction:column;
- height:100vh;
- overflow:hidden;
- transition:all .3s ease;
+ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+ margin:0; padding:0;
+ display:flex; flex-direction:column;
+ height:100vh; overflow:hidden;
+ text-shadow:0 0 6px #00eaff;
+ transition: all 0.3s ease;
 }
 
-/* ======================================================
-   HEADER
-====================================================== */
+/* --- HEADER SUPERIOR (LOGO + BOTONES) --- */
 #header{
- display:flex;
- align-items:center;
- justify-content:space-between;
- padding:8px 16px;
- background:linear-gradient(var(--bg-main),var(--bg-secondary));
- box-shadow:0 2px 10px var(--shadow-main);
- position:sticky;
- top:0;
- z-index:10;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:8px;
+  padding:8px 16px;
+  background: linear-gradient(#000814,#00111a);
+  flex-shrink:0;
+  text-align:center;
+  position:sticky;
+  top:0;
+  z-index:10;
+  box-shadow:0 0 12px #00eaff66;
+  transition: all 0.3s ease;
 }
+#leftButtons{
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+#rightButtons{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.separator{ border-left:1px solid #00eaff55; height:32px; margin:0 8px; }
 
-#leftButtons,#rightButtons{
- display:flex;
- align-items:center;
- gap:10px;
-}
-
-.separator{
- border-left:1px solid var(--border-main);
- height:30px;
-}
-
-#header button{
- font-size:14px;
- padding:6px 10px;
- border-radius:6px;
- background:var(--button-bg);
- color:var(--button-text);
- border:1px solid var(--border-main);
- cursor:pointer;
- transition:.25s;
-}
-#header button:hover{
- filter:brightness(1.1);
-}
-
-/* PREMIUM */
-#premiumBtn{
- font-weight:600;
-}
-body.day #premiumBtn{
- background:#ffffff;
- border:2px solid #000000;
-}
-
-/* LOGO */
 #logo{
- width:120px;
- cursor:pointer;
- transition:.3s;
+  width:120px;
+  cursor:pointer;
+  transition: transform 0.5s, filter 0.5s;
+  filter: drop-shadow(0 0 12px #00eaff);
 }
-#logo:hover{ transform:scale(1.1); }
+#logo:hover{
+  transform:scale(1.2) rotate(6deg);
+  filter:drop-shadow(0 0 20px #00eaff);
+}
 
-/* ======================================================
-   CHAT
-====================================================== */
+#header button, #header select{
+  font-size:14px; padding:6px 10px; border-radius:6px; border:1px solid #006688; cursor:pointer;
+  text-shadow:0 0 4px #00eaff; box-shadow:0 0 8px #0099bb; transition:0.3s;
+  background:#001f2e; color:#00eaff;
+}
+#header button:hover, #header select:hover{
+  background:#003547;
+  box-shadow:0 0 14px #00eaff;
+}
+#premiumBtn{
+  animation: neonGlow 1.5s ease-in-out infinite alternate;
+}
+@keyframes neonGlow {
+  0% { box-shadow: 0 0 8px #00eaff,0 0 12px #00eaff,0 0 16px #00eaff; color:#00eaff;}
+  50% { box-shadow:0 0 12px #00ffff,0 0 20px #00ffff,0 0 28px #00ffff;color:#00ffff;}
+  100%{ box-shadow:0 0 8px #00eaff,0 0 12px #00eaff,0 0 16px #00eaff; color:#00eaff;}
+}
+
+/* --- CHAT --- */
 #chat{
- flex:1;
- overflow-y:auto;
- padding:12px;
- background:linear-gradient(var(--bg-secondary),var(--bg-main));
- border-top:1px solid var(--border-main);
- border-bottom:1px solid var(--border-main);
- padding-bottom:120px;
+  flex:1;
+  overflow-y:auto;
+  padding:10px;
+  background: linear-gradient(#00111a,#000814);
+  border-top:2px solid #00eaff44;
+  border-bottom:2px solid #00eaff44;
+  box-shadow: inset 0 0 15px #00eaff55;
+  padding-bottom:120px;
+  transition: all 0.3s ease;
 }
 
-/* ======================================================
-   MENSAJES
-====================================================== */
+/* --- MENSAJES --- */
 .message{
- margin:6px 0;
- padding:10px 14px;
- border-radius:14px;
+ margin:5px 0;
+ padding:8px 12px;
+ border-radius:15px;
  max-width:80%;
+ word-wrap:break-word;
  opacity:0;
- transition:.4s;
+ transition:opacity 0.5s, box-shadow 0.5s, background 0.5s;
+ font-size:15px;
 }
 .message.show{ opacity:1; }
-
 .user{
- background:rgba(80,80,255,.15);
+ background:rgba(51,0,255,0.3);
+ color:#b4b7ff;
  margin-left:auto;
- border:1px solid var(--border-main);
+ text-align:right;
+ border:1px solid #4455ff;
+ box-shadow:0 0 8px #3344ff;
 }
 .ai{
- background:rgba(0,200,200,.15);
+ background:rgba(0,255,255,0.2);
+ color:#00eaff;
  margin-right:auto;
- border:1px solid var(--border-main);
+ text-align:left;
+ border:1px solid #00eaff;
+ box-shadow:0 0 10px #00eaff;
 }
+a{ text-decoration:underline; }
+img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00eaff88; border:1px solid #00eaff55; }
 
-/* ======================================================
-   INPUT BAR
-====================================================== */
+/* --- BARRA DE ENTRADA FIJA ABAJO --- */
 #inputBar{
  display:flex;
  align-items:center;
  gap:6px;
  padding:8px;
- background:var(--bg-secondary);
- border-top:1px solid var(--border-main);
+ background:#001d29;
+ border-top:2px solid #00eaff44;
+ flex-shrink:0;
  position:fixed;
  bottom:0;
+ left:0;
  width:100%;
+ box-sizing:border-box;
+ z-index:20;
+ transition: all 0.3s ease;
 }
-
-#inputBar input{
+#inputBar input[type=text]{
  flex:1;
  padding:10px;
  font-size:16px;
- background:#ffffff;
- color:#000;
- border:1px solid #bbb;
+ background:#00121d;
+ color:#00eaff;
+ border:1px solid #003344;
+ box-shadow:0 0 6px #00eaff55 inset;
  border-radius:5px;
+ transition: all 0.3s ease;
 }
-
 #inputBar button{
  padding:10px;
  font-size:16px;
- background:var(--button-bg);
- color:var(--button-text);
- border:1px solid var(--border-main);
+ border:none;
  border-radius:5px;
+ background:#001f2e;
+ color:#00eaff;
  cursor:pointer;
+ border:1px solid #006688;
+ text-shadow:0 0 4px #00eaff;
+ box-shadow:0 0 8px #0099bb;
+ transition:0.25s;
 }
 
-/* ======================================================
-   MENÚS
-====================================================== */
-#adjuntos_menu,#premiumMenu{
- background:var(--bg-secondary);
- border:1px solid var(--border-main);
+/* --- BOTONES PEQUEÑOS --- */
+#vozBtn,#borrarBtn,#premiumBtn{ font-size:14px; padding:6px 10px; }
+
+/* --- MENÚ DE ADJUNTOS --- */
+#adjuntos_menu{
+ position:absolute;
+ left:6px; top:-120px;
+ display:none;
+ background:#001f2e;
+ border:1px solid #003547;
+ padding:8px;
+ border-radius:8px;
+ box-shadow:0 6px 16px rgba(0,0,0,0.6);
+ z-index:50;
+}
+#adjuntos_menu button{ display:block; width:160px; margin:6px; text-align:left; }
+.hidden_file_input{ display:none; }
+
+/* --- MENÚ PREMIUM --- */
+#premiumMenu button{
+  display:block;
+  width:120px;
+  margin:4px 0;
+  text-align:left;
 }
 
-/* ======================================================
-   MOBILE
-====================================================== */
-@media(max-width:600px){
- #logo{ width:140px; }
+/* --- AJUSTES RESPONSIVE PARA MÓVIL --- */
+@media (max-width:600px){
+  #inputBar input[type=text]{ font-size:18px; padding:12px; }
+  #inputBar button,#header button,#header select{ font-size:16px; padding:10px; }
+  #logo{ width:140px; }
 }
-
 </style>
 </head>
 
-<body class="dark">
+<body>
 
 <!-- HEADER -->
 <div id="header">
   <div id="leftButtons">
-    <img src="/static/logo.png" id="logo" onclick="logoClick()">
-    <button onclick="toggleTheme()">🌙 / ☀️</button>
+    <img src="/static/logo.png" id="logo" onclick="logoClick()" alt="logo">
 
-    <div style="position:relative">
+    <!-- BOTÓN DÍA / NOCHE (NUEVO, NO REEMPLAZA NADA) -->
+    <button id="dayNightBtn" onclick="toggleDayNight()">🌙</button>
+
+    <div id="premiumContainer" style="position:relative; margin-left:12px;">
       <button id="premiumBtn" onclick="togglePremiumMenu()">💎 Pasar a Premium</button>
-      <div id="premiumMenu" style="display:none;position:absolute;top:36px;left:0;padding:6px;">
+      <div id="premiumMenu" style="display:none;position:absolute;top:36px;left:0;background:#001f2e;border:1px solid #003547;border-radius:6px;padding:6px;box-shadow:0 6px 16px rgba(0,0,0,0.6);z-index:100;">
         <button onclick="irPremium('mensual')">💎 Pago Mensual</button>
         <button onclick="irPremium('anual')">💎 Pago Anual</button>
       </div>
@@ -737,43 +741,60 @@ body.day #premiumBtn{
 
   <div id="rightButtons">
     <div class="separator"></div>
-    <button onclick="detenerVoz()">⏹️</button>
-    <button id="vozBtn" onclick="toggleVoz()">🔊</button>
-    <button onclick="borrarPantalla()">🧹</button>
-    <button onclick="verHistorial()">🗂️</button>
+    <button onclick="detenerVoz()">⏹️ Detener voz</button>
+    <button id="vozBtn" onclick="toggleVoz()">🔊 Voz activada</button>
+    <button id="borrarBtn" onclick="borrarPantalla()">🧹 Borrar pantalla</button>
+    <button onclick="verHistorial()">🗂️ Historial</button>
+    <select id="modoSelect" onchange="cambiarModo(this.value)">
+      <option value="neon">💡 Neon</option>
+      <option value="black">🌑 Dark</option>
+      <option value="white">☀️ Day</option>
+    </select>
   </div>
 </div>
 
 <!-- CHAT -->
-<div id="chat"></div>
+<div id="chat" role="log" aria-live="polite"></div>
 
-<!-- INPUT -->
+<!-- BARRA DE ENTRADA -->
 <div id="inputBar">
-  <div style="position:relative">
-    <div id="clipBtn" onclick="toggleAdjuntosMenu()">📎</div>
-    <div id="adjuntos_menu" style="display:none;position:absolute;top:-120px;">
-      <button onclick="checkPremium('audio')">🎵 Audio</button>
-      <button onclick="checkPremium('doc')">📄 Documento</button>
+  <div style="position:relative;">
+    <div id="clipBtn" title="Adjuntar" onclick="toggleAdjuntosMenu()">📎</div>
+    <div id="adjuntos_menu" aria-hidden="true">
+      <button onclick="checkPremium('audio')">🎵 Subir Audio (mp3/wav)</button>
+      <button onclick="checkPremium('doc')">📄 Subir PDF / WORD</button>
     </div>
   </div>
-  <input id="audioInput" class="hidden_file_input" type="file">
-  <input id="archivo_pdf_word" class="hidden_file_input" type="file">
-  <input type="text" id="mensaje" placeholder="Escribí tu mensaje">
+  <input id="audioInput" class="hidden_file_input" type="file" accept=".mp3,audio/*,.wav" />
+  <input id="archivo_pdf_word" class="hidden_file_input" type="file" accept=".pdf,.docx" />
+  <input type="text" id="mensaje" placeholder="Escribí tu mensaje o hablá" />
   <button onclick="checkDailyLimit()">Enviar</button>
-  <button onclick="hablar()">🎤</button>
+  <button onclick="hablar()">🎤 Hablar</button>
 </div>
 
 <script>
-/* =============================
-   TOGGLE TEMA (SIN API)
-============================= */
-function toggleTheme(){
-  document.body.classList.toggle("day");
+/* --- BOTÓN DÍA / NOCHE (USA TU cambiarModo) --- */
+function toggleDayNight(){
+  const actual = localStorage.getItem("modo") || "neon";
+  const nuevo = actual === "white" ? "neon" : "white";
+  document.getElementById("modoSelect").value = nuevo;
+  cambiarModo(nuevo);
+  document.getElementById("dayNightBtn").textContent = nuevo === "white" ? "☀️" : "🌙";
 }
-</script>
 
-<!-- TODO EL JS ORIGINAL QUEDA IGUAL -->
-<!-- (NO TOQUÉ NI UNA FUNCIÓN EXISTENTE) -->
+/* --- AJUSTE PREMIUM SOLO EN DAY --- */
+const _cambiarModoOriginal = cambiarModo;
+cambiarModo = function(modo){
+  _cambiarModoOriginal(modo);
+  if(modo === "white"){
+    const p = document.getElementById("premiumBtn");
+    p.style.background = "#ffffff";
+    p.style.color = "#000000";
+    p.style.border = "2px solid #000000";
+    p.style.boxShadow = "none";
+  }
+};
+</script>
 
 </body>
 </html>
