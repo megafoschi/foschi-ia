@@ -594,6 +594,16 @@ body{
   box-shadow:0 0 14px #00eaff;
 }
 
+#premiumBtn{
+  animation: neonGlow 1.5s ease-in-out infinite alternate;
+}
+
+@keyframes neonGlow {
+  0% { box-shadow: 0 0 8px #00eaff, 0 0 12px #00eaff, 0 0 16px #00eaff; color:#00eaff; }
+  50% { box-shadow: 0 0 12px #00ffff, 0 0 20px #00ffff, 0 0 28px #00ffff; color:#00ffff; }
+  100% { box-shadow: 0 0 8px #00eaff, 0 0 12px #00eaff, 0 0 16px #00eaff; color:#00eaff; }
+}
+
 #logo{
   width:120px;
   cursor:pointer;
@@ -873,6 +883,11 @@ function verHistorial(){
   });
 }
 
+function borrarPantalla(){
+    detenerVoz(); 
+    document.getElementById("chat").innerHTML = ""; 
+}
+
 function hablar(){
   if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window){
     const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -890,42 +905,12 @@ function chequearRecordatorios(){
 }
 setInterval(chequearRecordatorios,10000);
 
-/* --- SALUDO INICIAL Y CLIMA CON ICONOS --- */
+/* --- SALUDO INICIAL --- */
 window.onload = function() {
     agregar("👋 ¡Hola! Bienvenido a Foschi IA","ai");
-
-    if(navigator.geolocation){
-        navigator.geolocation.getCurrentPosition(
-            function(pos){
-                const lat = pos.coords.latitude;
-                const lon = pos.coords.longitude;
-                fetch(`/clima?lat=${lat}&lon=${lon}`)
-                .then(r=>r.json())
-                .then(data=>{
-                    if(data && data.temperatura){
-                        let icon="🌤️";
-                        const desc = data.descripcion.toLowerCase();
-                        if(desc.includes("lluvia")) icon="🌧️";
-                        else if(desc.includes("nieve")) icon="❄️";
-                        else if(desc.includes("tormenta")) icon="⛈️";
-                        else if(desc.includes("nublado")) icon="☁️";
-                        else if(desc.includes("sol") || desc.includes("despejado")) icon="☀️";
-
-                        agregar(`${icon} El clima en tu ubicación es ${data.temperatura}°C, ${data.descripcion}`,"ai");
-                    }else{
-                        agregar("🌤️ No se pudo obtener el clima.","ai");
-                    }
-                })
-                .catch(e=>{ agregar("🌤️ Error al obtener el clima.","ai"); console.error(e); });
-            },
-            function(err){
-                console.warn(err);
-                agregar("🌤️ No se pudo obtener tu ubicación para mostrar el clima.","ai");
-            }
-        );
-    }else{
-        agregar("🌤️ Tu navegador no soporta geolocalización.","ai");
-    }
+    let saludoAudio = new Audio("/tts?texto=👋 ¡Hola! Bienvenido a Foschi IA");
+    saludoAudio.playbackRate = 1.25;
+    saludoAudio.play();
 };
 </script>
 </body>
