@@ -534,8 +534,6 @@ HTML_TEMPLATE = """
 /* --- ESTILOS GENERALES --- */
 body{
  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
- background:#000814;
- color:#00eaff;
  margin:0;
  padding:0;
  display:flex;
@@ -543,6 +541,7 @@ body{
  height:100vh;
  overflow:hidden;
  text-shadow:0 0 6px #00eaff;
+ transition: all 0.3s ease;
 }
 
 /* --- HEADER SUPERIOR (LOGO + BOTONES) --- */
@@ -551,12 +550,12 @@ body{
   align-items:center;
   justify-content:space-between;
   padding:8px 16px;
-  background: linear-gradient(#000814,#00111a);
   flex-shrink:0;
   position:sticky;
   top:0;
   z-index:10;
   box-shadow:0 0 12px #00eaff66;
+  transition: all 0.3s ease;
 }
 
 #leftButtons{
@@ -577,19 +576,19 @@ body{
   margin:0 8px;
 }
 
-#header button{
+#header button, #header select{
   font-size:14px;
   padding:6px 10px;
   border-radius:6px;
-  background:#001f2e;
-  color:#00eaff;
   border:1px solid #006688;
   cursor:pointer;
   text-shadow:0 0 4px #00eaff;
   box-shadow:0 0 8px #0099bb;
   transition:0.3s;
+  background:#001f2e;
+  color:#00eaff;
 }
-#header button:hover{
+#header button:hover, #header select:hover{
   background:#003547;
   box-shadow:0 0 14px #00eaff;
 }
@@ -620,11 +619,11 @@ body{
   flex:1;
   overflow-y:auto;
   padding:10px;
-  background: linear-gradient(#00111a,#000814);
   border-top:2px solid #00eaff44;
   border-bottom:2px solid #00eaff44;
   box-shadow: inset 0 0 15px #00eaff55;
   padding-bottom:120px; /* espacio para la barra inferior */
+  transition: all 0.3s ease;
 }
 
 /* --- MENSAJES --- */
@@ -664,8 +663,6 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
  align-items:center;
  gap:6px;
  padding:8px;
- background:#001d29;
- border-top:2px solid #00eaff44;
  flex-shrink:0;
  position:fixed;
  bottom:0;
@@ -673,33 +670,27 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
  width:100%;
  box-sizing:border-box;
  z-index:20;
+ transition: all 0.3s ease;
 }
 #inputBar input[type=text]{
  flex:1;
  padding:10px;
  font-size:16px;
- background:#00121d;
- color:#00eaff;
+ border-radius:5px;
  border:1px solid #003344;
  box-shadow:0 0 6px #00eaff55 inset;
- border-radius:5px;
+ transition: all 0.3s ease;
 }
 #inputBar button{
  padding:10px;
  font-size:16px;
  border:none;
  border-radius:5px;
- background:#001f2e;
- color:#00eaff;
  cursor:pointer;
  border:1px solid #006688;
  text-shadow:0 0 4px #00eaff;
  box-shadow:0 0 8px #0099bb;
  transition:0.25s;
-}
-#inputBar button:hover{
- background:#003547;
- box-shadow:0 0 14px #00eaff;
 }
 
 /* --- BOTONES PEQUEÑOS --- */
@@ -710,9 +701,6 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
  position:absolute;
  left:6px; top:-120px;
  display:none;
- background:#001f2e;
- border:1px solid #003547;
- padding:8px;
  border-radius:8px;
  box-shadow:0 6px 16px rgba(0,0,0,0.6);
  z-index:50;
@@ -731,8 +719,8 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
 /* --- AJUSTES RESPONSIVE PARA MÓVIL --- */
 @media (max-width:600px){
   #inputBar input[type=text]{ font-size:18px; padding:12px; }
-  #inputBar button{ font-size:16px; padding:10px; }
-  #logo{ width:140px; } /* logo más grande en móvil */
+  #inputBar button, #header button, #header select{ font-size:16px; padding:10px; }
+  #logo{ width:140px; }
 }
 </style>
 </head>
@@ -744,7 +732,7 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
     <img src="/static/logo.png" id="logo" onclick="logoClick()" alt="logo">
     <div id="premiumContainer" style="position:relative; margin-left:12px;">
       <button id="premiumBtn" onclick="togglePremiumMenu()">💎 Pasar a Premium</button>
-      <div id="premiumMenu" style="display:none;position:absolute;top:36px;left:0;background:#001f2e;border:1px solid #003547;border-radius:6px;padding:6px;box-shadow:0 6px 16px rgba(0,0,0,0.6);z-index:100;">
+      <div id="premiumMenu" style="display:none;position:absolute;top:36px;left:0;border-radius:6px;padding:6px;box-shadow:0 6px 16px rgba(0,0,0,0.6);z-index:100;">
         <button onclick="irPremium('mensual')">💎 Pago Mensual</button>
         <button onclick="irPremium('anual')">💎 Pago Anual</button>
       </div>
@@ -757,6 +745,11 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
     <button id="vozBtn" onclick="toggleVoz()">🔊 Voz activada</button>
     <button id="borrarBtn" onclick="borrarPantalla()">🧹 Borrar pantalla</button>
     <button onclick="verHistorial()">🗂️ Historial</button>
+    <select id="modoSelect" onchange="cambiarModo(this.value)">
+      <option value="neon">💡 Neon</option>
+      <option value="black">🌑 Dark</option>
+      <option value="white">☀️ Day</option>
+    </select>
   </div>
 </div>
 
@@ -780,13 +773,14 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
 </div>
 
 <script>
-// --- Variables y funciones generales ---
+// --- Variables ---
 let usuario_id="{{usuario_id}}";
 let vozActiva=true,audioActual=null,mensajeActual=null;
 let MAX_NO_PREMIUM = 5;
 let preguntasHoy = 0; 
 let isPremium = false; 
 
+/* --- FUNCIONES --- */
 function logoClick(){ alert("FOSCHI NUNCA MUERE, TRASCIENDE..."); }
 function toggleVoz(estado=null){ vozActiva=estado!==null?estado:!vozActiva; document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada"; }
 function detenerVoz(){ if(audioActual){ audioActual.pause(); audioActual.currentTime=0; audioActual.src=""; audioActual.load(); audioActual=null; if(mensajeActual) mensajeActual.classList.remove("playing"); mensajeActual=null; } }
@@ -905,8 +899,42 @@ function chequearRecordatorios(){
 }
 setInterval(chequearRecordatorios,10000);
 
+/* --- CAMBIO DE MODO --- */
+function cambiarModo(modo){
+  localStorage.setItem("modo", modo);
+  const body=document.body;
+  const chat=document.getElementById("chat");
+  const inputBar=document.getElementById("inputBar");
+  const header=document.getElementById("header");
+  
+  switch(modo){
+    case "neon":
+      body.style.background="#000814"; body.style.color="#00eaff";
+      chat.style.background="linear-gradient(#00111a,#000814)";
+      inputBar.style.background="#001d29";
+      header.style.background="linear-gradient(#000814,#00111a)";
+      break;
+    case "black":
+      body.style.background="#000"; body.style.color="#00bfff";
+      chat.style.background="#111";
+      inputBar.style.background="#111";
+      header.style.background="#111";
+      break;
+    case "white":
+      body.style.background="#f0f0f0"; body.style.color="#000";
+      chat.style.background="#fff";
+      inputBar.style.background="#eee";
+      header.style.background="#ddd";
+      break;
+  }
+}
+
 /* --- SALUDO INICIAL --- */
 window.onload = function() {
+    let modo = localStorage.getItem("modo") || "neon";
+    document.getElementById("modoSelect").value = modo;
+    cambiarModo(modo);
+
     agregar("👋 ¡Hola! Bienvenido a Foschi IA","ai");
     let saludoAudio = new Audio("/tts?texto=👋 ¡Hola! Bienvenido a Foschi IA");
     saludoAudio.playbackRate = 1.25;
