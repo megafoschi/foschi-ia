@@ -549,28 +549,34 @@ body{
 #header{
   display:flex;
   align-items:center;
-  justify-content:center;
-  flex-wrap:wrap;
-  gap:8px;
-  padding:8px;
+  justify-content:space-between;
+  padding:8px 16px;
   background: linear-gradient(#000814,#00111a);
   flex-shrink:0;
-  text-align:center;
   position:sticky;
   top:0;
   z-index:10;
   box-shadow:0 0 12px #00eaff66;
 }
-#logo{
-  width:120px;
-  cursor:pointer;
-  transition: transform 0.5s, filter 0.5s;
-  filter: drop-shadow(0 0 12px #00eaff);
+
+#leftButtons{
+  display:flex;
+  align-items:center;
+  gap:12px;
 }
-#logo:hover{
-  transform:scale(1.2) rotate(6deg);
-  filter:drop-shadow(0 0 20px #00eaff);
+
+#rightButtons{
+  display:flex;
+  align-items:center;
+  gap:8px;
 }
+
+.separator{
+  border-left:1px solid #00eaff55;
+  height:32px;
+  margin:0 8px;
+}
+
 #header button{
   font-size:14px;
   padding:6px 10px;
@@ -588,11 +594,15 @@ body{
   box-shadow:0 0 14px #00eaff;
 }
 
-/* --- Línea separadora --- */
-.separator{
-  border-left:1px solid #00eaff55;
-  height:24px;
-  margin:0 8px;
+#logo{
+  width:120px;
+  cursor:pointer;
+  transition: transform 0.5s, filter 0.5s;
+  filter: drop-shadow(0 0 12px #00eaff);
+}
+#logo:hover{
+  transform:scale(1.2) rotate(6deg);
+  filter:drop-shadow(0 0 20px #00eaff);
 }
 
 /* --- CHAT --- */
@@ -720,23 +730,24 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
 <body>
 <!-- HEADER -->
 <div id="header">
-  <img src="/static/logo.png" id="logo" onclick="logoClick()" alt="logo">
-
-  <div class="separator"></div>
-
-  <div id="premiumContainer" style="position:relative;">
-    <button id="premiumBtn" onclick="togglePremiumMenu()">💎 Foschi IA Premium</button>
-    <div id="premiumMenu" style="display:none;position:absolute;top:36px;left:0;background:#001f2e;border:1px solid #003547;border-radius:6px;padding:6px;box-shadow:0 6px 16px rgba(0,0,0,0.6);z-index:100;">
-      <button onclick="irPremium('mensual')">💎 Pago Mensual</button>
-      <button onclick="irPremium('anual')">💎 Pago Anual</button>
+  <div id="leftButtons">
+    <img src="/static/logo.png" id="logo" onclick="logoClick()" alt="logo">
+    <div id="premiumContainer" style="position:relative; margin-left:12px;">
+      <button id="premiumBtn" onclick="togglePremiumMenu()">💎 Pasar a Premium</button>
+      <div id="premiumMenu" style="display:none;position:absolute;top:36px;left:0;background:#001f2e;border:1px solid #003547;border-radius:6px;padding:6px;box-shadow:0 6px 16px rgba(0,0,0,0.6);z-index:100;">
+        <button onclick="irPremium('mensual')">💎 Pago Mensual</button>
+        <button onclick="irPremium('anual')">💎 Pago Anual</button>
+      </div>
     </div>
   </div>
 
-  <button onclick="detenerVoz()">⏹️ Detener voz</button>
-  <button id="vozBtn" onclick="toggleVoz()">🔊 Voz activada</button>
-  <button id="borrarBtn" onclick="borrarPantalla()">🧹 Borrar pantalla</button>
-
-  <button onclick="verHistorial()">🗂️ Historial</button>
+  <div id="rightButtons">
+    <div class="separator"></div>
+    <button onclick="detenerVoz()">⏹️ Detener voz</button>
+    <button id="vozBtn" onclick="toggleVoz()">🔊 Voz activada</button>
+    <button id="borrarBtn" onclick="borrarPantalla()">🧹 Borrar pantalla</button>
+    <button onclick="verHistorial()">🗂️ Historial</button>
+  </div>
 </div>
 
 <!-- CHAT -->
@@ -759,6 +770,7 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
 </div>
 
 <script>
+// --- Variables y funciones generales ---
 let usuario_id="{{usuario_id}}";
 let vozActiva=true,audioActual=null,mensajeActual=null;
 let MAX_NO_PREMIUM = 5;
@@ -766,7 +778,6 @@ let preguntasHoy = 0;
 let isPremium = false; 
 
 function logoClick(){ alert("FOSCHI NUNCA MUERE, TRASCIENDE..."); }
-
 function toggleVoz(estado=null){ vozActiva=estado!==null?estado:!vozActiva; document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada"; }
 function detenerVoz(){ if(audioActual){ audioActual.pause(); audioActual.currentTime=0; audioActual.src=""; audioActual.load(); audioActual=null; if(mensajeActual) mensajeActual.classList.remove("playing"); mensajeActual=null; } }
 
@@ -878,6 +889,44 @@ function chequearRecordatorios(){
   .then(r=>r.json()).then(data=>{ if(Array.isArray(data) && data.length>0){ data.forEach(r=>{ agregar(`⏰ Tenés un recordatorio: ${r.motivo||"(sin motivo)"}`,"ai"); }); } }).catch(e=>console.error(e));
 }
 setInterval(chequearRecordatorios,10000);
+
+/* --- SALUDO INICIAL Y CLIMA CON ICONOS --- */
+window.onload = function() {
+    agregar("👋 ¡Hola! Bienvenido a Foschi IA","ai");
+
+    if(navigator.geolocation){
+        navigator.geolocation.getCurrentPosition(
+            function(pos){
+                const lat = pos.coords.latitude;
+                const lon = pos.coords.longitude;
+                fetch(`/clima?lat=${lat}&lon=${lon}`)
+                .then(r=>r.json())
+                .then(data=>{
+                    if(data && data.temperatura){
+                        let icon="🌤️";
+                        const desc = data.descripcion.toLowerCase();
+                        if(desc.includes("lluvia")) icon="🌧️";
+                        else if(desc.includes("nieve")) icon="❄️";
+                        else if(desc.includes("tormenta")) icon="⛈️";
+                        else if(desc.includes("nublado")) icon="☁️";
+                        else if(desc.includes("sol") || desc.includes("despejado")) icon="☀️";
+
+                        agregar(`${icon} El clima en tu ubicación es ${data.temperatura}°C, ${data.descripcion}`,"ai");
+                    }else{
+                        agregar("🌤️ No se pudo obtener el clima.","ai");
+                    }
+                })
+                .catch(e=>{ agregar("🌤️ Error al obtener el clima.","ai"); console.error(e); });
+            },
+            function(err){
+                console.warn(err);
+                agregar("🌤️ No se pudo obtener tu ubicación para mostrar el clima.","ai");
+            }
+        );
+    }else{
+        agregar("🌤️ Tu navegador no soporta geolocalización.","ai");
+    }
+};
 </script>
 </body>
 </html>
