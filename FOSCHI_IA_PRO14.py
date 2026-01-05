@@ -530,249 +530,268 @@ HTML_TEMPLATE = """
 <head>
 <title>{{APP_NAME}}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-
 <style>
-/* ================== ESTILOS GENERALES ================== */
+/* --- ESTILOS GENERALES --- */
 body{
-  font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;
-  margin:0;
-  padding:0;
-  display:flex;
-  flex-direction:column;
-  height:100vh;
-  overflow:hidden;
-  background:#000814;
-  color:#00eaff;
-  text-shadow:0 0 6px #00eaff;
-  transition:all .3s ease;
+ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+ margin:0; padding:0;
+ display:flex; flex-direction:column;
+ height:100vh; overflow:hidden;
+ text-shadow:0 0 6px #00eaff;
+ transition: all 0.3s ease;
 }
 
-/* ================== HEADER ================== */
+/* --- HEADER SUPERIOR (LOGO + BOTONES) --- */
 #header{
   display:flex;
-  justify-content:space-between;
   align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:8px;
   padding:8px 16px;
-  background:linear-gradient(#000814,#00111a);
+  background: linear-gradient(#000814,#00111a);
+  flex-shrink:0;
+  text-align:center;
   position:sticky;
   top:0;
   z-index:10;
   box-shadow:0 0 12px #00eaff66;
+  transition: all 0.3s ease;
 }
-
-#leftButtons,#rightButtons{
+#leftButtons{
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+#rightButtons{
   display:flex;
   align-items:center;
   gap:8px;
 }
+.separator{ border-left:1px solid #00eaff55; height:32px; margin:0 8px; }
 
-/* 🔥 separador eliminado visualmente */
-.separator{display:none}
-
-/* ================== LOGO ================== */
 #logo{
   width:120px;
   cursor:pointer;
-  filter:drop-shadow(0 0 12px #00eaff);
+  transition: transform 0.5s, filter 0.5s;
+  filter: drop-shadow(0 0 12px #00eaff);
+}
+#logo:hover{
+  transform:scale(1.2) rotate(6deg);
+  filter:drop-shadow(0 0 20px #00eaff);
 }
 
-/* ================== BOTONES ================== */
-#header button,#header select,
-#inputBar button{
-  font-size:14px;
-  padding:6px 10px;
-  border-radius:6px;
-  border:1px solid #006688;
-  background:#001f2e;
-  color:#00eaff;
-  cursor:pointer;
-  box-shadow:0 0 8px #0099bb;
-  transition:.3s;
+#header button, #header select{
+  font-size:14px; padding:6px 10px; border-radius:6px; border:1px solid #006688; cursor:pointer;
+  text-shadow:0 0 4px #00eaff; box-shadow:0 0 8px #0099bb; transition:0.3s;
+  background:#001f2e; color:#00eaff;
 }
-
-#header button:hover,
-#inputBar button:hover{
+#header button:hover, #header select:hover{
   background:#003547;
+  box-shadow:0 0 14px #00eaff;
 }
-
-/* ================== PREMIUM ================== */
 #premiumBtn{
-  animation:neonGlow 1.5s infinite alternate;
+  animation: neonGlow 1.5s ease-in-out infinite alternate;
 }
-@keyframes neonGlow{
-  from{box-shadow:0 0 8px #00eaff}
-  to{box-shadow:0 0 18px #00ffff}
+@keyframes neonGlow {
+  0% { box-shadow: 0 0 8px #00eaff,0 0 12px #00eaff,0 0 16px #00eaff; color:#00eaff;}
+  50% { box-shadow:0 0 12px #00ffff,0 0 20px #00ffff,0 0 28px #00ffff;color:#00ffff;}
+  100%{ box-shadow:0 0 8px #00eaff,0 0 12px #00eaff,0 0 16px #00eaff; color:#00eaff;}
 }
 
-/* ================== CHAT ================== */
+/* --- CHAT --- */
 #chat{
   flex:1;
   overflow-y:auto;
   padding:10px;
-  background:linear-gradient(#00111a,#000814);
+  background: linear-gradient(#00111a,#000814);
   border-top:2px solid #00eaff44;
   border-bottom:2px solid #00eaff44;
+  box-shadow: inset 0 0 15px #00eaff55;
   padding-bottom:120px;
+  transition: all 0.3s ease;
 }
 
-/* ================== MENSAJES ================== */
+/* --- MENSAJES --- */
 .message{
-  margin:5px 0;
-  padding:8px 12px;
-  border-radius:15px;
-  max-width:80%;
-  opacity:0;
-  transition:opacity .4s;
+ margin:5px 0;
+ padding:8px 12px;
+ border-radius:15px;
+ max-width:80%;
+ word-wrap:break-word;
+ opacity:0;
+ transition:opacity 0.5s, box-shadow 0.5s, background 0.5s;
+ font-size:15px;
 }
-.message.show{opacity:1}
-
+.message.show{ opacity:1; }
 .user{
-  background:rgba(51,0,255,.3);
-  color:#b4b7ff;
-  margin-left:auto;
+ background:rgba(51,0,255,0.3);
+ color:#b4b7ff;
+ margin-left:auto;
+ text-align:right;
+ border:1px solid #4455ff;
+ box-shadow:0 0 8px #3344ff;
 }
-
 .ai{
-  background:rgba(0,255,255,.2);
-  color:#00eaff;
-  margin-right:auto;
+ background:rgba(0,255,255,0.2);
+ color:#00eaff;
+ margin-right:auto;
+ text-align:left;
+ border:1px solid #00eaff;
+ box-shadow:0 0 10px #00eaff;
 }
+a{ text-decoration:underline; }
+img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00eaff88; border:1px solid #00eaff55; }
 
-/* ================== INPUT BAR ================== */
+/* --- BARRA DE ENTRADA FIJA ABAJO --- */
 #inputBar{
-  display:flex;
-  gap:6px;
-  padding:8px;
-  background:#001d29;
-  border-top:2px solid #00eaff44;
-  position:fixed;
-  bottom:0;
-  width:100%;
+ display:flex;
+ align-items:center;
+ gap:6px;
+ padding:8px;
+ background:#001d29;
+ border-top:2px solid #00eaff44;
+ flex-shrink:0;
+ position:fixed;
+ bottom:0;
+ left:0;
+ width:100%;
+ box-sizing:border-box;
+ z-index:20;
+ transition: all 0.3s ease;
+}
+#inputBar input[type=text]{
+ flex:1;
+ padding:10px;
+ font-size:16px;
+ background:#00121d;
+ color:#00eaff;
+ border:1px solid #003344;
+ box-shadow:0 0 6px #00eaff55 inset;
+ border-radius:5px;
+ transition: all 0.3s ease;
+}
+#inputBar button{
+ padding:10px;
+ font-size:16px;
+ border:none;
+ border-radius:5px;
+ background:#001f2e;
+ color:#00eaff;
+ cursor:pointer;
+ border:1px solid #006688;
+ text-shadow:0 0 4px #00eaff;
+ box-shadow:0 0 8px #0099bb;
+ transition:0.25s;
 }
 
-#inputBar input{
-  flex:1;
-  padding:10px;
-  font-size:16px;
-  background:#00121d;
-  color:#00eaff;
-  border:1px solid #003344;
-  border-radius:5px;
+/* --- BOTONES PEQUEÑOS --- */
+#vozBtn,#borrarBtn,#premiumBtn{ font-size:14px; padding:6px 10px; }
+
+/* --- MENÚ DE ADJUNTOS --- */
+#adjuntos_menu{
+ position:absolute;
+ left:6px; top:-120px;
+ display:none;
+ background:#001f2e;
+ border:1px solid #003547;
+ padding:8px;
+ border-radius:8px;
+ box-shadow:0 6px 16px rgba(0,0,0,0.6);
+ z-index:50;
+}
+#adjuntos_menu button{ display:block; width:160px; margin:6px; text-align:left; }
+.hidden_file_input{ display:none; }
+
+/* --- MENÚ PREMIUM --- */
+#premiumMenu button{
+  display:block;
+  width:120px;
+  margin:4px 0;
+  text-align:left;
 }
 
-/* ================== MODO DAY CORPORATIVO ================== */
-body.day{
-  background:#ffffff;
-  color:#1f2937;
-  text-shadow:none;
-  font-family:'Inter','Segoe UI',Tahoma,Verdana,sans-serif;
-}
-
-body.day #header{
-  background:#ffffff;
-  box-shadow:0 1px 4px rgba(0,0,0,.06);
-  border-bottom:1px solid #e5e7eb;
-}
-
-body.day #chat{
-  background:#ffffff;
-  border:none;
-}
-
-body.day #inputBar{
-  background:#ffffff;
-  border-top:1px solid #e5e7eb;
-}
-
-body.day #inputBar input{
-  background:#ffffff;
-  color:#111827;
-  border:1px solid #d1d5db;
-}
-
-body.day #header button,
-body.day #header select,
-body.day #inputBar button{
-  background:#f9fafb;
-  color:#111827;
-  border:1px solid #d1d5db;
-  box-shadow:none;
-}
-
-body.day #header button:hover,
-body.day #inputBar button:hover{
-  background:#f3f4f6;
-}
-
-body.day #premiumBtn{
-  background:#111827;
-  color:#ffffff;
-  border:1px solid #111827;
-  animation:none;
-}
-
-body.day .user{
-  background:#f3f4f6;
-  color:#111827;
-}
-
-body.day .ai{
-  background:#ffffff;
-  color:#1f2937;
-  border:1px solid #e5e7eb;
-}
-
-/* ================== RESPONSIVE ================== */
-@media(max-width:600px){
-  #logo{width:140px}
+/* --- AJUSTES RESPONSIVE PARA MÓVIL --- */
+@media (max-width:600px){
+  #inputBar input[type=text]{ font-size:18px; padding:12px; }
+  #inputBar button,#header button,#header select{ font-size:16px; padding:10px; }
+  #logo{ width:140px; }
 }
 </style>
 </head>
-
 <body>
-
-<!-- HEADER -->
 <div id="header">
   <div id="leftButtons">
-    <img src="/static/logo.png" id="logo">
-    <button id="premiumBtn">💎 Pasar a Premium</button>
+    <img src="/static/logo.png" id="logo" onclick="logoClick()" alt="logo">
+    <div id="premiumContainer" style="position:relative; margin-left:12px;">
+      <button id="premiumBtn" onclick="togglePremiumMenu()">💎 Pasar a Premium</button>
+      <div id="premiumMenu" style="display:none;position:absolute;top:36px;left:0;background:#001f2e;border:1px solid #003547;border-radius:6px;padding:6px;box-shadow:0 6px 16px rgba(0,0,0,0.6);z-index:100;">
+        <button onclick="irPremium('mensual')">💎 Pago Mensual</button>
+        <button onclick="irPremium('anual')">💎 Pago Anual</button>
+      </div>
+    </div>
   </div>
   <div id="rightButtons">
-    <button>🧹 Borrar pantalla</button>
-    <button>🗂️ Historial</button>
-    <select id="modoSelect">
-      <option value="neon">Neon</option>
-      <option value="black">Dark</option>
-      <option value="white">Day</option>
+    <div class="separator"></div>
+    <button onclick="detenerVoz()">⏹️ Detener voz</button>
+    <button id="vozBtn" onclick="toggleVoz()">🔊 Voz activada</button>
+    <button id="borrarBtn" onclick="borrarPantalla()">🧹 Borrar pantalla</button>
+    <button onclick="verHistorial()">🗂️ Historial</button>
+    <select id="modoSelect" onchange="cambiarModo(this.value)">
+      <option value="neon">💡 Neon</option>
+      <option value="black">🌑 Dark</option>
+      <option value="white">☀️ Day</option>
     </select>
   </div>
 </div>
 
-<!-- CHAT -->
-<div id="chat"></div>
+<div id="chat" role="log" aria-live="polite"></div>
 
-<!-- INPUT -->
 <div id="inputBar">
-  <input type="text" placeholder="Escribí tu mensaje">
-  <button>Enviar</button>
+  <div style="position:relative;">
+    <div id="clipBtn" title="Adjuntar" onclick="toggleAdjuntosMenu()">📎</div>
+    <div id="adjuntos_menu" aria-hidden="true">
+      <button onclick="checkPremium('audio')">🎵 Subir Audio (mp3/wav)</button>
+      <button onclick="checkPremium('doc')">📄 Subir PDF / WORD</button>
+    </div>
+  </div>
+  <input id="audioInput" class="hidden_file_input" type="file" accept=".mp3,audio/*,.wav" />
+  <input id="archivo_pdf_word" class="hidden_file_input" type="file" accept=".pdf,.docx" />
+  <input type="text" id="mensaje" placeholder="Escribí tu mensaje o hablá" />
+  <button onclick="checkDailyLimit()">Enviar</button>
+  <button onclick="hablar()">🎤 Hablar</button>
 </div>
 
 <script>
-function cambiarModo(m){
-  localStorage.setItem("modo",m);
-  document.body.classList.remove("day");
-  if(m==="white") document.body.classList.add("day");
+function cambiarModo(modo){
+  localStorage.setItem("modo",modo);
+  const body=document.body, chat=document.getElementById("chat"), inputBar=document.getElementById("inputBar"), header=document.getElementById("header");
+  const botones=document.querySelectorAll("#header button,#header select,#inputBar button");
+  switch(modo){
+    case "neon":
+      body.style.background="#000814"; body.style.color="#00eaff";
+      chat.style.background="linear-gradient(#00111a,#000814)";
+      inputBar.style.background="#001d29"; header.style.background="linear-gradient(#000814,#00111a)";
+      botones.forEach(b=>{ b.style.background="#001f2e"; b.style.color="#00eaff"; b.style.border="1px solid #006688"; b.style.boxShadow="0 0 8px #0099bb"; });
+      break;
+    case "black":
+      body.style.background="#000"; body.style.color="#fff";
+      chat.style.background="#111"; inputBar.style.background="#111"; header.style.background="#111";
+      botones.forEach(b=>{ b.style.background="#222"; b.style.color="#fff"; b.style.border="1px solid #555"; b.style.boxShadow="0 0 6px #00bfff"; });
+      break;
+    case "white":
+      body.style.background="#f4f6f8"; body.style.color="#1f2937";
+      chat.style.background="#ffffff"; inputBar.style.background="#eef2f6"; header.style.background="#ffffff";
+      botones.forEach(b=>{
+        b.style.background="#ffffff";
+        b.style.color="#1f2937";
+        b.style.border="1px solid #d1d5db";
+        b.style.boxShadow="0 1px 3px rgba(0,0,0,0.08)";
+      });
+      break;
+  }
 }
-
-document.getElementById("modoSelect").onchange=e=>cambiarModo(e.target.value);
-
-window.onload=()=>{
-  const modo=localStorage.getItem("modo")||"neon";
-  document.getElementById("modoSelect").value=modo;
-  cambiarModo(modo);
-};
 </script>
-
 </body>
 </html>
 
