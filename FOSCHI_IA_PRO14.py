@@ -534,11 +534,15 @@ HTML_TEMPLATE = """
 /* --- ESTILOS GENERALES --- */
 body{
  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
- margin:0; padding:0;
- display:flex; flex-direction:column;
- height:100vh; overflow:hidden;
+ background:#000814;
+ color:#00eaff;
+ margin:0;
+ padding:0;
+ display:flex;
+ flex-direction:column;
+ height:100vh;
+ overflow:hidden;
  text-shadow:0 0 6px #00eaff;
- transition: all 0.3s ease;
 }
 
 /* --- HEADER SUPERIOR (LOGO + BOTONES) --- */
@@ -546,29 +550,59 @@ body{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  flex-wrap:wrap;
-  gap:8px;
   padding:8px 16px;
   background: linear-gradient(#000814,#00111a);
   flex-shrink:0;
-  text-align:center;
   position:sticky;
   top:0;
   z-index:10;
   box-shadow:0 0 12px #00eaff66;
-  transition: all 0.3s ease;
 }
+
 #leftButtons{
   display:flex;
   align-items:center;
   gap:12px;
 }
+
 #rightButtons{
   display:flex;
   align-items:center;
   gap:8px;
 }
-.separator{ border-left:1px solid #00eaff55; height:32px; margin:0 8px; }
+
+.separator{
+  border-left:1px solid #00eaff55;
+  height:32px;
+  margin:0 8px;
+}
+
+#header button{
+  font-size:14px;
+  padding:6px 10px;
+  border-radius:6px;
+  background:#001f2e;
+  color:#00eaff;
+  border:1px solid #006688;
+  cursor:pointer;
+  text-shadow:0 0 4px #00eaff;
+  box-shadow:0 0 8px #0099bb;
+  transition:0.3s;
+}
+#header button:hover{
+  background:#003547;
+  box-shadow:0 0 14px #00eaff;
+}
+
+#premiumBtn{
+  animation: neonGlow 1.5s ease-in-out infinite alternate;
+}
+
+@keyframes neonGlow {
+  0% { box-shadow: 0 0 8px #00eaff, 0 0 12px #00eaff, 0 0 16px #00eaff; color:#00eaff; }
+  50% { box-shadow: 0 0 12px #00ffff, 0 0 20px #00ffff, 0 0 28px #00ffff; color:#00ffff; }
+  100% { box-shadow: 0 0 8px #00eaff, 0 0 12px #00eaff, 0 0 16px #00eaff; color:#00eaff; }
+}
 
 #logo{
   width:120px;
@@ -581,24 +615,6 @@ body{
   filter:drop-shadow(0 0 20px #00eaff);
 }
 
-#header button, #header select{
-  font-size:14px; padding:6px 10px; border-radius:6px; border:1px solid #006688; cursor:pointer;
-  text-shadow:0 0 4px #00eaff; box-shadow:0 0 8px #0099bb; transition:0.3s;
-  background:#001f2e; color:#00eaff;
-}
-#header button:hover, #header select:hover{
-  background:#003547;
-  box-shadow:0 0 14px #00eaff;
-}
-#premiumBtn{
-  animation: neonGlow 1.5s ease-in-out infinite alternate;
-}
-@keyframes neonGlow {
-  0% { box-shadow: 0 0 8px #00eaff,0 0 12px #00eaff,0 0 16px #00eaff; color:#00eaff;}
-  50% { box-shadow:0 0 12px #00ffff,0 0 20px #00ffff,0 0 28px #00ffff;color:#00ffff;}
-  100%{ box-shadow:0 0 8px #00eaff,0 0 12px #00eaff,0 0 16px #00eaff; color:#00eaff;}
-}
-
 /* --- CHAT --- */
 #chat{
   flex:1;
@@ -608,8 +624,7 @@ body{
   border-top:2px solid #00eaff44;
   border-bottom:2px solid #00eaff44;
   box-shadow: inset 0 0 15px #00eaff55;
-  padding-bottom:120px;
-  transition: all 0.3s ease;
+  padding-bottom:120px; /* espacio para la barra inferior */
 }
 
 /* --- MENSAJES --- */
@@ -640,7 +655,7 @@ body{
  border:1px solid #00eaff;
  box-shadow:0 0 10px #00eaff;
 }
-a{ text-decoration:underline; }
+a{ color:#00eaff; text-decoration:underline; }
 img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00eaff88; border:1px solid #00eaff55; }
 
 /* --- BARRA DE ENTRADA FIJA ABAJO --- */
@@ -658,7 +673,6 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
  width:100%;
  box-sizing:border-box;
  z-index:20;
- transition: all 0.3s ease;
 }
 #inputBar input[type=text]{
  flex:1;
@@ -669,7 +683,6 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
  border:1px solid #003344;
  box-shadow:0 0 6px #00eaff55 inset;
  border-radius:5px;
- transition: all 0.3s ease;
 }
 #inputBar button{
  padding:10px;
@@ -683,6 +696,10 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
  text-shadow:0 0 4px #00eaff;
  box-shadow:0 0 8px #0099bb;
  transition:0.25s;
+}
+#inputBar button:hover{
+ background:#003547;
+ box-shadow:0 0 14px #00eaff;
 }
 
 /* --- BOTONES PEQUEÑOS --- */
@@ -714,12 +731,14 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
 /* --- AJUSTES RESPONSIVE PARA MÓVIL --- */
 @media (max-width:600px){
   #inputBar input[type=text]{ font-size:18px; padding:12px; }
-  #inputBar button,#header button,#header select{ font-size:16px; padding:10px; }
-  #logo{ width:140px; }
+  #inputBar button{ font-size:16px; padding:10px; }
+  #logo{ width:140px; } /* logo más grande en móvil */
 }
 </style>
 </head>
+
 <body>
+<!-- HEADER -->
 <div id="header">
   <div id="leftButtons">
     <img src="/static/logo.png" id="logo" onclick="logoClick()" alt="logo">
@@ -731,22 +750,20 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
       </div>
     </div>
   </div>
+
   <div id="rightButtons">
     <div class="separator"></div>
     <button onclick="detenerVoz()">⏹️ Detener voz</button>
     <button id="vozBtn" onclick="toggleVoz()">🔊 Voz activada</button>
     <button id="borrarBtn" onclick="borrarPantalla()">🧹 Borrar pantalla</button>
     <button onclick="verHistorial()">🗂️ Historial</button>
-    <select id="modoSelect" onchange="cambiarModo(this.value)">
-      <option value="neon">💡 Neon</option>
-      <option value="black">🌑 Dark</option>
-      <option value="white">☀️ Day</option>
-    </select>
   </div>
 </div>
 
+<!-- CHAT -->
 <div id="chat" role="log" aria-live="polite"></div>
 
+<!-- BARRA DE ENTRADA -->
 <div id="inputBar">
   <div style="position:relative;">
     <div id="clipBtn" title="Adjuntar" onclick="toggleAdjuntosMenu()">📎</div>
@@ -763,34 +780,138 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
 </div>
 
 <script>
-function cambiarModo(modo){
-  localStorage.setItem("modo",modo);
-  const body=document.body, chat=document.getElementById("chat"), inputBar=document.getElementById("inputBar"), header=document.getElementById("header");
-  const botones=document.querySelectorAll("#header button,#header select,#inputBar button");
-  switch(modo){
-    case "neon":
-      body.style.background="#000814"; body.style.color="#00eaff";
-      chat.style.background="linear-gradient(#00111a,#000814)";
-      inputBar.style.background="#001d29"; header.style.background="linear-gradient(#000814,#00111a)";
-      botones.forEach(b=>{ b.style.background="#001f2e"; b.style.color="#00eaff"; b.style.border="1px solid #006688"; b.style.boxShadow="0 0 8px #0099bb"; });
-      break;
-    case "black":
-      body.style.background="#000"; body.style.color="#fff";
-      chat.style.background="#111"; inputBar.style.background="#111"; header.style.background="#111";
-      botones.forEach(b=>{ b.style.background="#222"; b.style.color="#fff"; b.style.border="1px solid #555"; b.style.boxShadow="0 0 6px #00bfff"; });
-      break;
-    case "white":
-      body.style.background="#f4f6f8"; body.style.color="#1f2937";
-      chat.style.background="#ffffff"; inputBar.style.background="#eef2f6"; header.style.background="#ffffff";
-      botones.forEach(b=>{
-        b.style.background="#ffffff";
-        b.style.color="#1f2937";
-        b.style.border="1px solid #d1d5db";
-        b.style.boxShadow="0 1px 3px rgba(0,0,0,0.08)";
-      });
-      break;
+// --- Variables y funciones generales ---
+let usuario_id="{{usuario_id}}";
+let vozActiva=true,audioActual=null,mensajeActual=null;
+let MAX_NO_PREMIUM = 5;
+let preguntasHoy = 0; 
+let isPremium = false; 
+
+function logoClick(){ alert("FOSCHI NUNCA MUERE, TRASCIENDE..."); }
+function toggleVoz(estado=null){ vozActiva=estado!==null?estado:!vozActiva; document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada"; }
+function detenerVoz(){ if(audioActual){ audioActual.pause(); audioActual.currentTime=0; audioActual.src=""; audioActual.load(); audioActual=null; if(mensajeActual) mensajeActual.classList.remove("playing"); mensajeActual=null; } }
+
+function agregar(msg,cls,imagenes=[]){
+  let c=document.getElementById("chat"),div=document.createElement("div");
+  div.className="message "+cls; div.innerHTML=msg;
+  c.appendChild(div);
+  setTimeout(()=>div.classList.add("show"),50);
+  imagenes.forEach(url=>{ let img=document.createElement("img"); img.src=url; div.appendChild(img); });
+  c.scroll({top:c.scrollHeight,behavior:"smooth"});
+  if(cls==="ai") hablarTexto(msg,div);
+  return div;
+}
+
+function checkDailyLimit(){
+  if(!isPremium && preguntasHoy>=MAX_NO_PREMIUM){
+    alert(`⚠️ Has alcanzado el límite de ${MAX_NO_PREMIUM} preguntas diarias. Pasá a Premium para más.`);
+    return;
+  }
+  enviar();
+  if(!isPremium) preguntasHoy++;
+}
+
+function enviar(){
+  let msg=document.getElementById("mensaje").value.trim(); if(!msg) return;
+  agregar(msg,"user"); document.getElementById("mensaje").value="";
+  fetch("/preguntar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mensaje: msg, usuario_id: usuario_id})})
+  .then(r=>r.json()).then(data=>{ agregar(data.texto,"ai",data.imagenes); if(data.borrar_historial){document.getElementById("chat").innerHTML="";} })
+  .catch(e=>{ agregar("Error al comunicarse con el servidor.","ai"); console.error(e); });
+}
+
+document.getElementById("mensaje").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); checkDailyLimit(); } });
+
+function hablarTexto(texto, div=null){
+  if(!vozActiva) return;
+  detenerVoz();
+  if(mensajeActual) mensajeActual.classList.remove("playing");
+  if(div) div.classList.add("playing");
+  mensajeActual = div;
+  audioActual = new Audio("/tts?texto=" + encodeURIComponent(texto));
+  audioActual.playbackRate = 1.25;
+  audioActual.onended = () => { if(mensajeActual) mensajeActual.classList.remove("playing"); mensajeActual = null; };
+  audioActual.play();
+}
+
+function togglePremiumMenu(){
+  const menu = document.getElementById("premiumMenu");
+  menu.style.display = (menu.style.display === "block") ? "none" : "block";
+  if(menu.style.display==="block"){ setTimeout(()=>window.addEventListener('click', closePremiumMenuOnClickOutside),50); }
+}
+function closePremiumMenuOnClickOutside(e){
+  const menu = document.getElementById("premiumMenu");
+  const btn = document.getElementById("premiumBtn");
+  if(!menu.contains(e.target) && !btn.contains(e.target)){
+    menu.style.display="none";
+    window.removeEventListener('click', closePremiumMenuOnClickOutside);
   }
 }
+function irPremium(tipo){
+  fetch(`/premium?usuario_id=${usuario_id}&tipo=${tipo}`)
+    .then(r=>r.json())
+    .then(d=>{
+      window.open(d.qr,"_blank");
+      document.getElementById("premiumMenu").style.display="none";
+    });
+}
+
+function checkPremium(tipo){
+  if(!isPremium){
+    alert("⚠️ Esta función requiere Premium. Pasá a Premium para usarla.");
+    return;
+  }
+  if(tipo==='audio') document.getElementById('audioInput').click();
+  if(tipo==='doc') document.getElementById('archivo_pdf_word').click();
+}
+
+function toggleAdjuntosMenu(){
+  const m = document.getElementById("adjuntos_menu");
+  m.style.display = m.style.display === "block" ? "none" : "block";
+  if(m.style.display==="block"){ setTimeout(()=>window.addEventListener('click', closeMenuOnClickOutside),50); }
+}
+function closeMenuOnClickOutside(e){
+  const menu = document.getElementById("adjuntos_menu");
+  const clip = document.getElementById("clipBtn");
+  if(!menu.contains(e.target) && !clip.contains(e.target)){ menu.style.display="none"; window.removeEventListener('click', closeMenuOnClickOutside); }
+}
+
+function verHistorial(){
+  fetch("/historial/"+usuario_id).then(r=>r.json()).then(data=>{
+    document.getElementById("chat").innerHTML="";
+    if(data.length===0){agregar("No hay historial todavía.","ai");return;}
+    data.slice(-20).forEach(e=>{ agregar(`<small>${e.fecha}</small><br>${e.usuario}`,"user"); agregar(`<small>${e.fecha}</small><br>${e.foschi}`,"ai"); });
+  });
+}
+
+function borrarPantalla(){
+    detenerVoz(); 
+    document.getElementById("chat").innerHTML = ""; 
+}
+
+function hablar(){
+  if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window){
+    const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new Rec();
+    recognition.lang='es-AR'; recognition.continuous=false; recognition.interimResults=false;
+    recognition.onresult=function(event){ document.getElementById("mensaje").value=event.results[0][0].transcript.toLowerCase(); checkDailyLimit(); }
+    recognition.onerror=function(e){console.log(e); alert("Error reconocimiento de voz: " + e.error);}
+    recognition.start();
+  }else{alert("Tu navegador no soporta reconocimiento de voz.");}
+}
+
+function chequearRecordatorios(){
+  fetch("/avisos",{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({usuario_id}) })
+  .then(r=>r.json()).then(data=>{ if(Array.isArray(data) && data.length>0){ data.forEach(r=>{ agregar(`⏰ Tenés un recordatorio: ${r.motivo||"(sin motivo)"}`,"ai"); }); } }).catch(e=>console.error(e));
+}
+setInterval(chequearRecordatorios,10000);
+
+/* --- SALUDO INICIAL --- */
+window.onload = function() {
+    agregar("👋 ¡Hola! Bienvenido a Foschi IA","ai");
+    let saludoAudio = new Audio("/tts?texto=👋 ¡Hola! Bienvenido a Foschi IA");
+    saludoAudio.playbackRate = 1.25;
+    saludoAudio.play();
+};
 </script>
 </body>
 </html>
