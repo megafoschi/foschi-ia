@@ -531,6 +531,7 @@ HTML_TEMPLATE = """
 <title>{{APP_NAME}}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
+/* --- ESTILOS GENERALES --- */
 body{
  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
  background:#000814;
@@ -550,7 +551,7 @@ body{
   align-items:center;
   justify-content:center;
   flex-wrap:wrap;
-  gap:12px;
+  gap:8px;
   padding:8px;
   background: linear-gradient(#000814,#00111a);
   flex-shrink:0;
@@ -560,21 +561,6 @@ body{
   z-index:10;
   box-shadow:0 0 12px #00eaff66;
 }
-
-/* --- GRUPOS DE BOTONES --- */
-#groupPremium{
-  display:flex;
-  align-items:center;
-  gap:8px;
-  margin-right:16px;
-}
-#groupControl{
-  display:flex;
-  align-items:center;
-  gap:8px;
-}
-
-/* --- LOGO --- */
 #logo{
   width:120px;
   cursor:pointer;
@@ -585,8 +571,6 @@ body{
   transform:scale(1.2) rotate(6deg);
   filter:drop-shadow(0 0 20px #00eaff);
 }
-
-/* --- BOTONES --- */
 #header button{
   font-size:14px;
   padding:6px 10px;
@@ -613,7 +597,7 @@ body{
   border-top:2px solid #00eaff44;
   border-bottom:2px solid #00eaff44;
   box-shadow: inset 0 0 15px #00eaff55;
-  padding-bottom:80px;
+  padding-bottom:120px; /* espacio para la barra inferior */
 }
 
 /* --- MENSAJES --- */
@@ -647,7 +631,7 @@ body{
 a{ color:#00eaff; text-decoration:underline; }
 img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00eaff88; border:1px solid #00eaff55; }
 
-/* --- BARRA DE ENTRADA --- */
+/* --- BARRA DE ENTRADA FIJA ABAJO --- */
 #inputBar{
  display:flex;
  align-items:center;
@@ -692,7 +676,7 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
 }
 
 /* --- BOTONES PEQUEÑOS --- */
-#vozBtn,#borrarBtn{ font-size:14px; padding:6px 10px; }
+#vozBtn,#borrarBtn,#premiumBtn{ font-size:14px; padding:6px 10px; }
 
 /* --- MENÚ DE ADJUNTOS --- */
 #adjuntos_menu{
@@ -717,11 +701,11 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
   text-align:left;
 }
 
-/* --- AJUSTES RESPONSIVE --- */
+/* --- AJUSTES RESPONSIVE PARA MÓVIL --- */
 @media (max-width:600px){
   #inputBar input[type=text]{ font-size:18px; padding:12px; }
   #inputBar button{ font-size:16px; padding:10px; }
-  #logo{ width:140px; }
+  #logo{ width:140px; } /* logo más grande en móvil */
 }
 </style>
 </head>
@@ -731,8 +715,7 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
 <div id="header">
   <img src="/static/logo.png" id="logo" onclick="logoClick()" alt="logo">
 
-  <!-- GRUPO PREMIUM -->
-  <div id="groupPremium" style="position:relative;">
+  <div id="premiumContainer" style="position:relative;">
     <button id="premiumBtn" onclick="togglePremiumMenu()">💎 Foschi IA Premium</button>
     <div id="premiumMenu" style="display:none;position:absolute;top:36px;left:0;background:#001f2e;border:1px solid #003547;border-radius:6px;padding:6px;box-shadow:0 6px 16px rgba(0,0,0,0.6);z-index:100;">
       <button onclick="irPremium('mensual')">💎 Pago Mensual</button>
@@ -740,16 +723,9 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
     </div>
   </div>
 
-  <!-- SEPARADOR VISUAL -->
-  <div style="width:2px; height:36px; background:#00eaff; opacity:0.4;"></div>
-
-  <!-- GRUPO CONTROL -->
-  <div id="groupControl">
-    <button onclick="detenerVoz()">⏹️ Detener voz</button>
-    <button id="vozBtn" onclick="toggleVoz()">🔊 Voz activada</button>
-    <button id="borrarBtn" onclick="borrarPantalla()">🧹 Borrar pantalla</button>
-    <button onclick="verHistorial()">🗂️ Historial</button>
-  </div>
+  <button onclick="detenerVoz()">⏹️ Detener voz</button>
+  <button id="vozBtn" onclick="toggleVoz()">🔊 Voz activada</button>
+  <button id="borrarBtn" onclick="borrarPantalla()">🧹 Borrar pantalla</button>
 </div>
 
 <!-- CHAT -->
@@ -767,17 +743,141 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
   <input id="audioInput" class="hidden_file_input" type="file" accept=".mp3,audio/*,.wav" />
   <input id="archivo_pdf_word" class="hidden_file_input" type="file" accept=".pdf,.docx" />
   <input type="text" id="mensaje" placeholder="Escribí tu mensaje o hablá" />
+  <button onclick="checkDailyLimit()">Enviar</button>
   <button onclick="hablar()">🎤 Hablar</button>
+  <button onclick="verHistorial()">🗂️ Historial</button>
 </div>
 
 <script>
-/* --- Scripts existentes --- */
 let usuario_id="{{usuario_id}}";
 let vozActiva=true,audioActual=null,mensajeActual=null;
 let MAX_NO_PREMIUM = 5;
-let preguntasHoy = 0; 
-let isPremium = false; 
-/* resto de tus scripts se mantiene igual */
+let preguntasHoy = 0; // ajustar desde backend según usuario real
+let isPremium = false; // ajustar desde backend
+
+/* --- LOGO --- */
+function logoClick(){ alert("FOSCHI NUNCA MUERE, TRASCIENDE..."); }
+
+/* --- VOZ --- */
+function toggleVoz(estado=null){ vozActiva=estado!==null?estado:!vozActiva; document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada"; }
+function detenerVoz(){ if(audioActual){ audioActual.pause(); audioActual.currentTime=0; audioActual.src=""; audioActual.load(); audioActual=null; if(mensajeActual) mensajeActual.classList.remove("playing"); mensajeActual=null; } }
+
+/* --- AGREGAR MENSAJES --- */
+function agregar(msg,cls,imagenes=[]){
+  let c=document.getElementById("chat"),div=document.createElement("div");
+  div.className="message "+cls; div.innerHTML=msg;
+  c.appendChild(div);
+  setTimeout(()=>div.classList.add("show"),50);
+  imagenes.forEach(url=>{ let img=document.createElement("img"); img.src=url; div.appendChild(img); });
+  c.scroll({top:c.scrollHeight,behavior:"smooth"});
+  if(cls==="ai") hablarTexto(msg,div);
+  return div;
+}
+
+/* --- ENVIAR MENSAJE CON LÍMITE --- */
+function checkDailyLimit(){
+  if(!isPremium && preguntasHoy>=MAX_NO_PREMIUM){
+    alert(`⚠️ Has alcanzado el límite de ${MAX_NO_PREMIUM} preguntas diarias. Pasá a Premium para más.`);
+    return;
+  }
+  enviar();
+  if(!isPremium) preguntasHoy++;
+}
+
+function enviar(){
+  let msg=document.getElementById("mensaje").value.trim(); if(!msg) return;
+  agregar(msg,"user"); document.getElementById("mensaje").value="";
+  fetch("/preguntar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mensaje: msg, usuario_id: usuario_id})})
+  .then(r=>r.json()).then(data=>{ agregar(data.texto,"ai",data.imagenes); if(data.borrar_historial){document.getElementById("chat").innerHTML="";} })
+  .catch(e=>{ agregar("Error al comunicarse con el servidor.","ai"); console.error(e); });
+}
+
+document.getElementById("mensaje").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); checkDailyLimit(); } });
+
+function hablarTexto(texto, div=null){
+  if(!vozActiva) return;
+  detenerVoz();
+  if(mensajeActual) mensajeActual.classList.remove("playing");
+  if(div) div.classList.add("playing");
+  mensajeActual = div;
+  audioActual = new Audio("/tts?texto=" + encodeURIComponent(texto));
+  audioActual.playbackRate = 1.25;
+  audioActual.onended = () => { if(mensajeActual) mensajeActual.classList.remove("playing"); mensajeActual = null; };
+  audioActual.play();
+}
+
+/* --- PREMIUM --- */
+function togglePremiumMenu(){
+  const menu = document.getElementById("premiumMenu");
+  menu.style.display = (menu.style.display === "block") ? "none" : "block";
+  if(menu.style.display==="block"){ setTimeout(()=>window.addEventListener('click', closePremiumMenuOnClickOutside),50); }
+}
+function closePremiumMenuOnClickOutside(e){
+  const menu = document.getElementById("premiumMenu");
+  const btn = document.getElementById("premiumBtn");
+  if(!menu.contains(e.target) && !btn.contains(e.target)){
+    menu.style.display="none";
+    window.removeEventListener('click', closePremiumMenuOnClickOutside);
+  }
+}
+function irPremium(tipo){
+  fetch(`/premium?usuario_id=${usuario_id}&tipo=${tipo}`)
+    .then(r=>r.json())
+    .then(d=>{
+      window.open(d.qr,"_blank");
+      document.getElementById("premiumMenu").style.display="none";
+    });
+}
+
+/* --- OPCIONES PREMIUM BLOQUEADAS PARA FREE --- */
+function checkPremium(tipo){
+  if(!isPremium){
+    alert("⚠️ Esta función requiere Premium. Pasá a Premium para usarla.");
+    return;
+  }
+  if(tipo==='audio') document.getElementById('audioInput').click();
+  if(tipo==='doc') document.getElementById('archivo_pdf_word').click();
+}
+
+/* --- MENÚ DE ADJUNTOS --- */
+function toggleAdjuntosMenu(){
+  const m = document.getElementById("adjuntos_menu");
+  m.style.display = m.style.display === "block" ? "none" : "block";
+  if(m.style.display==="block"){ setTimeout(()=>window.addEventListener('click', closeMenuOnClickOutside),50); }
+}
+function closeMenuOnClickOutside(e){
+  const menu = document.getElementById("adjuntos_menu");
+  const clip = document.getElementById("clipBtn");
+  if(!menu.contains(e.target) && !clip.contains(e.target)){ menu.style.display="none"; window.removeEventListener('click', closeMenuOnClickOutside); }
+}
+
+/* --- HISTORIAL --- */
+function verHistorial(){
+  fetch("/historial/"+usuario_id).then(r=>r.json()).then(data=>{
+    document.getElementById("chat").innerHTML="";
+    if(data.length===0){agregar("No hay historial todavía.","ai");return;}
+    data.slice(-20).forEach(e=>{ agregar(`<small>${e.fecha}</small><br>${e.usuario}`,"user"); agregar(`<small>${e.fecha}</small><br>${e.foschi}`,"ai"); });
+  });
+}
+
+/* --- RECONOCIMIENTO DE VOZ --- */
+function hablar(){
+  if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window){
+    const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new Rec();
+    recognition.lang='es-AR'; recognition.continuous=false; recognition.interimResults=false;
+    recognition.onresult=function(event){ document.getElementById("mensaje").value=event.results[0][0].transcript.toLowerCase(); checkDailyLimit(); }
+    recognition.onerror=function(e){console.log(e); alert("Error reconocimiento de voz: " + e.error);}
+    recognition.start();
+  }else{alert("Tu navegador no soporta reconocimiento de voz.");}
+}
+
+/* --- RECORDATORIOS --- */
+function chequearRecordatorios(){
+  fetch("/avisos",{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({usuario_id}) })
+  .then(r=>r.json()).then(data=>{ if(Array.isArray(data) && data.length>0){ data.forEach(r=>{ agregar(`⏰ Tenés un recordatorio: ${r.motivo||"(sin motivo)"}`,"ai"); }); } }).catch(e=>console.error(e));
+}
+setInterval(chequearRecordatorios,10000);
 </script>
 </body>
 </html>
