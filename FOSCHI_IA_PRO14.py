@@ -593,11 +593,11 @@ body{
   flex:1;
   overflow-y:auto;
   padding:10px;
+  padding-bottom:80px; /* espacio para barra inferior */
   background: linear-gradient(#00111a,#000814);
   border-top:2px solid #00eaff44;
   border-bottom:2px solid #00eaff44;
   box-shadow: inset 0 0 15px #00eaff55;
-  padding-bottom:120px; /* espacio para la barra inferior */
 }
 
 /* --- MENSAJES --- */
@@ -694,18 +694,25 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
 .hidden_file_input{ display:none; }
 
 /* --- MENÚ PREMIUM --- */
-#premiumMenu button{
-  display:block;
-  width:120px;
-  margin:4px 0;
-  text-align:left;
+#premiumMenu{
+  display:none;
+  position:absolute;
+  top:36px;
+  left:0;
+  background:#001f2e;
+  border:1px solid #003547;
+  border-radius:6px;
+  padding:6px;
+  box-shadow:0 6px 16px rgba(0,0,0,0.6);
+  z-index:100;
 }
+#premiumMenu button{ display:block; margin:4px 0; }
 
 /* --- AJUSTES RESPONSIVE PARA MÓVIL --- */
 @media (max-width:600px){
   #inputBar input[type=text]{ font-size:18px; padding:12px; }
   #inputBar button{ font-size:16px; padding:10px; }
-  #logo{ width:140px; } /* logo más grande en móvil */
+  #logo{ width:140px; } /* logo más grande en móvil vertical */
 }
 </style>
 </head>
@@ -714,18 +721,16 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
 <!-- HEADER -->
 <div id="header">
   <img src="/static/logo.png" id="logo" onclick="logoClick()" alt="logo">
-
-  <div id="premiumContainer" style="position:relative;">
-    <button id="premiumBtn" onclick="togglePremiumMenu()">💎 Foschi IA Premium</button>
-    <div id="premiumMenu" style="display:none;position:absolute;top:36px;left:0;background:#001f2e;border:1px solid #003547;border-radius:6px;padding:6px;box-shadow:0 6px 16px rgba(0,0,0,0.6);z-index:100;">
-      <button onclick="irPremium('mensual')">💎 Pago Mensual</button>
-      <button onclick="irPremium('anual')">💎 Pago Anual</button>
-    </div>
-  </div>
-
+  <button id="premiumBtn" onclick="togglePremiumMenu()">💎 Premium</button>
   <button onclick="detenerVoz()">⏹️ Detener voz</button>
   <button id="vozBtn" onclick="toggleVoz()">🔊 Voz activada</button>
   <button id="borrarBtn" onclick="borrarPantalla()">🧹 Borrar pantalla</button>
+</div>
+
+<!-- MENÚ PREMIUM -->
+<div id="premiumMenu">
+  <button onclick="irPremium('mensual')">💎 Pago Mensual</button>
+  <button onclick="irPremium('anual')">💎 Pago Anual (12x mensual)</button>
 </div>
 
 <!-- CHAT -->
@@ -736,14 +741,14 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
   <div style="position:relative;">
     <div id="clipBtn" title="Adjuntar" onclick="toggleAdjuntosMenu()">📎</div>
     <div id="adjuntos_menu" aria-hidden="true">
-      <button onclick="checkPremium('audio')">🎵 Subir Audio (mp3/wav)</button>
-      <button onclick="checkPremium('doc')">📄 Subir PDF / WORD</button>
+      <button onclick="opcionPremiumAlert()">🎵 Subir Audio (mp3/wav)</button>
+      <button onclick="opcionPremiumAlert()">📄 Subir PDF / WORD</button>
     </div>
   </div>
   <input id="audioInput" class="hidden_file_input" type="file" accept=".mp3,audio/*,.wav" />
   <input id="archivo_pdf_word" class="hidden_file_input" type="file" accept=".pdf,.docx" />
   <input type="text" id="mensaje" placeholder="Escribí tu mensaje o hablá" />
-  <button onclick="checkDailyLimit()">Enviar</button>
+  <button onclick="enviar()">Enviar</button>
   <button onclick="hablar()">🎤 Hablar</button>
   <button onclick="verHistorial()">🗂️ Historial</button>
 </div>
@@ -751,19 +756,20 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
 <script>
 let usuario_id="{{usuario_id}}";
 let vozActiva=true,audioActual=null,mensajeActual=null;
-let MAX_NO_PREMIUM = 5;
-let preguntasHoy = 0; // ajustar desde backend según usuario real
-let isPremium = false; // ajustar desde backend
+let MAX_NO_PREMIUM = 5; 
+let contadorPreguntas = 0;
+let isPremium = false; // cambiar según usuario real
 
-/* --- LOGO --- */
 function logoClick(){ alert("FOSCHI NUNCA MUERE, TRASCIENDE..."); }
-
-/* --- VOZ --- */
 function toggleVoz(estado=null){ vozActiva=estado!==null?estado:!vozActiva; document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada"; }
 function detenerVoz(){ if(audioActual){ audioActual.pause(); audioActual.currentTime=0; audioActual.src=""; audioActual.load(); audioActual=null; if(mensajeActual) mensajeActual.classList.remove("playing"); mensajeActual=null; } }
 
-/* --- AGREGAR MENSAJES --- */
 function agregar(msg,cls,imagenes=[]){
+  if(!isPremium && cls==="user"){ 
+    contadorPreguntas++;
+    if(contadorPreguntas>MAX_NO_PREMIUM){ alert("⚠️ Has alcanzado el límite de 5 preguntas diarias para usuarios Free."); return; }
+    alert(`ℹ️ Estás usando la versión Free. Preguntas restantes: ${MAX_NO_PREMIUM-contadorPreguntas+1}. Opciones Premium desactivadas.`);
+  }
   let c=document.getElementById("chat"),div=document.createElement("div");
   div.className="message "+cls; div.innerHTML=msg;
   c.appendChild(div);
@@ -774,16 +780,6 @@ function agregar(msg,cls,imagenes=[]){
   return div;
 }
 
-/* --- ENVIAR MENSAJE CON LÍMITE --- */
-function checkDailyLimit(){
-  if(!isPremium && preguntasHoy>=MAX_NO_PREMIUM){
-    alert(`⚠️ Has alcanzado el límite de ${MAX_NO_PREMIUM} preguntas diarias. Pasá a Premium para más.`);
-    return;
-  }
-  enviar();
-  if(!isPremium) preguntasHoy++;
-}
-
 function enviar(){
   let msg=document.getElementById("mensaje").value.trim(); if(!msg) return;
   agregar(msg,"user"); document.getElementById("mensaje").value="";
@@ -792,7 +788,7 @@ function enviar(){
   .catch(e=>{ agregar("Error al comunicarse con el servidor.","ai"); console.error(e); });
 }
 
-document.getElementById("mensaje").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); checkDailyLimit(); } });
+document.getElementById("mensaje").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); enviar(); } });
 
 function hablarTexto(texto, div=null){
   if(!vozActiva) return;
@@ -808,38 +804,20 @@ function hablarTexto(texto, div=null){
 
 /* --- PREMIUM --- */
 function togglePremiumMenu(){
-  const menu = document.getElementById("premiumMenu");
-  menu.style.display = (menu.style.display === "block") ? "none" : "block";
-  if(menu.style.display==="block"){ setTimeout(()=>window.addEventListener('click', closePremiumMenuOnClickOutside),50); }
-}
-function closePremiumMenuOnClickOutside(e){
-  const menu = document.getElementById("premiumMenu");
-  const btn = document.getElementById("premiumBtn");
-  if(!menu.contains(e.target) && !btn.contains(e.target)){
-    menu.style.display="none";
-    window.removeEventListener('click', closePremiumMenuOnClickOutside);
-  }
+  const m = document.getElementById("premiumMenu");
+  m.style.display = m.style.display==="block" ? "none" : "block";
 }
 function irPremium(tipo){
-  fetch(`/premium?usuario_id=${usuario_id}&tipo=${tipo}`)
-    .then(r=>r.json())
-    .then(d=>{
-      window.open(d.qr,"_blank");
-      document.getElementById("premiumMenu").style.display="none";
-    });
+  let precioMensual = 10; // ejemplo
+  let precio = tipo==="anual"? precioMensual*12 : precioMensual;
+  alert(`💎 Vas a pagar ${precio}$ por el plan ${tipo}`);
+  fetch(`/premium?usuario_id=${usuario_id}&tipo=${tipo}`).then(r=>r.json()).then(d=>{ window.open(d.qr,"_blank"); });
 }
 
-/* --- OPCIONES PREMIUM BLOQUEADAS PARA FREE --- */
-function checkPremium(tipo){
-  if(!isPremium){
-    alert("⚠️ Esta función requiere Premium. Pasá a Premium para usarla.");
-    return;
-  }
-  if(tipo==='audio') document.getElementById('audioInput').click();
-  if(tipo==='doc') document.getElementById('archivo_pdf_word').click();
-}
+/* --- OPCIONES PREMIUM DESACTIVADAS --- */
+function opcionPremiumAlert(){ if(!isPremium) alert("⚠️ Esta opción solo está disponible para usuarios Premium."); }
 
-/* --- MENÚ DE ADJUNTOS --- */
+/* --- MENU ADJUNTOS --- */
 function toggleAdjuntosMenu(){
   const m = document.getElementById("adjuntos_menu");
   m.style.display = m.style.display === "block" ? "none" : "block";
@@ -850,6 +828,19 @@ function closeMenuOnClickOutside(e){
   const clip = document.getElementById("clipBtn");
   if(!menu.contains(e.target) && !clip.contains(e.target)){ menu.style.display="none"; window.removeEventListener('click', closeMenuOnClickOutside); }
 }
+function borrarPantalla(){ document.getElementById("chat").innerHTML=""; }
+
+/* --- RECONOCIMIENTO DE VOZ --- */
+function hablar(){
+  if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window){
+    const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new Rec();
+    recognition.lang='es-AR'; recognition.continuous=false; recognition.interimResults=false;
+    recognition.onresult=function(event){ document.getElementById("mensaje").value=event.results[0][0].transcript.toLowerCase(); enviar(); }
+    recognition.onerror=function(e){console.log(e); alert("Error reconocimiento de voz: " + e.error);}
+    recognition.start();
+  }else{alert("Tu navegador no soporta reconocimiento de voz.");}
+}
 
 /* --- HISTORIAL --- */
 function verHistorial(){
@@ -859,25 +850,6 @@ function verHistorial(){
     data.slice(-20).forEach(e=>{ agregar(`<small>${e.fecha}</small><br>${e.usuario}`,"user"); agregar(`<small>${e.fecha}</small><br>${e.foschi}`,"ai"); });
   });
 }
-
-/* --- RECONOCIMIENTO DE VOZ --- */
-function hablar(){
-  if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window){
-    const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new Rec();
-    recognition.lang='es-AR'; recognition.continuous=false; recognition.interimResults=false;
-    recognition.onresult=function(event){ document.getElementById("mensaje").value=event.results[0][0].transcript.toLowerCase(); checkDailyLimit(); }
-    recognition.onerror=function(e){console.log(e); alert("Error reconocimiento de voz: " + e.error);}
-    recognition.start();
-  }else{alert("Tu navegador no soporta reconocimiento de voz.");}
-}
-
-/* --- RECORDATORIOS --- */
-function chequearRecordatorios(){
-  fetch("/avisos",{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({usuario_id}) })
-  .then(r=>r.json()).then(data=>{ if(Array.isArray(data) && data.length>0){ data.forEach(r=>{ agregar(`⏰ Tenés un recordatorio: ${r.motivo||"(sin motivo)"}`,"ai"); }); } }).catch(e=>console.error(e));
-}
-setInterval(chequearRecordatorios,10000);
 </script>
 </body>
 </html>
