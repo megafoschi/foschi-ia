@@ -715,7 +715,9 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
 <div id="header">
   <img src="/static/logo.png" id="logo" onclick="logoClick()" alt="logo">
 
-  <div id="premiumContainer" style="position:relative;">
+  <button onclick="verHistorial()">🗂️ Historial</button>
+
+  <div id="premiumContainer" style="position:relative;margin-left:20px;">
     <button id="premiumBtn" onclick="togglePremiumMenu()">💎 Foschi IA Premium</button>
     <div id="premiumMenu" style="display:none;position:absolute;top:36px;left:0;background:#001f2e;border:1px solid #003547;border-radius:6px;padding:6px;box-shadow:0 6px 16px rgba(0,0,0,0.6);z-index:100;">
       <button onclick="irPremium('mensual')">💎 Pago Mensual</button>
@@ -745,24 +747,20 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
   <input type="text" id="mensaje" placeholder="Escribí tu mensaje o hablá" />
   <button onclick="checkDailyLimit()">Enviar</button>
   <button onclick="hablar()">🎤 Hablar</button>
-  <button onclick="verHistorial()">🗂️ Historial</button>
 </div>
 
 <script>
 let usuario_id="{{usuario_id}}";
 let vozActiva=true,audioActual=null,mensajeActual=null;
 let MAX_NO_PREMIUM = 5;
-let preguntasHoy = 0; // ajustar desde backend según usuario real
-let isPremium = false; // ajustar desde backend
+let preguntasHoy = 0; 
+let isPremium = false; 
 
-/* --- LOGO --- */
 function logoClick(){ alert("FOSCHI NUNCA MUERE, TRASCIENDE..."); }
 
-/* --- VOZ --- */
 function toggleVoz(estado=null){ vozActiva=estado!==null?estado:!vozActiva; document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada"; }
 function detenerVoz(){ if(audioActual){ audioActual.pause(); audioActual.currentTime=0; audioActual.src=""; audioActual.load(); audioActual=null; if(mensajeActual) mensajeActual.classList.remove("playing"); mensajeActual=null; } }
 
-/* --- AGREGAR MENSAJES --- */
 function agregar(msg,cls,imagenes=[]){
   let c=document.getElementById("chat"),div=document.createElement("div");
   div.className="message "+cls; div.innerHTML=msg;
@@ -774,7 +772,6 @@ function agregar(msg,cls,imagenes=[]){
   return div;
 }
 
-/* --- ENVIAR MENSAJE CON LÍMITE --- */
 function checkDailyLimit(){
   if(!isPremium && preguntasHoy>=MAX_NO_PREMIUM){
     alert(`⚠️ Has alcanzado el límite de ${MAX_NO_PREMIUM} preguntas diarias. Pasá a Premium para más.`);
@@ -806,7 +803,6 @@ function hablarTexto(texto, div=null){
   audioActual.play();
 }
 
-/* --- PREMIUM --- */
 function togglePremiumMenu(){
   const menu = document.getElementById("premiumMenu");
   menu.style.display = (menu.style.display === "block") ? "none" : "block";
@@ -829,7 +825,6 @@ function irPremium(tipo){
     });
 }
 
-/* --- OPCIONES PREMIUM BLOQUEADAS PARA FREE --- */
 function checkPremium(tipo){
   if(!isPremium){
     alert("⚠️ Esta función requiere Premium. Pasá a Premium para usarla.");
@@ -839,7 +834,6 @@ function checkPremium(tipo){
   if(tipo==='doc') document.getElementById('archivo_pdf_word').click();
 }
 
-/* --- MENÚ DE ADJUNTOS --- */
 function toggleAdjuntosMenu(){
   const m = document.getElementById("adjuntos_menu");
   m.style.display = m.style.display === "block" ? "none" : "block";
@@ -851,7 +845,6 @@ function closeMenuOnClickOutside(e){
   if(!menu.contains(e.target) && !clip.contains(e.target)){ menu.style.display="none"; window.removeEventListener('click', closeMenuOnClickOutside); }
 }
 
-/* --- HISTORIAL --- */
 function verHistorial(){
   fetch("/historial/"+usuario_id).then(r=>r.json()).then(data=>{
     document.getElementById("chat").innerHTML="";
@@ -860,7 +853,6 @@ function verHistorial(){
   });
 }
 
-/* --- RECONOCIMIENTO DE VOZ --- */
 function hablar(){
   if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window){
     const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -872,7 +864,6 @@ function hablar(){
   }else{alert("Tu navegador no soporta reconocimiento de voz.");}
 }
 
-/* --- RECORDATORIOS --- */
 function chequearRecordatorios(){
   fetch("/avisos",{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({usuario_id}) })
   .then(r=>r.json()).then(data=>{ if(Array.isArray(data) && data.length>0){ data.forEach(r=>{ agregar(`⏰ Tenés un recordatorio: ${r.motivo||"(sin motivo)"}`,"ai"); }); } }).catch(e=>console.error(e));
