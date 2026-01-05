@@ -781,6 +781,29 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
   #inputBar button{ font-size:16px; padding:10px; }
   #logo{ width:140px; } /* logo más grande en móvil */
 }
+/* =============================== */
+/* === MENSAJES EN MODO DAY ====== */
+/* =============================== */
+
+body.day .user{
+  background:#e9e9e9;
+  color:#000000;
+  border:1px solid #000000;
+  box-shadow:none;
+}
+
+body.day .ai{
+  background:#f5f5f5;
+  color:#000000;
+  border:1px solid #000000;
+  box-shadow:none;
+}
+
+body.day .ai a,
+body.day .user a{
+  color:#000000;
+}
+
 </style>
 </head>
 
