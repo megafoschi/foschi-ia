@@ -588,6 +588,13 @@ body{
   box-shadow:0 0 14px #00eaff;
 }
 
+/* --- Línea separadora --- */
+.separator{
+  border-left:1px solid #00eaff55;
+  height:24px;
+  margin:0 8px;
+}
+
 /* --- CHAT --- */
 #chat{
   flex:1;
@@ -715,9 +722,9 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
 <div id="header">
   <img src="/static/logo.png" id="logo" onclick="logoClick()" alt="logo">
 
-  <button onclick="verHistorial()">🗂️ Historial</button>
+  <div class="separator"></div>
 
-  <div id="premiumContainer" style="position:relative;margin-left:20px;">
+  <div id="premiumContainer" style="position:relative;">
     <button id="premiumBtn" onclick="togglePremiumMenu()">💎 Foschi IA Premium</button>
     <div id="premiumMenu" style="display:none;position:absolute;top:36px;left:0;background:#001f2e;border:1px solid #003547;border-radius:6px;padding:6px;box-shadow:0 6px 16px rgba(0,0,0,0.6);z-index:100;">
       <button onclick="irPremium('mensual')">💎 Pago Mensual</button>
@@ -728,6 +735,8 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
   <button onclick="detenerVoz()">⏹️ Detener voz</button>
   <button id="vozBtn" onclick="toggleVoz()">🔊 Voz activada</button>
   <button id="borrarBtn" onclick="borrarPantalla()">🧹 Borrar pantalla</button>
+
+  <button onclick="verHistorial()">🗂️ Historial</button>
 </div>
 
 <!-- CHAT -->
