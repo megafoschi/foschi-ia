@@ -804,83 +804,10 @@ body.day .user a{
   color:#000000;
 }
 
-/* ======================================= */
-/* === MÓVIL EN MODO HORIZONTAL ========= */
-/* ======================================= */
-@media screen and (max-width: 900px) and (orientation: landscape){
-
-  body{
-    font-size:14px;
-  }
-
-  #header{
-    flex-wrap:wrap;
-    padding:6px 10px;
-  }
-
-  #leftButtons,
-  #rightButtons{
-    flex-wrap:wrap;
-    gap:6px;
-  }
-
-  #header button{
-    font-size:12px;
-    padding:4px 8px;
-  }
-
-  #logo{
-    width:90px;
-  }
-
-  #chat{
-    padding:8px;
-    padding-bottom:90px;
-  }
-
-  #inputBar{
-    padding:6px;
-    gap:4px;
-  }
-
-  #inputBar input[type=text]{
-    font-size:14px;
-    padding:8px;
-  }
-
-  #inputBar button{
-    font-size:14px;
-    padding:8px;
-  }
-}
-#rotateHint{
-  display:none;
-  position:fixed;
-  inset:0;
-  background:#000;
-  color:#fff;
-  z-index:9999;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  font-size:18px;
-  text-align:center;
-  padding:20px;
-}
-
-@media screen and (max-width: 900px) and (orientation: portrait){
-  #rotateHint{
-    display:flex;
-  }
-}
-
 </style>
 </head>
 
 <body>
-
-<div id="rotateHint">🔄 Girá el celular para una mejor experiencia</div>
-
 <!-- HEADER -->
 <div id="header">
   <div id="leftButtons">
