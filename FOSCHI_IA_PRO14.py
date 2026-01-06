@@ -752,6 +752,42 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
 /* --- BOTONES PEQUEÑOS --- */
 #vozBtn,#borrarBtn,#premiumBtn{ font-size:14px; padding:6px 10px; }
 
+/* --- BOTÓN ADJUNTAR (CLIP) --- */
+#clipBtn{
+  width:40px;
+  height:40px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:20px;
+  cursor:pointer;
+  border-radius:6px;
+  background:#001f2e;
+  color:#00eaff;
+  border:1px solid #006688;
+  box-shadow:0 0 10px #0099bb;
+  transition:0.25s;
+  user-select:none;
+}
+
+#clipBtn:hover{
+  background:#003547;
+  box-shadow:0 0 16px #00eaff;
+  transform:scale(1.08);
+}
+
+/* --- CLIP EN MODO DAY --- */
+body.day #clipBtn{
+  background:#ffffff;
+  color:#000000;
+  border:1px solid #000000;
+  box-shadow:none;
+}
+
+body.day #clipBtn:hover{
+  background:#f0f0f0;
+}
+
 /* --- MENÚ DE ADJUNTOS --- */
 #adjuntos_menu{
  position:absolute;
