@@ -11,6 +11,7 @@ import threading
 from datetime import datetime, timedelta
 import pytz
 
+from usuarios import registrar_usuario, es_premium
 from suscripciones import usuario_premium, aviso_vencimiento
 from flask import Flask, render_template_string, request, jsonify, session, send_file, after_this_request
 from flask_session import Session
@@ -888,11 +889,15 @@ body.day .user a{
 
 <script>
 // --- Variables y funciones generales ---
-let usuario_id="{{usuario_id}}";
-let vozActiva=true,audioActual=null,mensajeActual=null;
+let usuario_id = "{{ usuario_id }}";
+let isPremium = {{ "true" if premium else "false" }};
+
+let vozActiva = true;
+let audioActual = null;
+let mensajeActual = null;
+
 let MAX_NO_PREMIUM = 5;
-let preguntasHoy = 0; 
-let isPremium = false; 
+let preguntasHoy = 0;
 
 function logoClick(){ alert("FOSCHI NUNCA MUERE, TRASCIENDE..."); }
 function toggleVoz(estado=null){ vozActiva=estado!==null?estado:!vozActiva; document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada"; }
@@ -954,7 +959,7 @@ function closePremiumMenuOnClickOutside(e){
   }
 }
 function irPremium(tipo){
-  fetch(`/premium?usuario_id=${usuario_id}&tipo=${tipo}`)
+  fetch(`/premium?tipo=${tipo}`)
     .then(r=>r.json())
     .then(d=>{
       window.open(d.qr,"_blank");
@@ -1062,21 +1067,6 @@ def premium():
 
 from suscripciones import activar_premium
 
-@app.route("/premium/anual")
-def premium_anual():
-    usuario = request.args.get("usuario_id")
-    pref = {
-        "items": [{
-            "title": "Foschi IA Premium – 12 meses",
-            "quantity": 1,
-            "unit_price": 48000  # ej: 12x con descuento
-        }],
-        "external_reference": usuario,
-        "notification_url": "https://foschi-ia.onrender.com/webhook/mp"
-    }
-    res = sdk.preference().create(pref)
-    return jsonify({"qr": res["response"]["init_point"]})
-
 @app.route("/webhook/mp", methods=["POST"])
 def webhook_mp():
     data = request.json
@@ -1088,22 +1078,39 @@ def webhook_mp():
     if not payment_id:
         return "ok"
 
+    # Consultar pago a MercadoPago
     payment = sdk.payment().get(payment_id)
-    info = payment["response"]
+    info = payment.get("response", {})
 
-    if info.get("status") == "approved":
-        usuario = info.get("external_reference")
-        if usuario:
-            activar_premium(usuario)
+    # Solo pagos aprobados
+    if info.get("status") != "approved":
+        return "ok"
 
-            from pagos import registrar_pago
+    # Usuario = email
+    usuario = info.get("external_reference")
+    if not usuario:
+        return "ok"
 
-            monto = info.get("transaction_amount", 0)
-            payment_id = info.get("id")
+    # Determinar plan por monto
+    monto = info.get("transaction_amount", 0)
+    tipo = "anual" if monto >= 30000 else "mensual"
 
-            plan = "anual" if monto >= 30000 else "mensual"
+    # 🔑 ACTIVAR PREMIUM CON VENCIMIENTO
+    from usuarios import activar_premium
 
-            registrar_pago(usuario, monto, plan, payment_id)
+    if tipo == "mensual":
+        activar_premium(usuario, 30)
+    else:
+        activar_premium(usuario, 365)
+
+    # 💾 REGISTRAR PAGO
+    from pagos import registrar_pago
+    registrar_pago(
+        usuario=usuario,
+        monto=monto,
+        plan=tipo,
+        payment_id=str(info.get("id"))
+    )
 
     return "ok"
 
@@ -1138,23 +1145,77 @@ def webhook_mp():
 
     return "ok"
 
-@app.route("/")
+@app.route("/", methods=["GET", "POST"])
 def index():
+
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+
+        if not email or "@" not in email:
+            return "Email inválido", 400
+
+        session["usuario_id"] = email
+        registrar_usuario(email)
+
     if "usuario_id" not in session:
-        session["usuario_id"]=str(uuid.uuid4())
-    return render_template_string(HTML_TEMPLATE, APP_NAME=APP_NAME, usuario_id=session["usuario_id"])
+        return render_template_string("""
+        <!doctype html>
+        <html>
+        <head>
+            <title>Ingreso Foschi IA</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+        </head>
+        <body style="
+            background:#000814;
+            color:#00eaff;
+            font-family:Segoe UI, sans-serif;
+            display:flex;
+            justify-content:center;
+            align-items:center;
+            height:100vh;
+        ">
+            <form method="post" style="text-align:center">
+                <h2>Ingresá tu email para continuar</h2>
+                <input type="email" name="email" required
+                       style="padding:10px;font-size:16px;width:260px"><br><br>
+                <button style="padding:10px 20px;font-size:16px">
+                    Entrar
+                </button>
+            </form>
+        </body>
+        </html>
+        """)
+
+    return render_template_string(
+        HTML_TEMPLATE,
+        APP_NAME=APP_NAME,
+        usuario_id=session["usuario_id"],
+        premium=es_premium(session["usuario_id"])
+    )
 
 @app.route("/preguntar", methods=["POST"])
 def preguntar():
     data = request.get_json()
     mensaje = data.get("mensaje","")
-    usuario_id = data.get("usuario_id", str(uuid.uuid4()))
+
+    usuario_id = session.get("usuario_id")
+    if not usuario_id:
+        return jsonify({"texto": "Debés ingresar con tu email"}), 403
+
     lat = data.get("lat")
     lon = data.get("lon")
     tz = data.get("timeZone") or data.get("time_zone") or None
+
     respuesta = generar_respuesta(mensaje, usuario_id, lat=lat, lon=lon, tz=tz)
-    texto_para_hist = respuesta["texto"] if isinstance(respuesta, dict) and "texto" in respuesta else str(respuesta)
+
+    texto_para_hist = (
+        respuesta["texto"]
+        if isinstance(respuesta, dict) and "texto" in respuesta
+        else str(respuesta)
+    )
+
     guardar_en_historial(usuario_id, mensaje, texto_para_hist)
+
     return jsonify(respuesta)
 
 @app.route("/historial/<usuario_id>")
