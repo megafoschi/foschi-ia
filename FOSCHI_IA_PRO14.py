@@ -10,7 +10,9 @@ import time
 import threading
 from datetime import datetime, timedelta
 import pytz
+import json, os
 
+from werkzeug.security import generate_password_hash, check_password_hash
 from suscripciones import usuario_premium, aviso_vencimiento
 from flask import Flask, render_template_string, request, jsonify, session, send_file, after_this_request
 from flask_session import Session
@@ -117,6 +119,18 @@ def cargar_historial(usuario):
             return json.load(f)
     except:
         return []
+
+USUARIOS_FILE = "usuarios.json"
+
+def cargar_usuarios():
+    if not os.path.exists(USUARIOS_FILE):
+        return {}
+    with open(USUARIOS_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def guardar_usuarios(data):
+    with open(USUARIOS_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
 # ---------------- CLIMA ----------------
 def obtener_clima(ciudad=None, lat=None, lon=None):
@@ -1031,6 +1045,14 @@ function toggleDayNight(){
     btn.textContent = body.classList.contains("day") ? "☀️" : "🌙";
   }
 }
+fetch("/estado_premium?usuario_id=" + usuario_id)
+  .then(r => r.json())
+  .then(d => {
+    isPremium = d.premium;
+    if(isPremium){
+      document.getElementById("premiumBtn").textContent = "💎 Premium activo";
+    }
+  });
 
 </script>
 </body>
@@ -1080,7 +1102,6 @@ def premium_anual():
 @app.route("/webhook/mp", methods=["POST"])
 def webhook_mp():
     data = request.json
-
     if not data or "data" not in data:
         return "ok"
 
@@ -1093,17 +1114,14 @@ def webhook_mp():
 
     if info.get("status") == "approved":
         usuario = info.get("external_reference")
-        if usuario:
-            activar_premium(usuario)
+        monto = info.get("transaction_amount", 0)
 
-            from pagos import registrar_pago
+        plan = "anual" if monto >= 30000 else "mensual"
 
-            monto = info.get("transaction_amount", 0)
-            payment_id = info.get("id")
+        activar_premium(usuario, plan, payment_id)
 
-            plan = "anual" if monto >= 30000 else "mensual"
-
-            registrar_pago(usuario, monto, plan, payment_id)
+        from pagos import registrar_pago
+        registrar_pago(usuario, monto, plan, payment_id)
 
     return "ok"
 
@@ -1216,6 +1234,11 @@ def admin_pagos():
         return "<h2>No hay pagos todavía</h2>"
 
     pagos = json.load(open(archivo))
+    
+@app.route("/estado_premium")
+def estado_premium():
+    usuario = request.args.get("usuario_id")
+    return jsonify({"premium": usuario_premium(usuario)})
 
     html = """
     <h2>💎 Pagos Foschi IA</h2>
@@ -1348,6 +1371,46 @@ def extract_text_from_docx(path):
     except Exception as e:
         print("Error leyendo DOCX:", e)
     return text
+
+@app.route("/registro", methods=["POST"])
+def registro():
+    email = request.form.get("email")
+    password = request.form.get("password")
+
+    usuarios = cargar_usuarios()
+
+    if email in usuarios:
+        return "❌ Email ya registrado"
+
+    usuarios[email] = {
+        "password": generate_password_hash(password),
+        "premium": False,
+        "creado": datetime.now().isoformat()
+    }
+
+    guardar_usuarios(usuarios)
+    return "✅ Usuario creado"
+
+@app.route("/login", methods=["POST"])
+def login():
+    email = request.form.get("email")
+    password = request.form.get("password")
+
+    usuarios = cargar_usuarios()
+    user = usuarios.get(email)
+
+    if not user or not check_password_hash(user["password"], password):
+        return "❌ Credenciales incorrectas"
+
+    session["usuario_id"] = email
+    session["premium"] = user.get("premium", False)
+
+    return "✅ Login correcto"
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return "👋 Sesión cerrada"
 
 @app.route("/upload_doc", methods=["POST"])
 def upload_doc():

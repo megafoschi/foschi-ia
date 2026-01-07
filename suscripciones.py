@@ -1,122 +1,63 @@
 # suscripciones.py
-import json
-import os
+import json, os
 from datetime import datetime, timedelta
 
-ARCHIVO = "suscripciones.json"
+ARCHIVO = "data/suscripciones.json"
 
-# 🔑 SUPER USUARIOS (SIEMPRE PREMIUM)
-SUPER_USUARIOS = {
-    "gustavo_foschi",
-    "agustina_foschi",
-    "belen_foschi",
-    "antonella_foschi",
-    "renata_foschi"
-}
+def _load():
+    if not os.path.exists(ARCHIVO):
+        return {}
+    with open(ARCHIVO, "r", encoding="utf-8") as f:
+        return json.load(f)
 
-def cargar():
-    if os.path.exists(ARCHIVO):
-        try:
-            return json.load(open(ARCHIVO, "r", encoding="utf-8"))
-        except:
-            return {}
-    return {}
-
-def guardar(data):
+def _save(data):
+    os.makedirs("data", exist_ok=True)
     with open(ARCHIVO, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
-def usuario_premium(usuario):
-    # 🦸 SUPER USUARIO → SIEMPRE PREMIUM
-    if usuario in SUPER_USUARIOS:
-        return True
-
-    data = cargar()
-    info = data.get(usuario)
-    if not info:
+def usuario_premium(usuario_id):
+    data = _load()
+    u = data.get(usuario_id)
+    if not u or not u.get("activo"):
         return False
-
-    try:
-        vence = datetime.fromisoformat(info["vence"])
-        return vence > datetime.now()
-    except:
+    vence = datetime.fromisoformat(u["vence"])
+    if vence < datetime.now():
+        u["activo"] = False
+        _save(data)
         return False
+    return True
 
-def activar_premium(usuario, dias=30):
-    data = cargar()
-    vence = datetime.now() + timedelta(days=dias)
-
-    data[usuario] = {
-        "vence": vence.isoformat()
-    }
-    guardar(data)
-
-def aviso_vencimiento(usuario):
-    """
-    Devuelve un aviso corto si el Premium está por vencer o vencido.
-    Si no hay nada que avisar, devuelve None.
-    """
-    if not usuario:
-        return None
-
-    # Super usuarios no reciben avisos
-    if usuario in SUPER_USUARIOS:
-        return None
-
-    data = cargar()
-    info = data.get(usuario)
-    if not info:
-        return None
-
-    try:
-        vence = datetime.fromisoformat(info["vence"])
-    except:
-        return None
-
+def activar_premium(usuario_id, plan="mensual", payment_id=None):
+    data = _load()
     ahora = datetime.now()
 
-    if ahora > vence:
-        return "❌ Tu Premium venció. Activá nuevamente para seguir usando todas las funciones 💎"
-
-    dias = (vence - ahora).days
-
-    if dias == 0:
-        return "⚠️ Tu Premium vence HOY. Evitá cortes renovando ahora 💎"
-    elif dias == 1:
-        return "⚠️ Tu Premium vence MAÑANA. Renovalo para seguir sin límites 💎"
-    elif 1 < dias <= 3:
-        return f"⏳ Tu Premium vence en {dias} días. Recordá renovarlo 💎"
-
-    return None
-
-def usuario_premium(usuario):
-    """
-    Devuelve un texto corto con el estado del Premium del usuario
-    """
-    if usuario in SUPER_USUARIOS:
-        return "👑 Super usuario · Premium ilimitado"
-
-    data = cargar()
-    info = data.get(usuario)
-
-    if not info:
-        return "🔓 Usuario gratuito"
-
-    try:
-        vence = datetime.fromisoformat(info["vence"])
-    except:
-        return "🔓 Usuario gratuito"
-
-    ahora = datetime.now()
-
-    if ahora > vence:
-        return "❌ Premium vencido"
-
-    dias = (vence - ahora).days
-
-    if dias == 0:
-        return "⚠️ Premium vence hoy"
-    elif dias == 1:
-        return "⚠️ Premium vence mañana"
+    if plan == "anual":
+        vence = ahora + timedelta(days=365)
     else:
-        return f"✅ Premium activo · vence en {dias} días"
+        vence = ahora + timedelta(days=30)
+
+    data[usuario_id] = {
+        "plan": plan,
+        "activo": True,
+        "vence": vence.date().isoformat(),
+        "ultimo_pago": ahora.date().isoformat(),
+        "payment_id": str(payment_id)
+    }
+    _save(data)
+
+def aviso_vencimiento(usuario_id):
+    data = _load()
+    u = data.get(usuario_id)
+    if not u:
+        return None
+
+    vence = datetime.fromisoformat(u["vence"])
+    dias = (vence - datetime.now()).days
+
+    if dias == 5:
+        return "⚠️ Tu suscripción vence en 5 días."
+    if dias == 1:
+        return "⚠️ Tu suscripción vence mañana."
+    if dias < 0:
+        return "⛔ Tu suscripción venció. Volvé a activar Premium."
+    return None
