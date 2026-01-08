@@ -961,7 +961,7 @@ function closePremiumMenuOnClickOutside(e){
   }
 }
 function irPremium(tipo){
-  fetch(`/premium?tipo=${tipo}`)
+  fetch(`/premium?tipo=${tipo}&usuario_id=${usuario_id}`)
     .then(r=>r.json())
     .then(d=>{
       window.open(d.qr,"_blank");
@@ -1153,8 +1153,6 @@ def premium():
     pref = sdk.preference().create(preference)
     return jsonify({"qr": pref["response"]["init_point"]})
 
-from suscripciones import activar_premium
-
 @app.route("/webhook/mp", methods=["POST"])
 def webhook_mp():
     data = request.json
@@ -1166,30 +1164,24 @@ def webhook_mp():
     if not payment_id:
         return "ok"
 
-    # Consultar pago a MercadoPago
     payment = sdk.payment().get(payment_id)
     info = payment.get("response", {})
 
-    # Solo pagos aprobados
     if info.get("status") != "approved":
         return "ok"
 
-    # Usuario = email
     usuario = info.get("external_reference")
     if not usuario:
         return "ok"
 
-    # Determinar plan por monto
     monto = info.get("transaction_amount", 0)
-    tipo = "anual" if monto >= 30000 else "mensual"
+    tipo = "anual" if monto >= (PRECIO_MENSUAL * 12) else "mensual"
 
-    # 🔑 ACTIVAR PREMIUM CON VENCIMIENTO
+    # 🔑 ACTIVAR PREMIUM (FUENTE DE VERDAD)
     from usuarios import activar_premium
 
-    if tipo == "mensual":
-        activar_premium(usuario, 30)
-    else:
-        activar_premium(usuario, 365)
+    dias = 365 if tipo == "anual" else 30
+    activar_premium(usuario, dias)
 
     # 💾 REGISTRAR PAGO
     from pagos import registrar_pago
@@ -1202,67 +1194,6 @@ def webhook_mp():
 
     return "ok"
 
-    payment = sdk.payment().get(payment_id)
-    info = payment["response"]
-
-    if info.get("status") == "approved":
-        usuario = info.get("external_reference")
-        plan = "anual" if info["transaction_amount"] > 10000 else "mensual"
-
-        if usuario:
-            activar_premium(usuario)
-
-            # 🔹 GUARDAR PAGO
-            from datetime import datetime
-            import json, os
-
-            archivo = "pagos.json"
-            pagos = {}
-
-            if os.path.exists(archivo):
-                pagos = json.load(open(archivo))
-
-            pagos[usuario] = {
-                "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "plan": plan,
-                "payment_id": str(payment_id),
-                "status": "approved"
-            }
-
-            json.dump(pagos, open(archivo, "w"), indent=2)
-
-    return "ok"
-
-@app.route("/", methods=["GET", "POST"])
-def index():
-    if request.method == "POST":
-        email = request.form.get("email", "").strip().lower()
-
-        if not email or "@" not in email:
-            return "Email inválido", 400
-
-        session["usuario_id"] = email
-        session["superusuario"] = es_superusuario(email)
-
-        registrar_usuario(email)
-
-        return render_template_string(
-            HTML_TEMPLATE,
-            APP_NAME=APP_NAME,
-            usuario_id=email,
-            premium=es_premium(email)
-        )
-
-    if "usuario_id" not in session:
-        return render_template_string(LOGIN_HTML)
-
-    return render_template_string(
-        HTML_TEMPLATE,
-        APP_NAME=APP_NAME,
-        usuario_id=session["usuario_id"],
-        premium=es_premium(session["usuario_id"])
-    )
-   
 @app.route("/preguntar", methods=["POST"])
 def preguntar():
     # 🔐 Validar sesión primero
@@ -1301,6 +1232,12 @@ def preguntar():
     guardar_en_historial(usuario_id, mensaje, texto_para_hist)
 
     return jsonify(respuesta)
+
+@app.route("/chat")
+def chat():
+    if "usuario_id" not in session:
+        return redirect("/")
+    return "Chat OK – usuario logueado"
 
 @app.route("/historial")
 def historial():
