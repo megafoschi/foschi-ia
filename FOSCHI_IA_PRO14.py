@@ -11,7 +11,6 @@ import threading
 from datetime import datetime, timedelta
 import pytz
 
-from superusuarios import es_superusuario
 from usuarios import registrar_usuario, es_premium
 from suscripciones import usuario_premium, aviso_vencimiento
 from flask import Flask, render_template_string, request, jsonify, session, send_file, after_this_request
@@ -1054,36 +1053,17 @@ sdk = mercadopago.SDK(
 @app.route("/premium")
 def premium():
     usuario = request.args.get("usuario_id")
-    tipo = request.args.get("tipo", "mensual")
-
-    if not usuario:
-        return jsonify({"error": "usuario requerido"}), 400
-
-    if tipo == "anual":
-        titulo = "Suscripción Premium Anual"
-        precio = PRECIO_MENSUAL * 12
-    else:
-        titulo = "Suscripción Premium Mensual"
-        precio = PRECIO_MENSUAL
-
-    preference = {
+    pref = {
         "items": [{
-            "title": titulo,
+            "title": "Foschi IA Premium – 30 días",
             "quantity": 1,
-            "currency_id": "ARS",
-            "unit_price": float(precio)
+            "unit_price": 5000
         }],
         "external_reference": usuario,
-        "notification_url": URL_WEBHOOK,
-        "auto_return": "approved",
-        "back_urls": {
-            "success": URL_SUCCESS,
-            "failure": URL_FAILURE
-        }
+        "notification_url": "https://foschi-ia.onrender.com/webhook/mp"
     }
-
-    pref = sdk.preference().create(preference)
-    return jsonify({"qr": pref["response"]["init_point"]})
+    res = sdk.preference().create(pref)
+    return jsonify({"qr": res["response"]["init_point"]})
 
 from suscripciones import activar_premium
 
@@ -1167,6 +1147,7 @@ def webhook_mp():
 
 @app.route("/", methods=["GET", "POST"])
 def index():
+
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
 
@@ -1174,13 +1155,7 @@ def index():
             return "Email inválido", 400
 
         session["usuario_id"] = email
-        session["superusuario"] = es_superusuario(email)
-
         registrar_usuario(email)
-
-        return redirect("/chat")
-
-    return render_template_string(LOGIN_HTML)
 
     if "usuario_id" not in session:
         return render_template_string("""
@@ -1221,14 +1196,6 @@ def index():
 @app.route("/preguntar", methods=["POST"])
 def preguntar():
     data = request.get_json()
-    usuario_id = data.get("usuario_id")
-
-    # 👑 SUPER USUARIO: sin límites
-    if es_superusuario(usuario_id):
-        pass
-    else:
-        controlar_limite(usuario_id)  # tu lógica actual
-
     mensaje = data.get("mensaje","")
 
     usuario_id = session.get("usuario_id")
