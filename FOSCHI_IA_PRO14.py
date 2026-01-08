@@ -306,7 +306,7 @@ def learn_from_message(usuario, mensaje, respuesta):
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
        
     # Bloqueo por no premium
-    if not usuario_premium(usuario):
+    if not es_premium(usuario):
         if len(mensaje) > 200:
             return {
                 "texto": "🔒 Esta función es solo para usuarios Premium.\n\n💎 Activá Foschi IA Premium desde el botón superior para seguir.",
@@ -1118,6 +1118,32 @@ button{
 </body>
 </html>
 """
+@app.route("/", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        email = request.form.get("email")
+        if not email:
+            return render_template_string(LOGIN_HTML)
+
+        session["usuario_id"] = email
+        registrar_usuario(email)
+
+        return redirect("/app")
+
+    return render_template_string(LOGIN_HTML)
+
+@app.route("/app")
+def app_principal():
+    usuario_id = session.get("usuario_id")
+    if not usuario_id:
+        return redirect("/")
+
+    return render_template_string(
+        HTML_TEMPLATE,
+        APP_NAME=APP_NAME,
+        usuario_id=usuario_id,
+        premium=es_premium(usuario_id)
+    )
 
 @app.route("/premium")
 def premium():
