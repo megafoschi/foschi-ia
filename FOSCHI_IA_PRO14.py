@@ -1242,42 +1242,19 @@ def index():
             return "Email inválido", 400
 
         session["usuario_id"] = email
-        session["superusuario"] = es_superusuario(email)  # 👈 PUNTO 2
+        session["superusuario"] = es_superusuario(email)
 
         registrar_usuario(email)
 
-        return redirect("/chat")
-
-    return render_template_string(LOGIN_HTML)
+        return render_template_string(
+            HTML_TEMPLATE,
+            APP_NAME=APP_NAME,
+            usuario_id=email,
+            premium=es_premium(email)
+        )
 
     if "usuario_id" not in session:
-        return render_template_string("""
-        <!doctype html>
-        <html>
-        <head>
-            <title>Ingreso Foschi IA</title>
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-        </head>
-        <body style="
-            background:#000814;
-            color:#00eaff;
-            font-family:Segoe UI, sans-serif;
-            display:flex;
-            justify-content:center;
-            align-items:center;
-            height:100vh;
-        ">
-            <form method="post" style="text-align:center">
-                <h2>Ingresá tu email para continuar</h2>
-                <input type="email" name="email" required
-                       style="padding:10px;font-size:16px;width:260px"><br><br>
-                <button style="padding:10px 20px;font-size:16px">
-                    Entrar
-                </button>
-            </form>
-        </body>
-        </html>
-        """)
+        return render_template_string(LOGIN_HTML)
 
     return render_template_string(
         HTML_TEMPLATE,
@@ -1285,29 +1262,35 @@ def index():
         usuario_id=session["usuario_id"],
         premium=es_premium(session["usuario_id"])
     )
-
+   
 @app.route("/preguntar", methods=["POST"])
 def preguntar():
-    data = request.get_json()
-    usuario_id = data.get("usuario_id")
-
-    # 👑 SUPER USUARIO: sin límites
-    if es_superusuario(usuario_id):
-        pass
-    else:
-        controlar_limite(usuario_id)  # tu lógica actual
-
-    mensaje = data.get("mensaje","")
-
+    # 🔐 Validar sesión primero
     usuario_id = session.get("usuario_id")
     if not usuario_id:
         return jsonify({"texto": "Debés ingresar con tu email"}), 403
 
+    data = request.get_json() or {}
+    mensaje = data.get("mensaje", "").strip()
+
+    if not mensaje:
+        return jsonify({"texto": "Mensaje vacío"}), 400
+
+    # 👑 SUPER USUARIO: sin límites
+    if not es_superusuario(usuario_id):
+        controlar_limite(usuario_id)  # tu lógica actual
+
     lat = data.get("lat")
     lon = data.get("lon")
-    tz = data.get("timeZone") or data.get("time_zone") or None
+    tz = data.get("timeZone") or data.get("time_zone")
 
-    respuesta = generar_respuesta(mensaje, usuario_id, lat=lat, lon=lon, tz=tz)
+    respuesta = generar_respuesta(
+        mensaje,
+        usuario_id,
+        lat=lat,
+        lon=lon,
+        tz=tz
+    )
 
     texto_para_hist = (
         respuesta["texto"]
@@ -1319,8 +1302,12 @@ def preguntar():
 
     return jsonify(respuesta)
 
-@app.route("/historial/<usuario_id>")
-def historial(usuario_id):
+@app.route("/historial")
+def historial():
+    usuario_id = session.get("usuario_id")
+    if not usuario_id:
+        return jsonify({"error": "No autorizado"}), 403
+
     return jsonify(cargar_historial(usuario_id))
 
 @app.route("/tts")
