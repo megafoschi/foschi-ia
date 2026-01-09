@@ -11,9 +11,6 @@ import threading
 from datetime import datetime, timedelta
 import pytz
 
-from flask import Flask, request, session, render_template_string, redirect
-from superusuarios import es_superusuario
-from usuarios import registrar_usuario, es_premium
 from suscripciones import usuario_premium, aviso_vencimiento
 from flask import Flask, render_template_string, request, jsonify, session, send_file, after_this_request
 from flask_session import Session
@@ -306,7 +303,7 @@ def learn_from_message(usuario, mensaje, respuesta):
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
        
     # Bloqueo por no premium
-    if not es_premium(usuario):
+    if not usuario_premium(usuario):
         if len(mensaje) > 200:
             return {
                 "texto": "🔒 Esta función es solo para usuarios Premium.\n\n💎 Activá Foschi IA Premium desde el botón superior para seguir.",
@@ -891,15 +888,11 @@ body.day .user a{
 
 <script>
 // --- Variables y funciones generales ---
-let usuario_id = "{{ usuario_id }}";
-let isPremium = {{ "true" if premium else "false" }};
-
-let vozActiva = true;
-let audioActual = null;
-let mensajeActual = null;
-
+let usuario_id="{{usuario_id}}";
+let vozActiva=true,audioActual=null,mensajeActual=null;
 let MAX_NO_PREMIUM = 5;
-let preguntasHoy = 0;
+let preguntasHoy = 0; 
+let isPremium = false; 
 
 function logoClick(){ alert("FOSCHI NUNCA MUERE, TRASCIENDE..."); }
 function toggleVoz(estado=null){ vozActiva=estado!==null?estado:!vozActiva; document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada"; }
@@ -961,7 +954,7 @@ function closePremiumMenuOnClickOutside(e){
   }
 }
 function irPremium(tipo){
-  fetch(`/premium?tipo=${tipo}&usuario_id=${usuario_id}`)
+  fetch(`/premium?usuario_id=${usuario_id}&tipo=${tipo}`)
     .then(r=>r.json())
     .then(d=>{
       window.open(d.qr,"_blank");
@@ -1052,132 +1045,37 @@ sdk = mercadopago.SDK(
     "APP_USR-5793113592542665-010411-d99204938ad36578d1c7d45ef1e352e1-3111235582"
 )
 
-LOGIN_HTML = """
-<!doctype html>
-<html lang="es">
-<head>
-<meta charset="utf-8">
-<title>Foschi IA</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-body{
-  background:#000814;
-  color:#00eaff;
-  font-family:'Segoe UI',Arial;
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  height:100vh;
-}
-.card{
-  background:#001d3d;
-  padding:32px;
-  border-radius:16px;
-  width:340px;
-  text-align:center;
-  box-shadow:0 0 20px #00eaff66;
-}
-.logo{
-  width:110px;
-  margin-bottom:12px;
-  filter:drop-shadow(0 0 12px #00eaff);
-}
-input{
-  width:100%;
-  padding:12px;
-  border-radius:8px;
-  border:none;
-  margin-top:12px;
-  font-size:16px;
-}
-button{
-  margin-top:18px;
-  padding:12px;
-  width:100%;
-  border:none;
-  border-radius:8px;
-  background:#00eaff;
-  color:#00111a;
-  font-weight:bold;
-  font-size:16px;
-  cursor:pointer;
-}
-</style>
-</head>
-
-<body>
-<div class="card">
-  <img src="/static/logo.png" class="logo">
-  <h2>Bienvenido a Foschi IA</h2>
-
-  <form method="POST">
-    <input type="email" name="email" placeholder="tu@email.com" required>
-    <button type="submit">Ingresar</button>
-  </form>
-</div>
-</body>
-</html>
-"""
-@app.route("/", methods=["GET", "POST"])
-def login():
-    if request.method == "POST":
-        email = request.form.get("email")
-        if not email:
-            return render_template_string(LOGIN_HTML)
-
-        session["usuario_id"] = email
-        registrar_usuario(email)
-
-        return redirect("/app")
-
-    return render_template_string(LOGIN_HTML)
-
-@app.route("/app")
-def app_principal():
-    usuario_id = session.get("usuario_id")
-    if not usuario_id:
-        return redirect("/")
-
-    return render_template_string(
-        HTML_TEMPLATE,
-        APP_NAME=APP_NAME,
-        usuario_id=usuario_id,
-        premium=es_premium(usuario_id)
-    )
-
 @app.route("/premium")
 def premium():
     usuario = request.args.get("usuario_id")
-    tipo = request.args.get("tipo", "mensual")
-
-    if not usuario:
-        return jsonify({"error": "usuario requerido"}), 400
-
-    if tipo == "anual":
-        titulo = "Suscripción Premium Anual"
-        precio = PRECIO_MENSUAL * 12
-    else:
-        titulo = "Suscripción Premium Mensual"
-        precio = PRECIO_MENSUAL
-
-    preference = {
+    pref = {
         "items": [{
-            "title": titulo,
+            "title": "Foschi IA Premium – 30 días",
             "quantity": 1,
-            "currency_id": "ARS",
-            "unit_price": float(precio)
+            "unit_price": 5000
         }],
         "external_reference": usuario,
-        "notification_url": URL_WEBHOOK,
-        "auto_return": "approved",
-        "back_urls": {
-            "success": URL_SUCCESS,
-            "failure": URL_FAILURE
-        }
+        "notification_url": "https://foschi-ia.onrender.com/webhook/mp"
     }
+    res = sdk.preference().create(pref)
+    return jsonify({"qr": res["response"]["init_point"]})
 
-    pref = sdk.preference().create(preference)
-    return jsonify({"qr": pref["response"]["init_point"]})
+from suscripciones import activar_premium
+
+@app.route("/premium/anual")
+def premium_anual():
+    usuario = request.args.get("usuario_id")
+    pref = {
+        "items": [{
+            "title": "Foschi IA Premium – 12 meses",
+            "quantity": 1,
+            "unit_price": 48000  # ej: 12x con descuento
+        }],
+        "external_reference": usuario,
+        "notification_url": "https://foschi-ia.onrender.com/webhook/mp"
+    }
+    res = sdk.preference().create(pref)
+    return jsonify({"qr": res["response"]["init_point"]})
 
 @app.route("/webhook/mp", methods=["POST"])
 def webhook_mp():
@@ -1191,86 +1089,76 @@ def webhook_mp():
         return "ok"
 
     payment = sdk.payment().get(payment_id)
-    info = payment.get("response", {})
+    info = payment["response"]
 
-    if info.get("status") != "approved":
-        return "ok"
+    if info.get("status") == "approved":
+        usuario = info.get("external_reference")
+        if usuario:
+            activar_premium(usuario)
 
-    usuario = info.get("external_reference")
-    if not usuario:
-        return "ok"
+            from pagos import registrar_pago
 
-    monto = info.get("transaction_amount", 0)
-    tipo = "anual" if monto >= (PRECIO_MENSUAL * 12) else "mensual"
+            monto = info.get("transaction_amount", 0)
+            payment_id = info.get("id")
 
-    # 🔑 ACTIVAR PREMIUM (FUENTE DE VERDAD)
-    from usuarios import activar_premium
+            plan = "anual" if monto >= 30000 else "mensual"
 
-    dias = 365 if tipo == "anual" else 30
-    activar_premium(usuario, dias)
-
-    # 💾 REGISTRAR PAGO
-    from pagos import registrar_pago
-    registrar_pago(
-        usuario=usuario,
-        monto=monto,
-        plan=tipo,
-        payment_id=str(info.get("id"))
-    )
+            registrar_pago(usuario, monto, plan, payment_id)
 
     return "ok"
 
+    payment = sdk.payment().get(payment_id)
+    info = payment["response"]
+
+    if info.get("status") == "approved":
+        usuario = info.get("external_reference")
+        plan = "anual" if info["transaction_amount"] > 10000 else "mensual"
+
+        if usuario:
+            activar_premium(usuario)
+
+            # 🔹 GUARDAR PAGO
+            from datetime import datetime
+            import json, os
+
+            archivo = "pagos.json"
+            pagos = {}
+
+            if os.path.exists(archivo):
+                pagos = json.load(open(archivo))
+
+            pagos[usuario] = {
+                "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "plan": plan,
+                "payment_id": str(payment_id),
+                "status": "approved"
+            }
+
+            json.dump(pagos, open(archivo, "w"), indent=2)
+
+    return "ok"
+
+@app.route("/")
+def index():
+    if "usuario_id" not in session:
+        session["usuario_id"]=str(uuid.uuid4())
+    return render_template_string(HTML_TEMPLATE, APP_NAME=APP_NAME, usuario_id=session["usuario_id"])
+
 @app.route("/preguntar", methods=["POST"])
 def preguntar():
-    # 🔐 Validar sesión primero
-    usuario_id = session.get("usuario_id")
-    if not usuario_id:
-        return jsonify({"texto": "Debés ingresar con tu email"}), 403
-
-    data = request.get_json() or {}
-    mensaje = data.get("mensaje", "").strip()
-
-    if not mensaje:
-        return jsonify({"texto": "Mensaje vacío"}), 400
-
-    # 👑 SUPER USUARIO: sin límites
-    if not es_superusuario(usuario_id):
-        controlar_limite(usuario_id)  # tu lógica actual
-
+    data = request.get_json()
+    mensaje = data.get("mensaje","")
+    usuario_id = data.get("usuario_id", str(uuid.uuid4()))
     lat = data.get("lat")
     lon = data.get("lon")
-    tz = data.get("timeZone") or data.get("time_zone")
-
-    respuesta = generar_respuesta(
-        mensaje,
-        usuario_id,
-        lat=lat,
-        lon=lon,
-        tz=tz
-    )
-
-    texto_para_hist = (
-        respuesta["texto"]
-        if isinstance(respuesta, dict) and "texto" in respuesta
-        else str(respuesta)
-    )
-
+    tz = data.get("timeZone") or data.get("time_zone") or None
+    respuesta = generar_respuesta(mensaje, usuario_id, lat=lat, lon=lon, tz=tz)
+    texto_para_hist = respuesta["texto"] if isinstance(respuesta, dict) and "texto" in respuesta else str(respuesta)
     guardar_en_historial(usuario_id, mensaje, texto_para_hist)
-
     return jsonify(respuesta)
 
-@app.route("/chat")
-def chat():
-    if "usuario_id" not in session:
-        return redirect("/")
-    return "Chat OK – usuario logueado"
-
-@app.route("/historial")
-def historial():
-    usuario_id = session.get("usuario_id")
-    if not usuario_id:
-        return jsonify({"error": "No autorizado"}), 403
-
+@app.route("/historial/<usuario_id>")
+def historial(usuario_id):
     return jsonify(cargar_historial(usuario_id))
 
 @app.route("/tts")
