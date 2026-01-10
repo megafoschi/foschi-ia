@@ -1226,7 +1226,7 @@ def premium():
         precio = 12000
     else:
         titulo = "Foschi IA Premium Mensual"
-        precio = 1500
+        precio = 10000
 
     # 3️⃣ Crear preferencia MercadoPago
     pref = {
