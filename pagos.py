@@ -1,36 +1,35 @@
-# pagos.py
 import json
 import os
 from datetime import datetime
 
-ARCHIVO = "pagos.json"
+ARCHIVO_PAGOS = "data/pagos.json"
 
-def cargar():
-    if os.path.exists(ARCHIVO):
-        try:
-            with open(ARCHIVO, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except:
-            return []
-    return []
 
-def guardar(data):
-    with open(ARCHIVO, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+def pago_ya_registrado(payment_id):
+    if not os.path.exists(ARCHIVO_PAGOS):
+        return False
+
+    with open(ARCHIVO_PAGOS, encoding="utf-8") as f:
+        pagos = json.load(f)
+
+    return payment_id in pagos
+
 
 def registrar_pago(usuario, monto, plan, payment_id):
-    data = cargar()
+    pagos = {}
 
-    data.append({
+    if os.path.exists(ARCHIVO_PAGOS):
+        with open(ARCHIVO_PAGOS, encoding="utf-8") as f:
+            pagos = json.load(f)
+
+    pagos[str(payment_id)] = {
         "usuario": usuario,
         "monto": monto,
-        "plan": plan,  # "mensual" o "anual"
-        "payment_id": payment_id,
-        "fecha": datetime.now().isoformat()
-    })
+        "plan": plan,
+        "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "status": "approved"
+    }
 
-    guardar(data)
-
-def pagos_por_usuario(usuario):
-    data = cargar()
-    return [p for p in data if p["usuario"] == usuario]
+    os.makedirs("data", exist_ok=True)
+    with open(ARCHIVO_PAGOS, "w", encoding="utf-8") as f:
+        json.dump(pagos, f, indent=2, ensure_ascii=False)

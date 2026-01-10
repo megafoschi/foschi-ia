@@ -1,68 +1,57 @@
+# usuarios.py
 import json, os
-from datetime import datetime, timedelta
+from datetime import datetime
+from werkzeug.security import generate_password_hash, check_password_hash
 
 USUARIOS_FILE = "data/usuarios.json"
 
-
-def load_users():
+def _load():
     if not os.path.exists(USUARIOS_FILE):
         return {}
-    with open(USUARIOS_FILE, encoding="utf-8") as f:
-        return json.load(f)
+    return json.load(open(USUARIOS_FILE, encoding="utf-8"))
 
+def _save(data):
+    json.dump(data, open(USUARIOS_FILE, "w", encoding="utf-8"), indent=2)
 
-def save_users(users):
-    with open(USUARIOS_FILE, "w", encoding="utf-8") as f:
-        json.dump(users, f, indent=2, ensure_ascii=False)
+def registrar_usuario(email, password):
+    users = _load()
+    if email in users:
+        return False, "El usuario ya existe"
 
+    users[email] = {
+        "password": generate_password_hash(password),
+        "creado": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "verificado": False,
+        "premium_hasta": None
+    }
+    _save(users)
+    return True, "Usuario creado"
 
-def registrar_usuario(email):
-    users = load_users()
+def autenticar_usuario(email, password):
+    users = _load()
     if email not in users:
-        users[email] = {
-            "premium": False,
-            "alta": datetime.now().strftime("%Y-%m-%d %H:%M")
-        }
-        save_users(users)
+        return False
+    return check_password_hash(users[email]["password"], password)
 
+def marcar_verificado(email):
+    users = _load()
+    if email in users:
+        users[email]["verificado"] = True
+        _save(users)
 
 def es_premium(email):
-    users = load_users()
-    user = users.get(email)
-
-    if not user:
-        return False
-
-    if not user.get("premium"):
-        return False
-
-    vence_str = user.get("vence")
-    if not vence_str:
-        return False
-
-    vence = datetime.strptime(vence_str, "%Y-%m-%d %H:%M")
-
-    if datetime.now() > vence:
-        # 🔻 Premium vencido → limpiar
-        user["premium"] = False
-        user.pop("vence", None)
-        save_users(users)
-        return False
-
-    return True
-
-
-def activar_premium(email, dias=30):
-    users = load_users()
-
+    users = _load()
     if email not in users:
-        users[email] = {
-            "alta": datetime.now().strftime("%Y-%m-%d %H:%M")
-        }
+        return False
+    hasta = users[email].get("premium_hasta")
+    if not hasta:
+        return False
+    return datetime.fromisoformat(hasta) > datetime.now()
 
-    users[email]["premium"] = True
-    users[email]["vence"] = (
-        datetime.now() + timedelta(days=dias)
-    ).strftime("%Y-%m-%d %H:%M")
-
-    save_users(users)
+def activar_premium(email, dias):
+    users = _load()
+    if email not in users:
+        return
+    vencimiento = datetime.now() + timedelta(days=dias)
+    users[email]["premium_hasta"] = vencimiento.isoformat()
+    _save(users)

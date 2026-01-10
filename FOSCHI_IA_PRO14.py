@@ -9,15 +9,31 @@ import re
 import time
 import threading
 from datetime import datetime, timedelta
-import pytz
 
-from suscripciones import usuario_premium, aviso_vencimiento
-from flask import Flask, render_template_string, request, jsonify, session, send_file, after_this_request
-from flask_session import Session
-from gtts import gTTS
+import pytz
 import requests
 import urllib.parse
+
+from flask import (
+    Flask,
+    request,
+    session,
+    jsonify,
+    redirect,
+    render_template_string,
+    send_file,
+    after_this_request
+)
+
+from flask_session import Session
+from gtts import gTTS
+
+from usuarios import registrar_usuario, autenticar_usuario
+from suscripciones import usuario_premium, aviso_vencimiento
+from suscripciones import activar_premium
+
 from openai import OpenAI
+
 client = OpenAI()
 
 # --- librerías adicionales para documentos ---
@@ -53,6 +69,21 @@ URL_REGEX = re.compile(r'(https?://[^\s]+)', re.UNICODE)
 
 MEMORY_FILE = os.path.join(DATA_DIR, "memory.json")
 MEMORY_CACHE = {}
+
+from datetime import date
+
+def puede_preguntar(usuario):
+    hoy = date.today().isoformat()
+
+    if usuario.get("fecha_preguntas") != hoy:
+        usuario["fecha_preguntas"] = hoy
+        usuario["preguntas_hoy"] = 0
+
+    if usuario["preguntas_hoy"] >= 5:
+        return False
+
+    usuario["preguntas_hoy"] += 1
+    return True
 
 def load_json(path):
     """Carga memory.json en cache en RAM para accesos rápidos."""
@@ -848,13 +879,28 @@ body.day .user a{
 <div id="header">
   <div id="leftButtons">
     <img src="/static/logo.png" id="logo" onclick="logoClick()" alt="logo">
+
     <div id="premiumContainer" style="position:relative; margin-left:12px;">
       <button id="dayNightBtn" onclick="toggleDayNight()">🌙</button>
-      <button id="premiumBtn" onclick="togglePremiumMenu()">💎 Pasar a Premium</button>
-      <div id="premiumMenu" style="display:none;position:absolute;top:36px;left:0;background:#001f2e;border:1px solid #003547;border-radius:6px;padding:6px;box-shadow:0 6px 16px rgba(0,0,0,0.6);z-index:100;">
+
+      <button id="premiumBtn" onclick="togglePremiumMenu()">
+        {% if premium %}
+          💎 Premium activo
+        {% else %}
+          💎 Pasar a Premium
+        {% endif %}
+      </button>
+
+      {% if not premium %}
+      <div id="premiumMenu"
+           style="display:none; position:absolute; top:36px; left:0;
+                  background:#001f2e; border:1px solid #003547;
+                  border-radius:6px; padding:6px;
+                  box-shadow:0 6px 16px rgba(0,0,0,0.6); z-index:100;">
         <button onclick="irPremium('mensual')">💎 Pago Mensual</button>
         <button onclick="irPremium('anual')">💎 Pago Anual</button>
       </div>
+      {% endif %}
     </div>
   </div>
 
@@ -891,8 +937,11 @@ body.day .user a{
 let usuario_id="{{usuario_id}}";
 let vozActiva=true,audioActual=null,mensajeActual=null;
 let MAX_NO_PREMIUM = 5;
-let preguntasHoy = 0; 
-let isPremium = false; 
+let isPremium = {{ 'true' if premium else 'false' }};
+const hoy = new Date().toISOString().slice(0,10); // YYYY-MM-DD
+let preguntasHoy = parseInt(
+  localStorage.getItem("preguntasHoy_" + hoy) || "0"
+);
 
 function logoClick(){ alert("FOSCHI NUNCA MUERE, TRASCIENDE..."); }
 function toggleVoz(estado=null){ vozActiva=estado!==null?estado:!vozActiva; document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada"; }
@@ -910,12 +959,17 @@ function agregar(msg,cls,imagenes=[]){
 }
 
 function checkDailyLimit(){
-  if(!isPremium && preguntasHoy>=MAX_NO_PREMIUM){
+  if(!isPremium && preguntasHoy >= MAX_NO_PREMIUM){
     alert(`⚠️ Has alcanzado el límite de ${MAX_NO_PREMIUM} preguntas diarias. Pasá a Premium para más.`);
     return;
   }
+
   enviar();
-  if(!isPremium) preguntasHoy++;
+
+  if(!isPremium){
+    preguntasHoy++;
+    localStorage.setItem("preguntasHoy_" + hoy, preguntasHoy);
+  }
 }
 
 function enviar(){
@@ -941,10 +995,20 @@ function hablarTexto(texto, div=null){
 }
 
 function togglePremiumMenu(){
+  if(isPremium) return;
+
   const menu = document.getElementById("premiumMenu");
+  if(!menu) return;
+
   menu.style.display = (menu.style.display === "block") ? "none" : "block";
-  if(menu.style.display==="block"){ setTimeout(()=>window.addEventListener('click', closePremiumMenuOnClickOutside),50); }
+
+  if(menu.style.display === "block"){
+    setTimeout(() => {
+      window.addEventListener("click", closePremiumMenuOnClickOutside);
+    }, 50);
+  }
 }
+
 function closePremiumMenuOnClickOutside(e){
   const menu = document.getElementById("premiumMenu");
   const btn = document.getElementById("premiumBtn");
@@ -953,13 +1017,23 @@ function closePremiumMenuOnClickOutside(e){
     window.removeEventListener('click', closePremiumMenuOnClickOutside);
   }
 }
+
 function irPremium(tipo){
-  fetch(`/premium?usuario_id=${usuario_id}&tipo=${tipo}`)
-    .then(r=>r.json())
-    .then(d=>{
-      window.open(d.qr,"_blank");
-      document.getElementById("premiumMenu").style.display="none";
-    });
+  fetch(`/premium?tipo=${tipo}`)
+    .then(r => {
+      if(r.status === 401){
+        openAuth();
+        return null;
+      }
+      return r.json();
+    })
+    .then(data => {
+      if(!data) return;
+      if(data.init_point){
+        window.location.href = data.init_point;
+      }
+    })
+    .catch(err => console.error(err));
 }
 
 function checkPremium(tipo){
@@ -993,6 +1067,44 @@ function verHistorial(){
 function borrarPantalla(){
     detenerVoz(); 
     document.getElementById("chat").innerHTML = ""; 
+}
+
+function openAuth() {
+  document.getElementById("authModal").style.display = "block";
+}
+
+function closeAuth() {
+  document.getElementById("authModal").style.display = "none";
+}
+
+async function login() {
+  const email = authEmail.value;
+  const password = authPassword.value;
+
+  const r = await fetch("/auth/login", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({email, password})
+  });
+
+  const j = await r.json();
+  if (j.ok) location.reload();
+  else authMsg.innerText = j.msg;
+}
+
+async function register() {
+  const email = authEmail.value;
+  const password = authPassword.value;
+
+  const r = await fetch("/auth/register", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({email, password})
+  });
+
+  const j = await r.json();
+  if (j.ok) location.reload();
+  else authMsg.innerText = j.msg;
 }
 
 function hablar(){
@@ -1033,6 +1145,28 @@ function toggleDayNight(){
 }
 
 </script>
+
+<div id="authModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:9999;">
+  <div style="max-width:360px; margin:10% auto; background:#001d3d; padding:20px; border-radius:12px; color:#00eaff;">
+    <h3>Ingresar</h3>
+
+    <input id="authEmail" type="email" placeholder="Email"
+      style="width:100%; padding:10px; margin:8px 0;">
+
+    <input id="authPassword" type="password" placeholder="Contraseña"
+      style="width:100%; padding:10px; margin:8px 0;">
+
+    <button onclick="login()" style="width:100%; padding:10px;">Ingresar</button>
+    <button onclick="register()" style="width:100%; padding:10px; margin-top:6px;">
+      Crear cuenta
+    </button>
+
+    <p id="authMsg" style="margin-top:10px;"></p>
+
+    <button onclick="closeAuth()" style="margin-top:10px;">Cerrar</button>
+  </div>
+</div>
+
 </body>
 </html>
 
@@ -1041,41 +1175,72 @@ function toggleDayNight(){
 # ---------------- RUTAS ----------------
 import mercadopago
 
-sdk = mercadopago.SDK(
-    "APP_USR-5793113592542665-010411-d99204938ad36578d1c7d45ef1e352e1-3111235582"
-)
+sdk = mercadopago.SDK(os.getenv("MP_ACCESS_TOKEN"))
+
+@app.route("/auth/register", methods=["POST"])
+def register():
+    data = request.get_json()
+
+    email = data.get("email", "").lower().strip()
+    password = data.get("password", "")
+
+    ok, msg = registrar_usuario(email, password)
+    if not ok:
+        return jsonify({"ok": False, "msg": msg})
+
+    # login automático
+    session["user_email"] = email
+    return jsonify({"ok": True})
+
+@app.route("/auth/login", methods=["POST"])
+def login():
+    data = request.get_json()
+
+    email = data.get("email", "").lower().strip()
+    password = data.get("password", "")
+
+    if not autenticar_usuario(email, password):
+        return jsonify({"ok": False, "msg": "Credenciales incorrectas"})
+
+    session["user_email"] = email
+    return jsonify({"ok": True})
+
+@app.route("/auth/logout")
+def logout():
+    session.pop("user_email", None)
+    return redirect("/")
 
 @app.route("/premium")
 def premium():
-    usuario = request.args.get("usuario_id")
+
+    # 1️⃣ Verificar login
+    usuario = session.get("user_email")
+    if not usuario:
+        return jsonify({"error": "No logueado"}), 401
+
+    # 2️⃣ Determinar tipo de plan
+    tipo = request.args.get("tipo", "mensual")
+
+    if tipo == "anual":
+        titulo = "Foschi IA Premium Anual"
+        precio = 12000
+    else:
+        titulo = "Foschi IA Premium Mensual"
+        precio = 1500
+
+    # 3️⃣ Crear preferencia MercadoPago
     pref = {
         "items": [{
-            "title": "Foschi IA Premium – 30 días",
+            "title": titulo,
             "quantity": 1,
-            "unit_price": 5000
+            "unit_price": precio
         }],
         "external_reference": usuario,
         "notification_url": "https://foschi-ia.onrender.com/webhook/mp"
     }
-    res = sdk.preference().create(pref)
-    return jsonify({"qr": res["response"]["init_point"]})
 
-from suscripciones import activar_premium
-
-@app.route("/premium/anual")
-def premium_anual():
-    usuario = request.args.get("usuario_id")
-    pref = {
-        "items": [{
-            "title": "Foschi IA Premium – 12 meses",
-            "quantity": 1,
-            "unit_price": 48000  # ej: 12x con descuento
-        }],
-        "external_reference": usuario,
-        "notification_url": "https://foschi-ia.onrender.com/webhook/mp"
-    }
-    res = sdk.preference().create(pref)
-    return jsonify({"qr": res["response"]["init_point"]})
+    preference = sdk.preference().create(pref)
+    return jsonify(preference["response"])
 
 @app.route("/webhook/mp", methods=["POST"])
 def webhook_mp():
@@ -1084,77 +1249,101 @@ def webhook_mp():
     if not data or "data" not in data:
         return "ok"
 
+    if data.get("type") != "payment":
+        return "ok"
+
     payment_id = data["data"].get("id")
     if not payment_id:
         return "ok"
 
     payment = sdk.payment().get(payment_id)
-    info = payment["response"]
+    info = payment.get("response", {})
 
-    if info.get("status") == "approved":
-        usuario = info.get("external_reference")
-        if usuario:
-            activar_premium(usuario)
+    # 🔐 VALIDAR QUE EL PAGO SEA TUYO
+    if info.get("merchant_account_id") != os.getenv("MP_MERCHANT_ID"):
+        return "ok"
 
-            from pagos import registrar_pago
+    if info.get("status") != "approved":
+        return "ok"
 
-            monto = info.get("transaction_amount", 0)
-            payment_id = info.get("id")
+    usuario = info.get("external_reference")
+    if not usuario:
+        return "ok"
 
-            plan = "anual" if monto >= 30000 else "mensual"
+    from pagos import pago_ya_registrado, registrar_pago
+    if pago_ya_registrado(str(payment_id)):
+        return "ok"
 
-            registrar_pago(usuario, monto, plan, payment_id)
+    items = info.get("additional_info", {}).get("items", [])
+    titulo = items[0]["title"] if items else ""
+    plan = "anual" if "12" in titulo or "Anual" in titulo else "mensual"
 
-    return "ok"
+    monto = info.get("transaction_amount", 0)
 
-    payment = sdk.payment().get(payment_id)
-    info = payment["response"]
+    activar_premium(usuario, plan)
 
-    if info.get("status") == "approved":
-        usuario = info.get("external_reference")
-        plan = "anual" if info["transaction_amount"] > 10000 else "mensual"
-
-        if usuario:
-            activar_premium(usuario)
-
-            # 🔹 GUARDAR PAGO
-            from datetime import datetime
-            import json, os
-
-            archivo = "pagos.json"
-            pagos = {}
-
-            if os.path.exists(archivo):
-                pagos = json.load(open(archivo))
-
-            pagos[usuario] = {
-                "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "plan": plan,
-                "payment_id": str(payment_id),
-                "status": "approved"
-            }
-
-            json.dump(pagos, open(archivo, "w"), indent=2)
+    registrar_pago(
+        usuario=usuario,
+        monto=monto,
+        plan=plan,
+        payment_id=str(payment_id)
+    )
 
     return "ok"
 
 @app.route("/")
 def index():
     if "usuario_id" not in session:
-        session["usuario_id"]=str(uuid.uuid4())
-    return render_template_string(HTML_TEMPLATE, APP_NAME=APP_NAME, usuario_id=session["usuario_id"])
+        session["usuario_id"] = str(uuid.uuid4())
+
+    usuario = session.get("user_email") or session["usuario_id"]
+
+    premium = usuario_premium(usuario)
+
+    return render_template_string(
+        HTML_TEMPLATE,
+        APP_NAME=APP_NAME,
+        usuario_id=usuario,
+        premium=premium
+    )
 
 @app.route("/preguntar", methods=["POST"])
 def preguntar():
     data = request.get_json()
-    mensaje = data.get("mensaje","")
-    usuario_id = data.get("usuario_id", str(uuid.uuid4()))
+
+    mensaje = data.get("mensaje", "")
+
+    # 1️⃣ Asegurar UUID en sesión (NO se borra nunca)
+    if "usuario_id" not in session:
+        session["usuario_id"] = str(uuid.uuid4())
+
+    # 2️⃣ Identidad activa:
+    #    email si está logueado
+    #    UUID si no
+    usuario = session.get("user_email") or session["usuario_id"]
+
     lat = data.get("lat")
     lon = data.get("lon")
-    tz = data.get("timeZone") or data.get("time_zone") or None
-    respuesta = generar_respuesta(mensaje, usuario_id, lat=lat, lon=lon, tz=tz)
-    texto_para_hist = respuesta["texto"] if isinstance(respuesta, dict) and "texto" in respuesta else str(respuesta)
-    guardar_en_historial(usuario_id, mensaje, texto_para_hist)
+    tz  = data.get("timeZone") or data.get("time_zone") or None
+
+    # 3️⃣ Generar respuesta con identidad correcta
+    respuesta = generar_respuesta(
+        mensaje,
+        usuario,
+        lat=lat,
+        lon=lon,
+        tz=tz
+    )
+
+    # 4️⃣ Guardar historial con la MISMA identidad
+    texto_para_hist = (
+        respuesta["texto"]
+        if isinstance(respuesta, dict) and "texto" in respuesta
+        else str(respuesta)
+    )
+
+    guardar_en_historial(usuario, mensaje, texto_para_hist)
+
     return jsonify(respuesta)
 
 @app.route("/historial/<usuario_id>")
@@ -1211,7 +1400,7 @@ def admin_pagos():
     if request.args.get("key") != "foschi_admin_2026":
         return "Acceso denegado", 403
 
-    archivo = "pagos.json"
+    archivo = "data/pagos.json"
     if not os.path.exists(archivo):
         return "<h2>No hay pagos todavía</h2>"
 

@@ -1,10 +1,6 @@
 {
-  "Foschi": {
-    "plan": "premium",
-    "vence": "2026-12-31"
-  },
-  "demo": {
-    "plan": "free",
-    "vence": null
+  "usuario_id": {
+    "preguntas_hoy": 3,
+    "fecha_preguntas": "2026-01-10"
   }
 }
