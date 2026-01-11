@@ -1,6 +1,12 @@
 {
-  "usuario_id": {
-    "preguntas_hoy": 3,
-    "fecha_preguntas": "2026-01-10"
+  "gustavofoschi@gmail.com": {
+    "nombre": "Gustavo Foschi",
+    "premium": true,
+    "fecha_vencimiento": "2026-12-31"
+  },
+  "antonella@example.com": {
+    "nombre": "Antonella Rocío Foschi",
+    "premium": true,
+    "fecha_vencimiento": "2026-12-31"
   }
 }
