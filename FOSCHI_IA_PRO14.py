@@ -9,7 +9,6 @@ import re
 import time
 import threading
 from datetime import datetime, timedelta
-from verificaciones import crear_y_enviar_verificacion, enviar_recuperacion
 
 import pytz
 import requests
@@ -32,10 +31,10 @@ from gtts import gTTS
 from usuarios import registrar_usuario, autenticar_usuario
 from suscripciones import usuario_premium, aviso_vencimiento
 from suscripciones import activar_premium
+
 from openai import OpenAI
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=OPENAI_API_KEY)
+client = OpenAI()
 
 # --- librerías adicionales para documentos ---
 import PyPDF2
@@ -60,7 +59,7 @@ OWM_API_KEY = os.getenv("OWM_API_KEY")
 
 # ---------------- APP ----------------
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "dev-foschi-key")
+app.secret_key = "FoschiWebKey"
 app.config["SESSION_TYPE"] = "filesystem"
 Session(app)
 
@@ -71,21 +70,7 @@ URL_REGEX = re.compile(r'(https?://[^\s]+)', re.UNICODE)
 MEMORY_FILE = os.path.join(DATA_DIR, "memory.json")
 MEMORY_CACHE = {}
 
-from usuarios import _load as load_users
-
 from datetime import date
-
-def sesion_valida():
-    if "user_email" not in session:
-        return False
-
-    users = load_users()
-    email = session["user_email"]  # ✅ CORRECTO
-
-    if email not in users:
-        return False
-
-    return session.get("session_token") == users[email].get("session_token")
 
 def puede_preguntar(usuario):
     hoy = date.today().isoformat()
@@ -346,26 +331,10 @@ def learn_from_message(usuario, mensaje, respuesta):
 
 # ---------------- RESPUESTA IA ----------------
 
-# ---------------- DETECCIÓN DE ACTUALIDAD ----------------
-
-PALABRAS_ACTUALIDAD = [
-    "hoy", "actual", "actualidad", "ahora",
-    "último", "última", "reciente",
-    "este año", "este mes",
-    "presidente", "ministro",
-    "precio", "cotización", "valor",
-    "noticias", "ganó", "resultado",
-    "elecciones", "dólar", "inflación"
-]
-
-def requiere_datos_actuales(texto: str) -> bool:
-    texto = texto.lower()
-    return any(p in texto for p in PALABRAS_ACTUALIDAD)
-
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
-
-    # ---------------- BLOQUEO POR NO PREMIUM ----------------
-    if not usuario_premium(usuario) and not requiere_datos_actuales(mensaje):
+       
+    # Bloqueo por no premium
+    if not usuario_premium(usuario):
         if len(mensaje) > 200:
             return {
                 "texto": "🔒 Esta función es solo para usuarios Premium.\n\n💎 Activá Foschi IA Premium desde el botón superior para seguir.",
@@ -373,83 +342,12 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
                 "borrar_historial": False
             }
 
-    # ---------------- RESPUESTAS DE ACTUALIDAD ----------------
-    if requiere_datos_actuales(mensaje):
-        try:
-            resultados = []
-            if GOOGLE_API_KEY and GOOGLE_CSE_ID:
-                url = (
-                    f"https://www.googleapis.com/customsearch/v1"
-                    f"?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}"
-                    f"&q={urllib.parse.quote(mensaje)}&sort=date"
-                )
-                r = HTTPS.get(url, timeout=5)
-                data = r.json()
-                for item in data.get("items", [])[:5]:
-                    snippet = item.get("snippet", "").strip()
-                    if snippet and snippet not in resultados:
-                        resultados.append(snippet)
-            
-            if resultados:
-                texto_bruto = " ".join(resultados)
-                prompt = (
-                    f"Tengo estos fragmentos recientes: {texto_bruto}\n\n"
-                    f"Respondé a la pregunta: '{mensaje}'. "
-                    f"Usá un tono natural y directo en español argentino, sin inventar datos."
-                )
-                resp = client.chat.completions.create(
-                    model="gpt-4-turbo",
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.5,
-                    max_tokens=150
-                )
-                texto = resp.choices[0].message.content.strip()
-            else:
-                texto = "No pude obtener información actualizada en este momento."
-        except Exception as e:
-            texto = f"Error obteniendo datos actuales: {e}"
-
-        return {"texto": texto, "imagenes": [], "borrar_historial": False}
-
-    # ---------------- RESPUESTA GENERAL (NO ACTUAL) ----------------
-    try:
-        prompt = f"Respondé a esta pregunta normalmente: '{mensaje}' usando un tono natural y directo en español argentino."
-        resp = client.chat.completions.create(
-            model="gpt-4-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=250
-        )
-        texto = resp.choices[0].message.content.strip()
-    except Exception as e:
-        texto = f"Error generando respuesta de la IA: {e}"
-
-    return {"texto": texto, "imagenes": [], "borrar_historial": False}
-
     # Asegurar string
     if not isinstance(mensaje, str):
         mensaje = str(mensaje)
 
     mensaje_lower = mensaje.lower().strip()
-    
-        # 🚨 DETECCIÓN CENTRAL DE ACTUALIDAD
-    if requiere_datos_actuales(mensaje_lower):
-
-        # Si ya fue manejado por clima / noticias / deportes, no entra acá
-        # Si llega acá, NO tenemos datos actuales confiables
-
-        texto = (
-            "⚠️ Esta pregunta requiere información actualizada.\n\n"
-            "Puedo ayudarte si consulto fuentes externas (noticias, datos en tiempo real).\n"
-            "Decime si querés que lo busque ahora."
-        )
-
-        return {
-            "texto": texto,
-            "imagenes": [],
-            "borrar_historial": False
-        }
-
+           
     # --- RECORDATORIOS: comandos y detección ---
     try:
         if mensaje_lower in ["mis recordatorios", "lista de recordatorios", "ver recordatorios"]:
@@ -457,50 +355,39 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
             if not recs:
                 return {"texto": "📭 No tenés recordatorios pendientes.", "imagenes": [], "borrar_historial": False}
             texto = "📌 Tus recordatorios:\n" + "\n".join([f"- {r['motivo']} → {r['cuando']}" for r in recs])
-            texto = hacer_links_clicleables(texto)
             return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
         if "borrar recordatorios" in mensaje_lower or "eliminar recordatorios" in mensaje_lower:
             borrar_recordatorios(usuario)
-            texto = "🗑️ Listo, eliminé todos tus recordatorios."
-            texto = hacer_links_clicleables(texto)
-            return {"texto": texto, "imagenes": [], "borrar_historial": False}
+            return {"texto": "🗑️ Listo, eliminé todos tus recordatorios.", "imagenes": [], "borrar_historial": False}
 
         if mensaje_lower.startswith(("recordame", "haceme acordar", "avisame", "recordá")):
             fecha_hora = interpretar_fecha_hora(mensaje_lower)
             if fecha_hora is None:
-                texto = "⏰ Decime cuándo: ejemplo 'mañana a las 9', 'en 15 minutos' o 'el 5 de diciembre a las 18'."
-                texto = hacer_links_clicleables(texto)
-                return {"texto": texto, "imagenes": [], "borrar_historial": False}
+                return {"texto": "⏰ Decime cuándo: ejemplo 'mañana a las 9', 'en 15 minutos' o 'el 5 de diciembre a las 18'.", "imagenes": [], "borrar_historial": False}
             motivo = mensaje
             for p in ["recordame", "haceme acordar", "avisame", "recordá"]:
                 motivo = re.sub(p, "", motivo, flags=re.IGNORECASE).strip()
             if not motivo:
                 motivo = "Recordatorio"
             agregar_recordatorio(usuario, motivo, fecha_hora)
-            texto = f"✅ Listo, te lo recuerdo el {fecha_hora.strftime('%d/%m %H:%M')}."
-            texto = hacer_links_clicleables(texto)
-            return {"texto": texto, "imagenes": [], "borrar_historial": False}
+            return {"texto": f"✅ Listo, te lo recuerdo el {fecha_hora.strftime('%d/%m %H:%M')}.", "imagenes": [], "borrar_historial": False}
     except Exception as e:
         print("Error en manejo de recordatorios:", e)
 
     # BORRAR HISTORIAL
     if any(p in mensaje_lower for p in ["borrar historial", "limpiar historial", "reset historial"]):
         path = os.path.join(DATA_DIR, f"{usuario}.json")
-        if os.path.exists(path):
-            os.remove(path)
+        if os.path.exists(path): os.remove(path)
         memory = load_json(MEMORY_FILE)
         if usuario in memory:
             memory[usuario]["mensajes"] = []
             save_json(MEMORY_FILE, memory)
-        texto = "✅ Historial borrado correctamente."
-        texto = hacer_links_clicleables(texto)
-        return {"texto": texto, "imagenes": [], "borrar_historial": True}
+        return {"texto": "✅ Historial borrado correctamente.", "imagenes": [], "borrar_historial": True}
 
     # FECHA / HORA
     if any(p in mensaje_lower for p in ["qué día", "que día", "qué fecha", "que fecha", "qué hora", "que hora", "día es hoy", "fecha hoy"]):
         texto = fecha_hora_en_es()
-        texto = hacer_links_clicleables(texto)
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
@@ -509,7 +396,6 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         ciudad_match = re.search(r"clima en ([a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+)", mensaje_lower)
         ciudad = ciudad_match.group(1).strip() if ciudad_match else None
         texto = obtener_clima(ciudad=ciudad, lat=lat, lon=lon)
-        texto = hacer_links_clicleables(texto)
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
@@ -535,6 +421,7 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         if resultados:
             texto_bruto = " ".join(resultados)
             try:
+                client = OpenAI(api_key=OPENAI_API_KEY)
                 prompt = (
                     f"Tengo estos fragmentos de texto recientes: {texto_bruto}\n\n"
                     f"Respondé a la pregunta: '{mensaje}'. "
@@ -551,12 +438,11 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
                 )
 
                 texto = resp.choices[0].message.content.strip()
-            except Exception:
+            except Exception as e:
                 texto = "No pude generar la respuesta con OpenAI."
         else:
             texto = "No pude obtener información actualizada en este momento."
 
-        texto = hacer_links_clicleables(texto)
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
@@ -570,7 +456,6 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         "quién te construyó", "quien te construyo"
     ]):
         texto = "Fui creada por Gustavo Enrique Foschi, el mejor 😎."
-        texto = hacer_links_clicleables(texto)
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
@@ -585,7 +470,8 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
                 url = (
                     f"https://www.googleapis.com/customsearch/v1"
                     f"?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}"
-                    f"&q={urllib.parse.quote(mensaje + ' resultados deportivos actualizados')}&sort=date"
+                    f"&q={urllib.parse.quote(mensaje + ' resultados deportivos actualizados')}"
+                    f"&sort=date"
                 )
                 r = HTTPS.get(url, timeout=5)
                 data = r.json()
@@ -599,6 +485,7 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         if resultados:
             texto_bruto = " ".join(resultados)
             try:
+                client = OpenAI(api_key=OPENAI_API_KEY)
                 prompt = (
                     f"Tengo estos fragmentos recientes sobre deportes: {texto_bruto}\n\n"
                     f"Respondé brevemente la consulta '{mensaje}' con los resultados deportivos actuales. "
@@ -613,12 +500,11 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
                     max_tokens=150
                 )
                 texto = resp.choices[0].message.content.strip()
-            except Exception:
+            except Exception as e:
                 texto = "No pude generar la respuesta deportiva."
         else:
             texto = "No pude encontrar resultados deportivos recientes en este momento."
 
-        texto = hacer_links_clicleables(texto)
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
@@ -628,6 +514,8 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         historial = memoria.get(usuario, {}).get("mensajes", [])[-max_hist:]
         resumen = " ".join([m["usuario"] + ": " + m["foschi"] for m in historial[-3:]]) if historial else ""
 
+        client = OpenAI(api_key=OPENAI_API_KEY)
+
         prompt_messages = [
             {
                 "role": "system",
@@ -636,7 +524,6 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
                     "Tus respuestas deben ser claras, ordenadas y sonar naturales en español argentino. "
                     "Si el usuario pide información o ayuda técnica, explicá paso a paso y sin mezclar temas. "
                     f"Resumen de últimas interacciones: {resumen if resumen else 'ninguna.'}"
-                    "NUNCA inventes datos actuales. "
                 )
             },
             {"role": "user", "content": mensaje}
@@ -984,88 +871,6 @@ body.day .user a{
   color:#000000;
 }
 
-/* ========================= */
-/* === MODAL LOGIN ========= */
-/* ========================= */
-
-#authModal {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.85);
-  display: flex;
-  align-items: center;       /* centra verticalmente */
-  justify-content: center;   /* centra horizontalmente */
-  z-index: 9999;
-  padding: 20px;             /* para que no se pegue a los bordes en móviles */
-  box-sizing: border-box;
-}
-
-.authBox {
-  width: 100%;           /* que ocupe todo el ancho disponible hasta el max */
-  max-width: 360px;      /* ancho máximo para escritorio */
-  background: #001d3d;
-  padding: 22px;
-  border-radius: 14px;
-  box-shadow: 0 0 20px #00eaff88;
-  color: #00eaff;
-  box-sizing: border-box;
-
-  display: flex;             /* agregamos flex */
-  flex-direction: column;    /* para que inputs queden apilados */
-  align-items: center;       /* centra los inputs horizontalmente */
-}
-
-.authBox input, .authBox button {
-  max-width: 100%;   /* nunca se pasen del ancho del modal */
-}
-
-.authBox h3{
-  text-align:center;
-  margin-bottom:16px;
-}
-
-.authBox input{
-  width:100%;
-  padding:12px;
-  margin:8px 0;
-  font-size:15px;
-  background:#00121d;
-  color:#00eaff;
-  border:1px solid #003344;
-  border-radius:6px;
-  box-sizing:border-box;
-}
-
-.authBox button{
-  width:100%;
-  padding:12px;
-  margin-top:10px;
-  background:#001f2e;
-  color:#00eaff;
-  border:1px solid #006688;
-  border-radius:6px;
-  cursor:pointer;
-  box-shadow:0 0 8px #0099bb;
-}
-
-.authBox button.secondary{
-  background:#002b3f;
-}
-
-.authBox .closeBtn{
-  background:none;
-  border:none;
-  box-shadow:none;
-  margin-top:14px;
-  color:#00eaff;
-}
-
-#authMsg{
-  margin-top:10px;
-  text-align:center;
-  color:#ff8080;
-}
-
 </style>
 </head>
 
@@ -1288,14 +1093,8 @@ async function login() {
 }
 
 async function register() {
-  const email = authEmail.value.trim();
+  const email = authEmail.value;
   const password = authPassword.value;
-  const password2 = authPassword2.value;
-
-  if(password !== password2){
-    authMsg.innerText = "❌ Las contraseñas no coinciden";
-    return;
-  }
 
   const r = await fetch("/auth/register", {
     method: "POST",
@@ -1304,11 +1103,8 @@ async function register() {
   });
 
   const j = await r.json();
-  if (j.ok){
-    authMsg.innerText = "📧 Revisá tu correo para activar la cuenta";
-  } else {
-    authMsg.innerText = j.msg;
-  }
+  if (j.ok) location.reload();
+  else authMsg.innerText = j.msg;
 }
 
 function hablar(){
@@ -1350,20 +1146,24 @@ function toggleDayNight(){
 
 </script>
 
-<div id="authModal">
-  <div class="authBox">
-    <h3>🔐 Ingresar a Foschi IA</h3>
+<div id="authModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:9999;">
+  <div style="max-width:360px; margin:10% auto; background:#001d3d; padding:20px; border-radius:12px; color:#00eaff;">
+    <h3>Ingresar</h3>
 
-    <input id="authEmail" type="email" placeholder="Correo electrónico">
-    <input id="authPassword" type="password" placeholder="Contraseña">
-    <input id="authPassword2" type="password" placeholder="Confirmar contraseña">
+    <input id="authEmail" type="email" placeholder="Email"
+      style="width:100%; padding:10px; margin:8px 0;">
 
-    <button onclick="login()">Ingresar</button>
-    <button class="secondary" onclick="register()">Crear cuenta</button>
+    <input id="authPassword" type="password" placeholder="Contraseña"
+      style="width:100%; padding:10px; margin:8px 0;">
 
-    <p id="authMsg"></p>
+    <button onclick="login()" style="width:100%; padding:10px;">Ingresar</button>
+    <button onclick="register()" style="width:100%; padding:10px; margin-top:6px;">
+      Crear cuenta
+    </button>
 
-    <button class="closeBtn" onclick="closeAuth()">Cerrar</button>
+    <p id="authMsg" style="margin-top:10px;"></p>
+
+    <button onclick="closeAuth()" style="margin-top:10px;">Cerrar</button>
   </div>
 </div>
 
@@ -1380,16 +1180,17 @@ sdk = mercadopago.SDK(os.getenv("MP_ACCESS_TOKEN"))
 @app.route("/auth/register", methods=["POST"])
 def register():
     data = request.get_json()
-    email = data.get("email","").lower().strip()
-    password = data.get("password","")
+
+    email = data.get("email", "").lower().strip()
+    password = data.get("password", "")
 
     ok, msg = registrar_usuario(email, password)
     if not ok:
         return jsonify({"ok": False, "msg": msg})
 
-    crear_y_enviar_verificacion(email)
+    # login automático
+    session["user_email"] = email
     return jsonify({"ok": True})
-
 
 @app.route("/auth/login", methods=["POST"])
 def login():
@@ -1398,9 +1199,9 @@ def login():
     email = data.get("email", "").lower().strip()
     password = data.get("password", "")
 
-    ok, msg = autenticar_usuario(email, password)
-    if not ok:
-        return jsonify({"ok": False, "msg": msg})
+    if not autenticar_usuario(email, password):
+        return jsonify({"ok": False, "msg": "Credenciales incorrectas"})
+
     session["user_email"] = email
     return jsonify({"ok": True})
 
@@ -1716,11 +1517,14 @@ def extract_text_from_pdf(path):
         with open(path, "rb") as f:
             reader = PyPDF2.PdfReader(f)
             for page in reader.pages:
-                p = page.extract_text()
-                if p:
-                    text += p + "\n"
-    except Exception:
-        return ""
+                try:
+                    p = page.extract_text()
+                    if p:
+                        text += p + "\n"
+                except:
+                    continue
+    except Exception as e:
+        print("Error leyendo PDF:", e)
     return text
 
 def extract_text_from_docx(path):
