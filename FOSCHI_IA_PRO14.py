@@ -57,6 +57,23 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID")
 OWM_API_KEY = os.getenv("OWM_API_KEY")
 
+# ---------------- SUPER USUARIOS ----------------
+SUPER_USUARIOS = {
+    "gustavofoschi@gmail.com",          # tu mail real
+    "agustina@foschi.com",
+    "mariabelenfoschi10@gmail.com",
+    "antonella@foschi.com",
+    "renata@foschi.com"
+}
+
+def es_super_usuario(usuario):
+    """
+    Devuelve True si el usuario es super usuario
+    """
+    if not usuario:
+        return False
+    return usuario.lower() in SUPER_USUARIOS
+
 # ---------------- APP ----------------
 app = Flask(__name__)
 app.secret_key = "FoschiWebKey"
@@ -73,6 +90,10 @@ MEMORY_CACHE = {}
 from datetime import date
 
 def puede_preguntar(usuario):
+    # Super usuarios sin límite
+    if es_super_usuario(usuario):
+        return True
+
     hoy = date.today().isoformat()
 
     if usuario.get("fecha_preguntas") != hoy:
@@ -332,16 +353,15 @@ def learn_from_message(usuario, mensaje, respuesta):
 # ---------------- RESPUESTA IA ----------------
 
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
-       
-    # Bloqueo por no premium
-    if not usuario_premium(usuario):
+
+    # Bloqueo por no premium (super usuarios incluidos)
+    if not (usuario_premium(usuario) or es_super_usuario(usuario)):
         if len(mensaje) > 200:
             return {
                 "texto": "🔒 Esta función es solo para usuarios Premium.\n\n💎 Activá Foschi IA Premium desde el botón superior para seguir.",
                 "imagenes": [],
                 "borrar_historial": False
             }
-
     # Asegurar string
     if not isinstance(mensaje, str):
         mensaje = str(mensaje)
@@ -537,6 +557,7 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         )
 
         texto = resp.choices[0].message.content.strip()
+
 
     except Exception as e:
         texto = f"No pude generar respuesta: {e}"
@@ -1212,11 +1233,13 @@ def logout():
 
 @app.route("/premium")
 def premium():
-
-    # 1️⃣ Verificar login
     usuario = session.get("user_email")
     if not usuario:
         return jsonify({"error": "No logueado"}), 401
+
+    # 🔐 Super usuarios no compran premium
+    if es_super_usuario(usuario):
+        return jsonify({"error": "Usuario con Premium permanente"}), 403
 
     # 2️⃣ Determinar tipo de plan
     tipo = request.args.get("tipo", "mensual")
@@ -1298,7 +1321,7 @@ def index():
 
     usuario = session.get("user_email") or session["usuario_id"]
 
-    premium = usuario_premium(usuario)
+    premium = usuario_premium(usuario) or es_super_usuario(usuario)
 
     return render_template_string(
         HTML_TEMPLATE,
