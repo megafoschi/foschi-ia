@@ -1,12 +1,8 @@
 {
-  "gustavofoschi@gmail.com": {
-    "nombre": "Gustavo Foschi",
-    "premium": true,
-    "fecha_vencimiento": "2026-12-31"
-  },
   "guadarenata@cloud.com": {
     "nombre": "Guadalupe Moran",
     "premium": true,
     "fecha_vencimiento": "2026-12-31"
   }
 }
+
