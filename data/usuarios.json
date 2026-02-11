@@ -1,8 +1,6 @@
 {
-  "guadarenata@cloud.com": {
-    "nombre": "Guadalupe Moran",
-    "premium": true,
-    "fecha_vencimiento": "2026-12-31"
+  "usuario_id": {
+    "preguntas_hoy": 3,
+    "fecha_preguntas": "2026-01-10"
   }
 }
-
