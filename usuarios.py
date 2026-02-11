@@ -3,7 +3,7 @@ import json, os
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 
-USUARIOS_FILE = "data/usuarios.json"
+USUARIOS_FILE = "data/usuarios_auth.json"
 
 def _load():
     if not os.path.exists(USUARIOS_FILE):
