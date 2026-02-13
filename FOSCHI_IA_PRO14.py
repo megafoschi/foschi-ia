@@ -625,7 +625,7 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
     if aviso:
         texto += "\n\n" + aviso
 
-    learn_from_message(usuario, mensaje, texto)
+    learn_from_message(usuari<style>o, mensaje, texto)
     return {
         "texto": texto,
         "imagenes": [],
@@ -639,7 +639,7 @@ HTML_TEMPLATE = """
 <head>
 <title>{{APP_NAME}}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
+
 /* --- ESTILOS GENERALES --- */
 body{
  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -898,17 +898,36 @@ body.day #clipBtn:hover{
 }
 
 /* --- MENÚ DE ADJUNTOS --- */
-#adjuntos_menu{
- position:absolute;
- left:6px; top:-120px;
- display:none;
- background:#001f2e;
- border:1px solid #003547;
- padding:8px;
- border-radius:8px;
- box-shadow:0 6px 16px rgba(0,0,0,0.6);
- z-index:50;
+/* contenedor del clip */
+.clip-container{
+  position:relative;
+  display:flex;
+  align-items:center;
 }
+
+/* menú adjuntos */
+#adjuntos_menu{
+  position:absolute;
+  bottom:55px;   /* 🔥 clave: lo posiciona arriba del clip */
+  left:0;
+  display:none;
+  background:#001f2e;
+  border:1px solid #003547;
+  padding:8px;
+  border-radius:10px;
+  box-shadow:0 6px 16px rgba(0,0,0,0.6);
+  z-index:999;
+  min-width:190px;
+  animation: aparecerMenu 0.2s ease;
+}
+
+#adjuntos_menu button{
+  display:block;
+  width:100%;
+  margin:4px 0;
+  text-align:left;
+}
+
 #adjuntos_menu button{ display:block; width:160px; margin:6px; text-align:left; }
 .hidden_file_input{ display:none; }
 
@@ -996,14 +1015,17 @@ body.day .user a{
 
 <!-- BARRA DE ENTRADA -->
 <div id="inputBar">
-  <div style="position:relative;">
-    <div id="clipBtn" title="Adjuntar" onclick="toggleAdjuntosMenu()">📎</div>
-    <div id="adjuntos_menu" aria-hidden="true">
-      <button onclick="checkPremium('audio')">🎵 Audio (mp3/wav) a Texto</button>
-      <button onclick="checkPremium('doc')">📄 Resumir PDF / WORD</button>
-     <button onclick="checkPremium('dictado')">🎤 Dictar en Word</button>
 
+  <div class="clip-container">
+    
+    <div id="clipBtn" title="Adjuntar" onclick="toggleAdjuntosMenu()">📎</div>
+
+    <div id="adjuntos_menu" aria-hidden="true">
+      <button onclick="checkPremium('audio')">🎵 Audio a Texto</button>
+      <button onclick="checkPremium('doc')">📄 Resumir PDF / Word</button>
+      <button onclick="checkPremium('dictado')">🎤 Dictar en Word</button>
     </div>
+
   </div>
   <input id="audioInput" class="hidden_file_input" type="file" accept=".mp3,audio/*,.wav" />
   <input id="archivo_pdf_word" class="hidden_file_input" type="file" accept=".pdf,.docx" />
@@ -1095,6 +1117,14 @@ function agregar(msg,cls,imagenes=[]){
   if(cls==="ai") hablarTexto(msg,div);
   return div;
 }
+function agregarMensajeAI(texto){
+  return agregar(texto,"ai");
+}
+/* 👇 ESTA ES LA QUE TE FALTA */
+function agregarMensajeAI(texto){
+  return agregar(texto, "ai");
+}
+
 
 function checkDailyLimit(){
   if(!isPremium && !isSuper && preguntasHoy >= MAX_NO_PREMIUM){
@@ -1175,23 +1205,22 @@ function irPremium(tipo){
 }
 
 function checkPremium(tipo){
-    if(!usuarioPremium){
-        alert("Esta función es solo para usuarios Premium");
-        return;
-    }
-
-    if(tipo === "dictado"){
-        activarModoDictado();
-    }
-}
-
-function checkPremium(tipo){
   if(!isPremium){
-    alert("⚠️ Esta función requiere Premium. Pasá a Premium para usarla.");
+    alert("⚠️ Esta función requiere Premium.");
     return;
   }
-  if(tipo==='audio') document.getElementById('audioInput').click();
-  if(tipo==='doc') document.getElementById('archivo_pdf_word').click();
+
+  if(tipo === 'audio'){
+    document.getElementById('audioInput').click();
+  }
+
+  if(tipo === 'doc'){
+    document.getElementById('archivo_pdf_word').click();
+  }
+
+  if(tipo === 'dictado'){
+    activarModoDictado();
+  }
 }
 
 function toggleAdjuntosMenu(){
@@ -1324,6 +1353,90 @@ function activarModoDictado(){
     reconocimiento.start();
 
     mostrarBotonFinalizarDictado();
+}
+
+/* ================= DICTADO PREMIUM ================= */
+
+let dictadoActivo = false;
+let reconocimiento;
+let textoDictado = "";
+
+// compatibilidad navegador
+window.SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+// activar
+function activarModoDictado(){
+    if(dictadoActivo){
+        alert("Ya está activo el modo dictado");
+        return;
+    }
+
+    dictadoActivo = true;
+    textoDictado = "";
+
+    hablarTexto("Modo dictado activado. Comenzá a hablar.");
+    agregarMensajeAI("🎤 Modo dictado ACTIVADO. Hablá ahora...");
+
+    reconocimiento = new SpeechRecognition();
+    reconocimiento.lang = "es-AR";
+    reconocimiento.continuous = true;
+
+    reconocimiento.onresult = function(event){
+        for(let i = event.resultIndex; i < event.results.length; i++){
+            textoDictado += event.results[i][0].transcript + " ";
+        }
+    };
+
+    reconocimiento.start();
+
+    mostrarBotonFinalizarDictado();
+}
+
+// botón flotante
+function mostrarBotonFinalizarDictado(){
+    let btn = document.createElement("button");
+    btn.id = "finalizarDictadoBtn";
+    btn.innerText = "🛑 Finalizar dictado";
+    btn.style.position = "fixed";
+    btn.style.bottom = "80px";
+    btn.style.right = "20px";
+    btn.style.zIndex = "999";
+    btn.onclick = finalizarDictado;
+    document.body.appendChild(btn);
+}
+
+// finalizar
+function finalizarDictado(){
+    if(!dictadoActivo) return;
+
+    dictadoActivo = false;
+
+    if(reconocimiento){
+        reconocimiento.stop();
+    }
+
+    document.getElementById("finalizarDictadoBtn")?.remove();
+
+    hablarTexto("Dictado finalizado. Generando documento Word.");
+    agregarMensajeAI("📄 Generando archivo Word...");
+
+    fetch("/dictado_word", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ texto: textoDictado })
+    })
+    .then(r => r.blob())
+    .then(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "dictado.docx";
+        a.click();
+    })
+    .catch(err => {
+        console.error(err);
+        alert("Error generando el Word");
+    });
 }
 
 </script>
@@ -1885,6 +1998,26 @@ def resumir_doc():
         mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         download_name=resumen_filename
     )
+
+@app.route("/dictado_word", methods=["POST"])
+def dictado_word():
+    from docx import Document
+    from io import BytesIO
+    from flask import send_file, request
+
+    texto = request.json.get("texto","")
+
+    doc = Document()
+    doc.add_paragraph(texto)
+
+    file = BytesIO()
+    doc.save(file)
+    file.seek(0)
+
+    return send_file(file,
+        as_attachment=True,
+        download_name="dictado.docx",
+        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":

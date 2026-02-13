@@ -23,10 +23,10 @@ SUPERUSUARIOS = {
         "nombre": "Antonella",
         "nivel": 50
     },
-    "renata@foschi.com": {
-        "rol": "familia",
-        "nombre": "Renata",
-        "nivel": 20
+    "guadarenata@icloud.com": {
+        "rol": "admin",
+        "nombre": "Guada",
+        "nivel": 80
     }
 }
 
