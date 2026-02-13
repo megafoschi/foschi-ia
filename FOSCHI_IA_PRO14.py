@@ -47,6 +47,23 @@ client = OpenAI()
 import PyPDF2
 from docx import Document as DocxDocument  # para crear / leer .docx
 import docx as docx_reader  # para leer .docx (Document ya importado para crear)
+# ---------------- DICTADO A WORD ----------------
+def crear_word_desde_texto(texto, usuario):
+    doc = DocxDocument()
+    doc.add_heading("Dictado Foschi IA", 0)
+
+    fecha = datetime.now(pytz.timezone("America/Argentina/Buenos_Aires")).strftime("%d/%m/%Y %H:%M")
+    doc.add_paragraph(f"Usuario: {usuario}")
+    doc.add_paragraph(f"Fecha: {fecha}")
+    doc.add_paragraph("")
+
+    doc.add_paragraph(texto)
+
+    filename = f"dictado_{usuario}_{int(time.time())}.docx"
+    path = os.path.join(TEMP_DIR, filename)
+
+    doc.save(path)
+    return path, filename
 
 # ---------------- CONFIG ----------------
 APP_NAME = "FOSCHI IA WEB"
@@ -357,6 +374,57 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         mensaje = str(mensaje)
 
     mensaje_lower = mensaje.lower().strip()
+    
+        # ---------------- DICTADO A WORD ----------------
+    if mensaje_lower in ["dictar", "activar dictado", "modo dictado"]:
+        if not usuario_premium(usuario) and not es_superusuario(usuario):
+            return {
+                "texto": "🔒 El modo dictado es exclusivo para usuarios Premium.",
+                "imagenes": [],
+                "borrar_historial": False
+            }
+
+        session["modo_dictado"] = True
+        session["texto_dictado"] = ""
+
+        return {
+            "texto": "🎙️ Modo dictado activado. Comenzá a hablar. Cuando termines decí 'finalizar dictado' o presioná el botón.",
+            "imagenes": [],
+            "borrar_historial": False
+        }
+
+    # si está dictando, acumula texto
+    if session.get("modo_dictado"):
+        if "finalizar dictado" in mensaje_lower:
+            texto_final = session.get("texto_dictado", "")
+
+            session["modo_dictado"] = False
+            session["texto_dictado"] = ""
+
+            if not texto_final.strip():
+                return {
+                    "texto": "⚠️ No se dictó ningún texto.",
+                    "imagenes": [],
+                    "borrar_historial": False
+                }
+
+            path, filename = crear_word_desde_texto(texto_final, usuario)
+
+            return {
+                "texto": "📄 Listo, generé tu documento Word con el dictado.",
+                "archivo": filename,
+                "imagenes": [],
+                "borrar_historial": False
+            }
+
+        # seguir acumulando dictado
+        session["texto_dictado"] = session.get("texto_dictado", "") + " " + mensaje
+
+        return {
+            "texto": "✍️ Dictando...",
+            "imagenes": [],
+            "borrar_historial": False
+        }
            
     # --- RECORDATORIOS: comandos y detección ---
     try:
@@ -931,8 +999,10 @@ body.day .user a{
   <div style="position:relative;">
     <div id="clipBtn" title="Adjuntar" onclick="toggleAdjuntosMenu()">📎</div>
     <div id="adjuntos_menu" aria-hidden="true">
-      <button onclick="checkPremium('audio')">🎵 Subir Audio (mp3/wav)</button>
-      <button onclick="checkPremium('doc')">📄 Subir PDF / WORD</button>
+      <button onclick="checkPremium('audio')">🎵 Audio (mp3/wav) a Texto</button>
+      <button onclick="checkPremium('doc')">📄 Resumir PDF / WORD</button>
+     <button onclick="checkPremium('dictado')">🎤 Dictar en Word</button>
+
     </div>
   </div>
   <input id="audioInput" class="hidden_file_input" type="file" accept=".mp3,audio/*,.wav" />
@@ -960,6 +1030,60 @@ let nivelUsuario = {{ nivel or 0 }};
 function logoClick(){ alert("FOSCHI NUNCA MUERE, TRASCIENDE..."); }
 function toggleVoz(estado=null){ vozActiva=estado!==null?estado:!vozActiva; document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada"; }
 function detenerVoz(){ if(audioActual){ audioActual.pause(); audioActual.currentTime=0; audioActual.src=""; audioActual.load(); audioActual=null; if(mensajeActual) mensajeActual.classList.remove("playing"); mensajeActual=null; } }
+
+function mostrarBotonFinalizarDictado(){
+    let btn = document.createElement("button");
+    btn.id = "finalizarDictadoBtn";
+    btn.innerText = "🛑 Finalizar dictado";
+    btn.style.position = "fixed";
+    btn.style.bottom = "80px";
+    btn.style.right = "20px";
+    btn.style.zIndex = "999";
+
+    btn.onclick = finalizarDictado;
+
+    document.body.appendChild(btn);
+}
+
+function finalizarDictado(){
+    if(!dictadoActivo) return;
+
+    dictadoActivo = false;
+
+    if(reconocimiento){
+        reconocimiento.stop();
+    }
+
+    document.getElementById("finalizarDictadoBtn")?.remove();
+
+    hablarTexto("Dictado finalizado. Generando documento Word.");
+
+    agregarMensajeAI("📄 Generando archivo Word...");
+
+    fetch("/dictado_word", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            texto: textoDictado
+        })
+    })
+    .then(resp => resp.blob())
+    .then(blob => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "dictado.docx";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+    })
+    .catch(err=>{
+        alert("Error generando Word");
+        console.error(err);
+    });
+}
 
 function agregar(msg,cls,imagenes=[]){
   let c=document.getElementById("chat"),div=document.createElement("div");
@@ -1048,6 +1172,17 @@ function irPremium(tipo){
       }
     })
     .catch(err => console.error(err));
+}
+
+function checkPremium(tipo){
+    if(!usuarioPremium){
+        alert("Esta función es solo para usuarios Premium");
+        return;
+    }
+
+    if(tipo === "dictado"){
+        activarModoDictado();
+    }
 }
 
 function checkPremium(tipo){
@@ -1158,6 +1293,39 @@ function toggleDayNight(){
   }
 }
 
+let dictadoActivo = false;
+let reconocimiento;
+let textoDictado = "";
+
+// 🎤 ACTIVAR DICTADO
+function activarModoDictado(){
+    if(dictadoActivo){
+        alert("Ya está activo el modo dictado");
+        return;
+    }
+
+    dictadoActivo = true;
+    textoDictado = "";
+
+    hablarTexto("Modo dictado activado. Comenzá a hablar.");
+
+    agregarMensajeAI("🎤 Modo dictado ACTIVADO. Hablá ahora...");
+
+    reconocimiento = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    reconocimiento.lang = "es-AR";
+    reconocimiento.continuous = true;
+
+    reconocimiento.onresult = function(event){
+        for(let i = event.resultIndex; i < event.results.length; i++){
+            textoDictado += event.results[i][0].transcript + " ";
+        }
+    };
+
+    reconocimiento.start();
+
+    mostrarBotonFinalizarDictado();
+}
+
 </script>
 
 <div id="authModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:9999;">
@@ -1236,8 +1404,8 @@ def premium():
     tipo = request.args.get("tipo", "mensual")
 
     if tipo == "anual":
-        titulo = "Foschi IA Premium Anual"
-        precio = 12000
+        titulo = "Foschi IA Premium Anual (12 meses PAGA 10)"
+        precio = 100000   # 🔥 10 meses pagos
     else:
         titulo = "Foschi IA Premium Mensual"
         precio = 10000
