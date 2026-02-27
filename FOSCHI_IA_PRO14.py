@@ -339,6 +339,34 @@ def learn_from_message(usuario, mensaje, respuesta):
     except Exception as e:
         print("Error en learn_from_message:", e)
 
+# ---------------- DICTADO A WORD ----------------
+@app.route("/dictado_word", methods=["POST"])
+def dictado_word():
+    data = request.json
+    texto = data.get("texto", "").strip()
+
+    if not texto:
+        return jsonify({"ok": False, "error": "Texto vacío"})
+
+    nombre = f"dictado_{uuid.uuid4().hex}.docx"
+    ruta = os.path.join(TEMP_DIR, nombre)
+
+    doc = DocxDocument()
+    doc.add_heading("Dictado Foschi IA", 0)
+    doc.add_paragraph(texto)
+
+    doc.save(ruta)
+
+    @after_this_request
+    def remove_file(response):
+        try:
+            os.remove(ruta)
+        except:
+            pass
+        return response
+
+    return send_file(ruta, as_attachment=True)
+
 # ---------------- RESPUESTA IA ----------------
 
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
@@ -925,15 +953,28 @@ body.day .user a{
 
 <!-- CHAT -->
 <div id="chat" role="log" aria-live="polite"></div>
-
+<div id="dictadoEstado" style="
+ position:fixed;
+ bottom:70px;
+ right:10px;
+ background:#ff0000;
+ color:white;
+ padding:6px 10px;
+ border-radius:6px;
+ display:none;
+ font-weight:bold;
+ z-index:999;">
+🎤 Dictado activo
+</div>
 <!-- BARRA DE ENTRADA -->
 <div id="inputBar">
   <div style="position:relative;">
     <div id="clipBtn" title="Adjuntar" onclick="toggleAdjuntosMenu()">📎</div>
     <div id="adjuntos_menu" aria-hidden="true">
-      <button onclick="checkPremium('audio')">🎵 Audio (mp3/wav) a Texto</button>
-      <button onclick="checkPremium('doc')">📄 Resumir PDF / WORD</button>
-    </div>
+  <button onclick="checkPremium('audio')">🎵 Audio (mp3/wav) a Texto</button>
+  <button onclick="checkPremium('doc')">📄 Resumir PDF / WORD</button>
+  <button onclick="toggleDictado()">🎤 Dictado por voz</button>
+</div>
   </div>
   <input id="audioInput" class="hidden_file_input" type="file" accept=".mp3,audio/*,.wav" />
   <input id="archivo_pdf_word" class="hidden_file_input" type="file" accept=".pdf,.docx" />
@@ -1123,13 +1164,45 @@ async function register() {
 
 function hablar(){
   if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window){
+
     const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new Rec();
-    recognition.lang='es-AR'; recognition.continuous=false; recognition.interimResults=false;
-    recognition.onresult=function(event){ document.getElementById("mensaje").value=event.results[0][0].transcript.toLowerCase(); checkDailyLimit(); }
-    recognition.onerror=function(e){console.log(e); alert("Error reconocimiento de voz: " + e.error);}
+
+    recognition.lang='es-AR';
+    recognition.continuous=false;
+    recognition.interimResults=false;
+
+    recognition.onresult = function(event){
+
+      let textoReconocido = event.results[0][0].transcript;
+      let txt = textoReconocido.toLowerCase();
+
+      // 👉 COMANDOS DE VOZ PARA DICTADO PREMIUM
+      if(txt.includes("activar dictado")){
+        iniciarDictado();
+        return;
+      }
+
+      if(txt.includes("desactivar dictado")){
+        detenerDictado();
+        return;
+      }
+
+      // 👉 comportamiento normal
+      document.getElementById("mensaje").value = txt;
+      checkDailyLimit();
+    };
+
+    recognition.onerror = function(e){
+      console.log(e);
+      alert("Error reconocimiento de voz: " + e.error);
+    }
+
     recognition.start();
-  }else{alert("Tu navegador no soporta reconocimiento de voz.");}
+
+  }else{
+    alert("Tu navegador no soporta reconocimiento de voz.");
+  }
 }
 
 function chequearRecordatorios(){
@@ -1157,7 +1230,88 @@ function toggleDayNight(){
     btn.textContent = body.classList.contains("day") ? "☀️" : "🌙";
   }
 }
+// =====================
+// 🎤 DICTADO PREMIUM
+// =====================
+let dictadoActivo = false;
+let reconocimiento = null;
+let textoDictado = "";
 
+function toggleDictado(){
+  if(!isPremium && !isSuper){
+    alert("🔒 Esta función es solo Premium");
+    return;
+  }
+
+  if(dictadoActivo){
+    detenerDictado();
+  }else{
+    iniciarDictado();
+  }
+}
+
+function iniciarDictado(){
+  if(!('webkitSpeechRecognition' in window)){
+    alert("Tu navegador no soporta dictado por voz");
+    return;
+  }
+
+  reconocimiento = new webkitSpeechRecognition();
+  reconocimiento.lang = "es-AR";
+  reconocimiento.continuous = true;
+  reconocimiento.interimResults = true;
+
+  textoDictado = "";
+  dictadoActivo = true;
+
+  document.getElementById("dictadoEstado").style.display = "block";
+
+  reconocimiento.onresult = function(event){
+    let parcial = "";
+    for(let i=event.resultIndex;i<event.results.length;i++){
+      let trans = event.results[i][0].transcript;
+      if(event.results[i].isFinal){
+        textoDictado += trans + " ";
+      }else{
+        parcial += trans;
+      }
+    }
+    document.getElementById("mensaje").value = textoDictado + parcial;
+  };
+
+  reconocimiento.start();
+}
+
+function detenerDictado(){
+  dictadoActivo = false;
+
+  if(reconocimiento){
+    reconocimiento.stop();
+    reconocimiento = null;
+  }
+
+  document.getElementById("dictadoEstado").style.display = "none";
+
+  if(textoDictado.trim().length > 0){
+    descargarWordDictado(textoDictado);
+  }
+}
+
+function descargarWordDictado(texto){
+  fetch("/dictado_word",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({texto: texto})
+  })
+  .then(r=>r.blob())
+  .then(blob=>{
+    let url = window.URL.createObjectURL(blob);
+    let a = document.createElement("a");
+    a.href = url;
+    a.download = "dictado_foschi.docx";
+    a.click();
+  });
+}
 </script>
 
 <div id="authModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:9999;">
