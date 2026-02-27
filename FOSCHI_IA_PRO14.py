@@ -48,9 +48,6 @@ import PyPDF2
 from docx import Document as DocxDocument  # para crear / leer .docx
 import docx as docx_reader  # para leer .docx (Document ya importado para crear)
 
-from reportlab.platypus import SimpleDocTemplate, Paragraph
-from reportlab.lib.styles import getSampleStyleSheet
-
 # ---------------- CONFIG ----------------
 APP_NAME = "FOSCHI IA WEB"
 CREADOR = "Gustavo Enrique Foschi"
@@ -342,25 +339,6 @@ def learn_from_message(usuario, mensaje, respuesta):
     except Exception as e:
         print("Error en learn_from_message:", e)
 
-def crear_documento_dictado(texto, formato="docx"):
-    nombre = f"dictado_{uuid.uuid4().hex}"
-
-    if formato == "docx":
-        ruta = os.path.join(TEMP_DIR, nombre + ".docx")
-        doc = DocxDocument()
-        doc.add_heading("Dictado Foschi IA", level=1)
-        doc.add_paragraph(texto)
-        doc.save(ruta)
-        return ruta, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-
-    elif formato == "pdf":
-        ruta = os.path.join(TEMP_DIR, nombre + ".pdf")
-        styles = getSampleStyleSheet()
-        doc = SimpleDocTemplate(ruta)
-        content = [Paragraph(texto, styles["Normal"])]
-        doc.build(content)
-        return ruta, "application/pdf"
-    
 # ---------------- RESPUESTA IA ----------------
 
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
@@ -952,11 +930,10 @@ body.day .user a{
 <div id="inputBar">
   <div style="position:relative;">
     <div id="clipBtn" title="Adjuntar" onclick="toggleAdjuntosMenu()">📎</div>
-    <div id="adjuntos_menu">
-  <button onclick="checkPremium('audio')">🎵 Audio (mp3/wav) a Texto</button>
-  <button onclick="checkPremium('doc')">📄 Resumir PDF / WORD</button>
-  <button onclick="activarDictado()">🎤 Modo Dictado</button>
-</div>
+    <div id="adjuntos_menu" aria-hidden="true">
+      <button onclick="checkPremium('audio')">🎵 Audio (mp3/wav) a Texto</button>
+      <button onclick="checkPremium('doc')">📄 Resumir PDF / WORD</button>
+    </div>
   </div>
   <input id="audioInput" class="hidden_file_input" type="file" accept=".mp3,audio/*,.wav" />
   <input id="archivo_pdf_word" class="hidden_file_input" type="file" accept=".pdf,.docx" />
@@ -1181,91 +1158,6 @@ function toggleDayNight(){
   }
 }
 
-// ==========================
-// 🎤 MODO DICTADO FOSCHI IA
-// ==========================
-let dictadoActivo = false;
-let textoDictado = "";
-let recognition = null;
-
-function activarDictado(){
-    if(dictadoActivo) return;
-
-    alert("🟢 Modo Dictado activado.\n\nComenzá a hablar.\nDecí 'finalizar dictado' para terminar.");
-
-    dictadoActivo = true;
-    textoDictado = "";
-
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-    if(!SpeechRecognition){
-        alert("Tu navegador no soporta reconocimiento de voz.");
-        return;
-    }
-
-    recognition = new SpeechRecognition();
-    recognition.lang = "es-AR";
-    recognition.continuous = true;
-    recognition.interimResults = true;
-
-    recognition.onresult = function(event){
-        let parcial = "";
-
-        for(let i = event.resultIndex; i < event.results.length; i++){
-            let trans = event.results[i][0].transcript;
-
-            if(event.results[i].isFinal){
-                textoDictado += trans + " ";
-            }else{
-                parcial += trans;
-            }
-        }
-
-        document.getElementById("mensaje").value = textoDictado + parcial;
-
-        if(textoDictado.toLowerCase().includes("finalizar dictado")){
-            finalizarDictado();
-        }
-    };
-
-    recognition.start();
-}
-
-// 🛑 FINALIZAR Y EXPORTAR
-function finalizarDictado(){
-    if(!dictadoActivo) return;
-
-    dictadoActivo = false;
-    recognition.stop();
-
-    textoDictado = textoDictado.replace("finalizar dictado","");
-
-    setTimeout(()=>{
-        let opcion = confirm("¿Querés exportar el dictado a Word?\n\nAceptar = Word\nCancelar = PDF");
-
-        let formato = opcion ? "docx" : "pdf";
-
-        fetch("/exportar_dictado",{
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body: JSON.stringify({
-                texto: textoDictado,
-                formato: formato
-            })
-        })
-        .then(resp => resp.blob())
-        .then(blob=>{
-            let url = window.URL.createObjectURL(blob);
-            let a = document.createElement("a");
-            a.href = url;
-            a.download = "dictado." + formato;
-            a.click();
-        });
-
-        agregar("📝 Dictado finalizado y exportado correctamente.","ai");
-
-    }, 500);
-}
 </script>
 
 <div id="authModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:9999;">
@@ -1534,24 +1426,6 @@ def admin_pagos():
         return "<h2>No hay pagos todavía</h2>"
 
     pagos = json.load(open(archivo))
-
-@app.route("/exportar_dictado", methods=["POST"])
-def exportar_dictado():
-    data = request.get_json()
-    texto = data.get("texto", "")
-    formato = data.get("formato", "docx")
-
-    ruta, mime = crear_documento_dictado(texto, formato)
-
-    @after_this_request
-    def borrar_archivo(response):
-        try:
-            os.remove(ruta)
-        except:
-            pass
-        return response
-
-    return send_file(ruta, as_attachment=True, mimetype=mime)
 
     html = """
     <h2>💎 Pagos Foschi IA</h2>
