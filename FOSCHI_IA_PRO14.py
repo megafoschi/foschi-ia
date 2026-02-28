@@ -911,6 +911,43 @@ body.day .user a{
   color:#000000;
 }
 
+/* ===== FORMULARIO PREMIUM CENTRADO ===== */
+.form-premium{
+  width:100%;
+  max-width:320px;
+  margin:0 auto;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:10px;
+}
+
+.form-premium input{
+  width:100%;
+  padding:10px;
+  border-radius:6px;
+  border:1px solid #006688;
+  background:#00121d;
+  color:#00eaff;
+  box-shadow:0 0 6px #00eaff55 inset;
+}
+
+.form-premium button{
+  width:100%;
+  padding:10px;
+  border-radius:6px;
+  border:1px solid #006688;
+  background:#001f2e;
+  color:#00eaff;
+  cursor:pointer;
+  box-shadow:0 0 8px #0099bb;
+}
+
+.form-premium button:hover{
+  background:#003547;
+  box-shadow:0 0 14px #00eaff;
+}
+
 </style>
 </head>
 
@@ -1318,18 +1355,27 @@ function descargarWordDictado(texto){
 
 <div id="authModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:9999;">
   <div style="max-width:360px; margin:10% auto; background:#001d3d; padding:20px; border-radius:12px; color:#00eaff;">
+    
     <h3>Ingresar</h3>
 
-    <input id="authEmail" type="email" placeholder="Email"
-      style="width:100%; padding:10px; margin:8px 0;">
+    <div class="form-premium">
 
-    <input id="authPassword" type="password" placeholder="Contraseña"
-      style="width:100%; padding:10px; margin:8px 0;">
+      <input id="authEmail" type="email" placeholder="Email">
 
-    <button onclick="login()" style="width:100%; padding:10px;">Ingresar</button>
-    <button onclick="register()" style="width:100%; padding:10px; margin-top:6px;">
-      Crear cuenta
-    </button>
+      <input id="authPassword" type="password" placeholder="Contraseña">
+
+      <button onclick="login()">Ingresar</button>
+
+      <button onclick="register()">Crear cuenta</button>
+
+    </div>
+
+    <p id="authMsg" style="margin-top:10px;"></p>
+
+    <button onclick="closeAuth()" style="margin-top:10px;">Cerrar</button>
+
+  </div>
+</div>
 
     <p id="authMsg" style="margin-top:10px;"></p>
 
