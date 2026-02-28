@@ -954,22 +954,6 @@ body.day .user a{
 <!-- CHAT -->
 <div id="chat" role="log" aria-live="polite"></div>
 <div id="dictadoEstado" style="
-<div id="dictadoTexto" style="
- position:fixed;
- bottom:120px;
- right:10px;
- max-width:300px;
- background:#001f2e;
- color:#00eaff;
- padding:10px;
- border-radius:8px;
- font-size:14px;
- display:none;
- z-index:999;
- box-shadow:0 0 10px #00eaff;
-">
-📝 Dictando...
-</div>
  position:fixed;
  bottom:70px;
  right:10px;
@@ -1000,17 +984,9 @@ body.day .user a{
 </div>
 
 <script>
-let dictadoActivo = false;
-let dictadoPausado = false;
-let textoDictado = "";
-let recognitionGlobal = null; // 👈 para reiniciar solo
 // --- Variables y funciones generales ---
 let usuario_id="{{usuario_id}}";
 let vozActiva=true,audioActual=null,mensajeActual=null;
-// ====== DICTADO ======
-let dictando = false;
-let dictadoPausado = false;
-let textoDictado = "";
 let MAX_NO_PREMIUM = 5;
 let isPremium = {{ 'true' if premium else 'false' }};
 const hoy = new Date().toISOString().slice(0,10); // YYYY-MM-DD
@@ -1191,89 +1167,36 @@ function hablar(){
 
     const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new Rec();
-    recognitionGlobal = recognition;
 
-    recognition.lang = 'es-AR';
-    recognition.continuous = true;        // 👈 AHORA CONTINUO
-    recognition.interimResults = true;    // 👈 RESULTADOS EN VIVO
+    recognition.lang='es-AR';
+    recognition.continuous=false;
+    recognition.interimResults=false;
 
     recognition.onresult = function(event){
 
-      let transcriptFinal = "";
-      let transcriptInterim = "";
+      let textoReconocido = event.results[0][0].transcript;
+      let txt = textoReconocido.toLowerCase();
 
-      for(let i = event.resultIndex; i < event.results.length; ++i){
-        let txt = event.results[i][0].transcript;
-
-        if(event.results[i].isFinal){
-          transcriptFinal += txt + " ";
-        }else{
-          transcriptInterim += txt;
-        }
-      }
-
-      let visor = document.getElementById("dictadoTexto");
-
-      // =========================
-      // 🎤 COMANDOS
-      // =========================
-      let lower = (transcriptFinal + transcriptInterim).toLowerCase();
-
-      if(lower.includes("activar dictado")){
+      // 👉 COMANDOS DE VOZ PARA DICTADO PREMIUM
+      if(txt.includes("activar dictado")){
         iniciarDictado();
         return;
       }
 
-      if(lower.includes("pausar dictado")){
-        pausarDictado();
-        return;
-      }
-
-      if(lower.includes("continuar dictado")){
-        continuarDictado();
-        return;
-      }
-
-      if(lower.includes("desactivar dictado")){
+      if(txt.includes("desactivar dictado")){
         detenerDictado();
         return;
       }
 
-      // =========================
-      // 📝 DICTADO EN VIVO
-      // =========================
-      if(dictadoActivo){
-
-        if(!dictadoPausado){
-          textoDictado += transcriptFinal;
-
-          visor.innerHTML =
-            "📝 " + textoDictado +
-            "<span style='opacity:0.5'>" + transcriptInterim + "</span>";
-        }
-
-        return;
-      }
-
-      // =========================
-      // 💬 CHAT NORMAL
-      // =========================
-      if(transcriptFinal){
-        document.getElementById("mensaje").value = transcriptFinal.trim();
-        checkDailyLimit();
-      }
+      // 👉 comportamiento normal
+      document.getElementById("mensaje").value = txt;
+      checkDailyLimit();
     };
 
     recognition.onerror = function(e){
       console.log(e);
-    };
-
-    recognition.onend = function(){
-      // 🔁 si está dictando, se reinicia solo
-      if(dictadoActivo){
-        recognition.start();
-      }
-    };
+      alert("Error reconocimiento de voz: " + e.error);
+    }
 
     recognition.start();
 
@@ -1389,107 +1312,6 @@ function descargarWordDictado(texto){
     a.click();
   });
 }
-function iniciarDictado(){
-  dictando = true;
-  dictadoPausado = false;
-  textoDictado = "";
-
-  document.getElementById("dictadoEstado").style.display = "block";
-  document.getElementById("dictadoEstado").innerText = "🎤 Dictado activo";
-}
-
-function pausarDictado(){
-  if(!dictando) return;
-  dictadoPausado = true;
-  document.getElementById("dictadoEstado").innerText = "⏸ Dictado en pausa";
-}
-
-function continuarDictado(){
-  if(!dictando) return;
-  dictadoPausado = false;
-  document.getElementById("dictadoEstado").innerText = "🎤 Dictado activo";
-}
-
-function detenerDictado(){
-  dictando = false;
-  dictadoPausado = false;
-
-  document.getElementById("dictadoEstado").style.display = "none";
-
-  if(!textoDictado.trim()){
-    alert("No hay texto dictado.");
-    return;
-  }
-
-  // 👉 enviar al servidor para generar el Word
-  fetch("/dictado_word",{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({texto: textoDictado})
-  })
-  .then(r=>r.blob())
-  .then(blob=>{
-    let url = window.URL.createObjectURL(blob);
-    let a = document.createElement("a");
-    a.href = url;
-    a.download = "Dictado_Foschi.docx";
-    a.click();
-    window.URL.revokeObjectURL(url);
-  });
-}
-function iniciarDictado(){
-  dictadoActivo = true;
-  dictadoPausado = false;
-  textoDictado = "";
-
-  document.getElementById("dictadoEstado").style.display = "block";
-
-  let visor = document.getElementById("dictadoTexto");
-  visor.style.display = "block";
-  visor.innerHTML = "📝 Dictando...";
-}
-
-function pausarDictado(){
-  dictadoPausado = true;
-  document.getElementById("dictadoTexto").innerHTML += "<br>⏸️ (Pausado)";
-}
-
-function continuarDictado(){
-  dictadoPausado = false;
-  document.getElementById("dictadoTexto").innerHTML += "<br>▶️ (Continuando)";
-}
-
-function detenerDictado(){
-  dictadoActivo = false;
-  dictadoPausado = false;
-
-  document.getElementById("dictadoEstado").style.display = "none";
-  document.getElementById("dictadoTexto").style.display = "none";
-
-  if(recognitionGlobal){
-    try{ recognitionGlobal.stop(); }catch(e){}
-  }
-
-  if(!textoDictado.trim()){
-    alert("No hay texto para generar el Word");
-    return;
-  }
-
-  fetch("/dictado_word", {
-    method: "POST",
-    headers: {"Content-Type":"application/json"},
-    body: JSON.stringify({texto: textoDictado})
-  })
-  .then(res => res.blob())
-  .then(blob => {
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "dictado_foschi.docx";
-    a.click();
-  });
-}
-
 </script>
 
 <div id="authModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:9999;">
