@@ -975,7 +975,7 @@ body.day .user a{
     <div id="adjuntos_menu" aria-hidden="true">
   <button onclick="checkPremium('audio')">🎵 Audio (mp3/wav) a Texto</button>
   <button onclick="checkPremium('doc')">📄 Resumir PDF / WORD</button>
-  <button onclick="checkPremium('dictado')">🎤 Dictado por voz</button>
+  <button onclick="toggleDictado()">🎤 Dictado por voz</button>
 </div>
   </div>
   <input id="audioInput" class="hidden_file_input" type="file" accept=".mp3,audio/*,.wav" />
@@ -1013,22 +1013,6 @@ function agregar(msg,cls,imagenes=[]){
   c.scroll({top:c.scrollHeight,behavior:"smooth"});
   if(cls==="ai") hablarTexto(msg,div);
   return div;
-}
-function checkPremium(tipo){
-  if(!isPremium && !isSuper){
-    alert("🔒 Esta función es exclusiva para usuarios Premium.\n\n💎 Pasá a Premium para usarla.");
-    return;
-  }
-
-  if(tipo === "audio"){
-    document.getElementById("audioInput").click();
-  }
-  else if(tipo === "doc"){
-    document.getElementById("archivo_pdf_word").click();
-  }
-  else if(tipo === "dictado"){
-    toggleDictado();
-  }
 }
 
 function checkDailyLimit(){
@@ -1110,20 +1094,12 @@ function irPremium(tipo){
 }
 
 function checkPremium(tipo){
-  if(!isPremium && !isSuper){
-    alert("🔒 Esta función es exclusiva para usuarios Premium.\n\n💎 Pasá a Premium para usarla.");
+  if(!isPremium){
+    alert("⚠️ Esta función requiere Premium. Pasá a Premium para usarla.");
     return;
   }
-
-  if(tipo === "audio"){
-    document.getElementById("audioInput").click();
-  }
-  else if(tipo === "doc"){
-    document.getElementById("archivo_pdf_word").click();
-  }
-  else if(tipo === "dictado"){
-    toggleDictado();
-  }
+  if(tipo==='audio') document.getElementById('audioInput').click();
+  if(tipo==='doc') document.getElementById('archivo_pdf_word').click();
 }
 
 function toggleAdjuntosMenu(){
