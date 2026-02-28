@@ -860,14 +860,16 @@ body.day #clipBtn:hover{
 /* --- MENÚ DE ADJUNTOS --- */
 #adjuntos_menu{
  position:absolute;
- left:6px; top:-120px;
+ left:0;
+ bottom:50px;   /* se abre hacia arriba del clip */
  display:none;
  background:#001f2e;
  border:1px solid #003547;
  padding:8px;
  border-radius:8px;
  box-shadow:0 6px 16px rgba(0,0,0,0.6);
- z-index:50;
+ z-index:999;
+ max-width:90vw;   /* evita que se corte en móviles */
 }
 #adjuntos_menu button{ display:block; width:160px; margin:6px; text-align:left; }
 .hidden_file_input{ display:none; }
