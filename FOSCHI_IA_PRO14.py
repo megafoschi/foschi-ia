@@ -1014,6 +1014,22 @@ function agregar(msg,cls,imagenes=[]){
   if(cls==="ai") hablarTexto(msg,div);
   return div;
 }
+function checkPremium(tipo){
+  if(!isPremium && !isSuper){
+    alert("🔒 Esta función es exclusiva para usuarios Premium.\n\n💎 Pasá a Premium para usarla.");
+    return;
+  }
+
+  if(tipo === "audio"){
+    document.getElementById("audioInput").click();
+  }
+  else if(tipo === "doc"){
+    document.getElementById("archivo_pdf_word").click();
+  }
+  else if(tipo === "dictado"){
+    toggleDictado();
+  }
+}
 
 function checkDailyLimit(){
   if(!isPremium && !isSuper && preguntasHoy >= MAX_NO_PREMIUM){
