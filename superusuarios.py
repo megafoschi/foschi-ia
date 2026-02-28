@@ -18,10 +18,10 @@ SUPERUSUARIOS = {
         "nombre": "Belén",
         "nivel": 80
     },
-    "antonella@foschi.com": {
-        "rol": "familia",
+    "lukasfoschi123@gmail.com": {
+        "rol": "admin",
         "nombre": "Antonella",
-        "nivel": 50
+        "nivel": 80
     },
     "guadarenata@icloud.com": {
         "rol": "admin",
@@ -45,3 +45,4 @@ def rol_superusuario(email):
 def nivel_superusuario(email):
     data = obtener_superusuario(email)
     return data["nivel"] if data else 0
+
