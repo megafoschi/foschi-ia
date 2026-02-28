@@ -1025,6 +1025,22 @@ body.day .user a{
 <script>
 // --- Variables y funciones generales ---
 let usuario_id="{{usuario_id}}";
+// 🔥 AUTO LOGIN SI HAY USUARIO GUARDADO
+const userGuardado = localStorage.getItem("foschi_user");
+
+if (userGuardado && !usuario_id) {
+  fetch("/auto_login", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({email: userGuardado})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      location.reload();
+    }
+  });
+}
 let vozActiva=true,audioActual=null,mensajeActual=null;
 let MAX_NO_PREMIUM = 5;
 let isPremium = {{ 'true' if premium else 'false' }};
@@ -1180,6 +1196,21 @@ async function login() {
     headers: {"Content-Type":"application/json"},
     body: JSON.stringify({email, password})
   });
+
+  const data = await r.json();
+
+  if(data.ok){
+
+    // 🔥 GUARDAMOS EL USUARIO EN EL NAVEGADOR
+    localStorage.setItem("foschi_user", email);
+
+    // 🔄 recargamos para entrar ya logueado
+    location.reload();
+
+  }else{
+    alert("Usuario o contraseña incorrectos");
+  }
+}
 
   const j = await r.json();
   if (j.ok) location.reload();
