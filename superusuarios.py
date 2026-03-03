@@ -8,7 +8,7 @@ SUPERUSUARIOS = {
         "nombre": "Gustavo",
         "nivel": 100
     },
-    "sebamed2040@gmail.com": {
+    "sebasmed2040@gmail.com": {
         "rol": "admin",
         "nombre": "Sebastian",
         "nivel": 80
@@ -45,5 +45,6 @@ def rol_superusuario(email):
 def nivel_superusuario(email):
     data = obtener_superusuario(email)
     return data["nivel"] if data else 0
+
 
 
