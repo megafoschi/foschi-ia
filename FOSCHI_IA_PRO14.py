@@ -1273,23 +1273,35 @@ function toggleDayNight(){
 // 🎤 DICTADO PREMIUM
 // =====================
 let dictadoActivo = false;
+let dictadoPausado = false;
 let reconocimiento = null;
 let textoDictado = "";
 
 function toggleDictado(){
+
   if(!isPremium && !isSuper){
     alert("🔒 Esta función es solo Premium");
     return;
   }
 
-  if(dictadoActivo){
-    detenerDictado();
-  }else{
+  if(!dictadoActivo){
     iniciarDictado();
+    return;
+  }
+
+  if(dictadoActivo && !dictadoPausado){
+    pausarDictado();
+    return;
+  }
+
+  if(dictadoActivo && dictadoPausado){
+    continuarDictado();
+    return;
   }
 }
 
 function iniciarDictado(){
+
   if(!('webkitSpeechRecognition' in window)){
     alert("Tu navegador no soporta dictado por voz");
     return;
@@ -1302,27 +1314,73 @@ function iniciarDictado(){
 
   textoDictado = "";
   dictadoActivo = true;
+  dictadoPausado = false;
 
   document.getElementById("dictadoEstado").style.display = "block";
 
   reconocimiento.onresult = function(event){
+
     let parcial = "";
+
     for(let i=event.resultIndex;i<event.results.length;i++){
+
       let trans = event.results[i][0].transcript;
+      let txt = trans.toLowerCase();
+
+      // 🎤 COMANDOS DE VOZ
+      if(txt.includes("pausar dictado")){
+        pausarDictado();
+        return;
+      }
+
+      if(txt.includes("continuar dictado")){
+        continuarDictado();
+        return;
+      }
+
+      if(txt.includes("finalizar dictado")){
+        finalizarDictado();
+        return;
+      }
+
       if(event.results[i].isFinal){
         textoDictado += trans + " ";
       }else{
         parcial += trans;
       }
     }
+
     document.getElementById("mensaje").value = textoDictado + parcial;
   };
 
   reconocimiento.start();
 }
 
-function detenerDictado(){
+function pausarDictado(){
+
+  if(reconocimiento){
+    reconocimiento.stop();
+  }
+
+  dictadoPausado = true;
+
+  document.getElementById("dictadoEstado").innerText = "⏸️ Dictado pausado";
+}
+
+function continuarDictado(){
+
+  if(!dictadoActivo) return;
+
+  reconocimiento.start();
+  dictadoPausado = false;
+
+  document.getElementById("dictadoEstado").innerText = "🎤 Dictado activo";
+}
+
+function finalizarDictado(){
+
   dictadoActivo = false;
+  dictadoPausado = false;
 
   if(reconocimiento){
     reconocimiento.stop();
@@ -1334,6 +1392,10 @@ function detenerDictado(){
   if(textoDictado.trim().length > 0){
     descargarWordDictado(textoDictado);
   }
+}
+
+function detenerDictado(){
+  finalizarDictado();
 }
 
 function descargarWordDictado(texto){
