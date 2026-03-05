@@ -1343,12 +1343,15 @@ function iniciarDictado(){
         return;
       }
 
-      if(event.results[i].isFinal){
-        textoDictado += trans + " ";
-      }else{
-        parcial += trans;
-      }
-    }
+      if(!dictadoPausado){
+
+  if(event.results[i].isFinal){
+    textoDictado += trans + " ";
+  }else{
+    parcial += trans;
+  }
+
+}
 
     document.getElementById("mensaje").value = textoDictado + parcial;
   };
@@ -1358,20 +1361,16 @@ function iniciarDictado(){
 
 function pausarDictado(){
 
-  if(reconocimiento){
-    reconocimiento.stop();
-  }
-
   dictadoPausado = true;
 
   document.getElementById("dictadoEstado").innerText = "⏸️ Dictado pausado";
+
 }
 
 function continuarDictado(){
 
   if(!dictadoActivo) return;
 
-  reconocimiento.start();
   dictadoPausado = false;
 
   document.getElementById("dictadoEstado").innerText = "🎤 Dictado activo";
