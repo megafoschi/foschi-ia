@@ -1107,6 +1107,7 @@ function iniciarConversacion(){
 recognitionConversacion.onresult = function(event){
 
   let texto = event.results[event.results.length-1][0].transcript;
+  if(texto.length < 3) return;
 
   if(texto.trim() === "") return;
 
@@ -1129,11 +1130,11 @@ recognitionConversacion.onresult = function(event){
 
   recognitionConversacion.onend = function(){
 
-    if(modoConversacion){
-      recognitionConversacion.start();
-    }
+  if(modoConversacion && !audioActual){
+    recognitionConversacion.start();
+  }
 
-  };
+};
 
   recognitionConversacion.start();
 
@@ -1209,8 +1210,8 @@ function hablarTexto(texto, div=null){
 
   if(!vozActiva) return;
 
-  // detener escucha para no escucharse a si misma
-  if(recognitionConversacion){
+  // 🛑 detener escucha solo si está en modo conversación
+  if(modoConversacion && recognitionConversacion){
     recognitionConversacion.stop();
   }
 
@@ -1228,7 +1229,7 @@ function hablarTexto(texto, div=null){
     if(mensajeActual) mensajeActual.classList.remove("playing");
     mensajeActual = null;
 
-    // volver a escuchar cuando termina la voz
+    // 🎤 volver a escuchar cuando termina
     if(modoConversacion && recognitionConversacion){
       recognitionConversacion.start();
     }
