@@ -28,7 +28,7 @@ SUPERUSUARIOS = {
         "nombre": "Antonella",
         "nivel": 80
     },
-     "emibravo@gmail.com": {
+     "emibravo1991@gmail.com": {
         "rol": "admin",
         "nombre": "Malvi Bravo",
         "nivel": 80
