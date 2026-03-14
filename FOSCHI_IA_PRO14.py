@@ -948,6 +948,24 @@ body.day .user a{
   box-shadow:0 0 14px #00eaff;
 }
 
+.wave{
+ width:6px;
+ height:20px;
+ background:#00eaff;
+ animation:wave 1s infinite ease-in-out;
+ border-radius:4px;
+}
+
+.wave:nth-child(2){animation-delay:0.1s;}
+.wave:nth-child(3){animation-delay:0.2s;}
+.wave:nth-child(4){animation-delay:0.3s;}
+.wave:nth-child(5){animation-delay:0.4s;}
+
+@keyframes wave{
+0%,100%{height:10px;}
+50%{height:40px;}
+}
+
 </style>
 </head>
 
@@ -992,6 +1010,22 @@ body.day .user a{
 
 <!-- CHAT -->
 <div id="chat" role="log" aria-live="polite"></div>
+<div id="voiceWave" style="
+position:fixed;
+bottom:110px;
+left:50%;
+transform:translateX(-50%);
+display:none;
+gap:4px;
+z-index:999;
+">
+<div class="wave"></div>
+<div class="wave"></div>
+<div class="wave"></div>
+<div class="wave"></div>
+<div class="wave"></div>
+</div>
+
 <div id="dictadoEstado" style="
  position:fixed;
  bottom:70px;
@@ -1010,6 +1044,7 @@ body.day .user a{
   <div style="position:relative;">
     <div id="clipBtn" title="Adjuntar" onclick="toggleAdjuntosMenu()">📎</div>
     <div id="adjuntos_menu" aria-hidden="true">
+  <button onclick="toggleModoConversacion()">🧠 Modo conversación</button>
   <button onclick="checkPremium('audio')">🎵 Audio (mp3/wav) a Texto</button>
   <button onclick="checkPremium('doc')">📄 Resumir PDF / WORD</button>
   <button onclick="toggleDictado()">🎤 Dictado por voz</button>
@@ -1026,6 +1061,100 @@ body.day .user a{
 // --- Variables y funciones generales ---
 let usuario_id="{{usuario_id}}";
 let vozActiva=true,audioActual=null,mensajeActual=null;
+let modoConversacion = false;
+let escuchandoContinuo = false;
+let recognitionConversacion = null;
+let silencioTimer=null;
+
+function toggleModoConversacion(){
+
+  if(!isPremium && !isSuper){
+    alert("🔒 El modo conversación es Premium");
+    return;
+  }
+
+  if(!modoConversacion){
+    iniciarConversacion();
+  }else{
+    detenerConversacion();
+  }
+
+}
+
+function iniciarConversacion(){
+
+  if(!('webkitSpeechRecognition' in window)){
+    alert("Tu navegador no soporta conversación por voz");
+    return;
+  }
+
+  document.getElementById("voiceWave").style.display="flex";
+
+
+  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  recognitionConversacion = new Rec();
+
+  recognitionConversacion.lang = "es-AR";
+  recognitionConversacion.continuous = true;
+  recognitionConversacion.interimResults = false;
+
+  modoConversacion = true;
+  escuchandoContinuo = true;
+
+  agregar("🧠 Modo conversación activado","ai");
+
+recognitionConversacion.onresult = function(event){
+
+  let texto = event.results[event.results.length-1][0].transcript;
+
+  if(texto.trim() === "") return;
+
+  if(audioActual){
+  audioActual.pause();
+  audioActual.currentTime = 0;
+}
+  document.getElementById("mensaje").value = texto;
+
+  enviar();
+
+  // 👇 DETECTOR DE SILENCIO
+  clearTimeout(silencioTimer);
+
+  silencioTimer = setTimeout(()=>{
+     console.log("Silencio detectado");
+  },2000);
+
+};
+
+  recognitionConversacion.onend = function(){
+
+    if(modoConversacion){
+      recognitionConversacion.start();
+    }
+
+  };
+
+  recognitionConversacion.start();
+
+}
+
+function detenerConversacion(){
+
+  modoConversacion = false;
+  escuchandoContinuo = false;
+
+  if(recognitionConversacion){
+    recognitionConversacion.stop();
+    recognitionConversacion = null;
+  }
+
+  document.getElementById("voiceWave").style.display = "none";
+
+  agregar("🛑 Modo conversación desactivado","ai");
+
+}
+
 let MAX_NO_PREMIUM = 5;
 let isPremium = {{ 'true' if premium else 'false' }};
 const hoy = new Date().toISOString().slice(0,10); // YYYY-MM-DD
@@ -1077,14 +1206,35 @@ function enviar(){
 document.getElementById("mensaje").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); checkDailyLimit(); } });
 
 function hablarTexto(texto, div=null){
+
   if(!vozActiva) return;
+
+  // detener escucha para no escucharse a si misma
+  if(recognitionConversacion){
+    recognitionConversacion.stop();
+  }
+
   detenerVoz();
+
   if(mensajeActual) mensajeActual.classList.remove("playing");
   if(div) div.classList.add("playing");
   mensajeActual = div;
+
   audioActual = new Audio("/tts?texto=" + encodeURIComponent(texto));
   audioActual.playbackRate = 1.25;
-  audioActual.onended = () => { if(mensajeActual) mensajeActual.classList.remove("playing"); mensajeActual = null; };
+
+  audioActual.onended = () => {
+
+    if(mensajeActual) mensajeActual.classList.remove("playing");
+    mensajeActual = null;
+
+    // volver a escuchar cuando termina la voz
+    if(modoConversacion && recognitionConversacion){
+      recognitionConversacion.start();
+    }
+
+  };
+
   audioActual.play();
 }
 
@@ -1438,13 +1588,7 @@ function descargarWordDictado(texto){
 
   </div>
 </div>
-
-    <p id="authMsg" style="margin-top:10px;"></p>
-
-    <button onclick="closeAuth()" style="margin-top:10px;">Cerrar</button>
-  </div>
-</div>
-
+   
 </body>
 </html>
 
