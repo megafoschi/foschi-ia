@@ -1065,7 +1065,6 @@ let modoConversacion = false;
 let escuchandoContinuo = false;
 let recognitionConversacion = null;
 let silencioTimer=null;
-let bufferVoz = "";
 
 function toggleModoConversacion(){
 
@@ -1098,100 +1097,47 @@ function iniciarConversacion(){
 
   recognitionConversacion.lang = "es-AR";
   recognitionConversacion.continuous = true;
-  recognitionConversacion.interimResults = true;
+  recognitionConversacion.interimResults = false;
 
   modoConversacion = true;
   escuchandoContinuo = true;
 
   agregar("🧠 Modo conversación activado","ai");
 
-let ultimoTexto = "";
-let ultimoTiempo = 0;
-
 recognitionConversacion.onresult = function(event){
 
+  let texto = event.results[event.results.length-1][0].transcript;
+  if(texto.length < 3) return;
+
+  if(texto.trim() === "") return;
+
   if(audioActual){
-  detenerVoz();
+  audioActual.pause();
+  audioActual.currentTime = 0;
 }
+  document.getElementById("mensaje").value = texto;
 
-  let texto = event.results[event.results.length-1][0].transcript.trim().toLowerCase();
+  enviar();
 
-  // 🔇 FILTRO ANTI RUIDO
-  if(texto.length < 3){
-    return;
-  }
-
-  // evita sonidos que no son palabras
-  if(!/[aeiouáéíóú]/.test(texto)){
-    return;
-  }
-
-  // evitar duplicados del reconocimiento
-  let ahora = Date.now();
-  if(texto === ultimoTexto && ahora - ultimoTiempo < 2000){
-    return;
-  }
-
-  ultimoTexto = texto;
-  ultimoTiempo = ahora;
-
-  // 🎤 comandos naturales para cortar la IA
-  if(
-    texto.includes("pará") ||
-    texto.includes("para") ||
-    texto.includes("esperá") ||
-    texto.includes("espera") ||
-    texto.includes("silencio") ||
-    texto.includes("stop")
-  ){
-    detenerVoz();
-    return;
-  }
-
-  // 🛑 si la IA está hablando → cortar audio
-  if(audioActual){
-    audioActual.pause();
-    audioActual.currentTime = 0;
-    audioActual = null;
-  }
-
-  bufferVoz = texto;
-
+  // 👇 DETECTOR DE SILENCIO
   clearTimeout(silencioTimer);
 
   silencioTimer = setTimeout(()=>{
+     console.log("Silencio detectado");
+  },2000);
 
-    if(bufferVoz.trim().length < 2) return;
-
-    document.getElementById("mensaje").value = bufferVoz;
-
-    enviar();
-
-    bufferVoz = "";
-
-  },600);
 };
 
-recognitionConversacion.onend = function(){
+  recognitionConversacion.onend = function(){
 
-  // reiniciar solo si el modo sigue activo
-  if(modoConversacion && escuchandoContinuo){
-
-    try{
-      recognitionConversacion.start();
-    }catch(e){
-      console.log("Reinicio bloqueado",e);
-    }
-
+  if(modoConversacion && !audioActual){
+    recognitionConversacion.start();
   }
 
 };
 
-// iniciar escucha
-try{
   recognitionConversacion.start();
-}catch(e){
-  console.log("No se pudo iniciar reconocimiento",e);
+
 }
 
 function detenerConversacion(){
@@ -1200,12 +1146,7 @@ function detenerConversacion(){
   escuchandoContinuo = false;
 
   if(recognitionConversacion){
-    try{
-      recognitionConversacion.stop();
-    }catch(e){
-      console.log("Error al detener reconocimiento",e);
-    }
-
+    recognitionConversacion.stop();
     recognitionConversacion = null;
   }
 
@@ -1234,7 +1175,7 @@ function agregar(msg,cls,imagenes=[]){
   let c=document.getElementById("chat"),div=document.createElement("div");
   div.className="message "+cls; div.innerHTML=msg;
   c.appendChild(div);
-  setTimeout(()=>div.classList.add("show"),10);
+  setTimeout(()=>div.classList.add("show"),50);
   imagenes.forEach(url=>{ let img=document.createElement("img"); img.src=url; div.appendChild(img); });
   c.scroll({top:c.scrollHeight,behavior:"smooth"});
   if(cls==="ai") hablarTexto(msg,div);
@@ -1264,9 +1205,15 @@ function enviar(){
 }
 
 document.getElementById("mensaje").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); checkDailyLimit(); } });
+
 function hablarTexto(texto, div=null){
 
   if(!vozActiva) return;
+
+  // 🛑 detener escucha solo si está en modo conversación
+  if(modoConversacion && recognitionConversacion){
+    recognitionConversacion.stop();
+  }
 
   detenerVoz();
 
@@ -1275,12 +1222,17 @@ function hablarTexto(texto, div=null){
   mensajeActual = div;
 
   audioActual = new Audio("/tts?texto=" + encodeURIComponent(texto));
-  audioActual.playbackRate = 1.35;
+  audioActual.playbackRate = 1.25;
 
   audioActual.onended = () => {
 
     if(mensajeActual) mensajeActual.classList.remove("playing");
     mensajeActual = null;
+
+    // 🎤 volver a escuchar cuando termina
+    if(modoConversacion && recognitionConversacion){
+      recognitionConversacion.start();
+    }
 
   };
 
