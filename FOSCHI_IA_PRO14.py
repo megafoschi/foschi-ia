@@ -845,10 +845,6 @@ img{ max-width:300px; border-radius:10px; margin:5px 0; box-shadow:0 0 10px #00e
   transform:scale(1.08);
 }
 
-#clipContainer:hover #adjuntos_menu{
-  display:block;
-}
-
 /* --- CLIP EN MODO DAY --- */
 body.day #clipBtn{
   background:#ffffff;
@@ -867,10 +863,6 @@ body.day #clipBtn:hover{
  left:0;
  bottom:50px;   /* se abre hacia arriba del clip */
  display:none;
- /* abrir menú al pasar el mouse */
-#inputBar div:hover #adjuntos_menu{
-  display:block;
-}
  background:#001f2e;
  border:1px solid #003547;
  padding:8px;
@@ -1049,8 +1041,8 @@ z-index:999;
 </div>
 <!-- BARRA DE ENTRADA -->
 <div id="inputBar">
-  <div id="clipContainer" style="position:relative;">
-    <div id="clipBtn" title="Adjuntar">📎</div>
+  <div style="position:relative;">
+    <div id="clipBtn" title="Adjuntar" onclick="toggleAdjuntosMenu()">📎</div>
     <div id="adjuntos_menu" aria-hidden="true">
   <button onclick="toggleModoConversacion()">🧠 Modo conversación</button>
   <button onclick="checkPremium('audio')">🎵 Audio (mp3/wav) a Texto</button>
