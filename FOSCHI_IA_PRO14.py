@@ -1471,35 +1471,60 @@ function iniciarDictado(){
 
   reconocimiento.onresult = function(event){
 
-    let parcial = "";
+  let parcial = "";
 
-    for(let i=event.resultIndex;i<event.results.length;i++){
+for(let i=event.resultIndex;i<event.results.length;i++){
 
-      let trans = event.results[i][0].transcript;
-      let txt = trans.toLowerCase();
+  let trans = event.results[i][0].transcript;
+  let txt = trans.toLowerCase().trim();
 
-      // 🎤 COMANDOS DE VOZ
-      if(txt.includes("pausar dictado")){
-        pausarDictado();
-        return;
-      }
+  // 🧠 BONUS PRO (comandos)
+  if(txt.includes("nuevo párrafo")){
+    textoDictado += "\n\n";
+    continue;
+  }
 
-      if(txt.includes("continuar dictado")){
-        continuarDictado();
-        return;
-      }
+  if(txt.includes("coma")){
+    textoDictado += ", ";
+    continue;
+  }
 
-      if(txt.includes("finalizar dictado")){
-        finalizarDictado();
-        return;
-      }
+  if(txt.includes("punto")){
+    textoDictado += ". ";
+    continue;
+  }
 
-      if(event.results[i].isFinal){
-        textoDictado += trans + " ";
-      }else{
-        parcial += trans;
-      }
-    }
+  if(txt.includes("pausar dictado")){
+    pausarDictado();
+    continue;
+  }
+
+  if(txt.includes("continuar dictado")){
+    continuarDictado();
+    continue;
+  }
+
+  if(txt.includes("finalizar dictado")){
+    finalizarDictado();
+    continue;
+  }
+
+  // 🔥 LIMPIEZA PRO (ACÁ VA)
+  let limpio = trans
+    .replace(/nuevo párrafo/gi, "")
+    .replace(/coma/gi, "")
+    .replace(/punto/gi, "")
+    .replace(/pausar dictado/gi, "")
+    .replace(/continuar dictado/gi, "")
+    .replace(/finalizar dictado/gi, "")
+    .trim();
+
+  if(event.results[i].isFinal){
+    textoDictado += limpio + " ";
+  }else{
+    parcial += limpio;
+  }
+}
 
     document.getElementById("mensaje").value = textoDictado + parcial;
   };
@@ -1522,7 +1547,14 @@ function continuarDictado(){
 
   if(!dictadoActivo) return;
 
-  reconocimiento.start();
+  try{
+    reconocimiento.start();
+  }catch(e){
+    // 🛠️ si falla, recrea el reconocimiento
+    iniciarDictado();
+    return;
+  }
+
   dictadoPausado = false;
 
   document.getElementById("dictadoEstado").innerText = "🎤 Dictado activo";
