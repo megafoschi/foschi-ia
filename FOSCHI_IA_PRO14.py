@@ -1047,7 +1047,6 @@ z-index:999;
   <button onclick="toggleModoConversacion()">🧠 Modo conversación</button>
   <button onclick="checkPremium('audio')">🎵 Audio (mp3/wav) a Texto</button>
   <button onclick="checkPremium('doc')">📄 Resumir PDF / WORD</button>
-  <button onclick="preguntarSobreDoc()">❓ Preguntar sobre archivo</button>
   <button onclick="toggleDictado()">🎤 Dictado por voz</button>
 </div>
   </div>
@@ -1264,22 +1263,6 @@ function closePremiumMenuOnClickOutside(e){
   }
 }
 
-function preguntarSobreDoc(){
-
-  if(!isPremium && !isSuper){
-    alert("🔒 Esta función es Premium");
-    return;
-  }
-
-  if(!modoDoc){
-    alert("⚠️ Primero subí un documento");
-    return;
-  }
-
-  agregar("💬 Ahora podés hacer preguntas sobre el documento","ai");
-
-}
-
 function irPremium(tipo){
   fetch(`/premium?tipo=${tipo}`)
     .then(r => {
@@ -1324,26 +1307,6 @@ function verHistorial(){
     if(data.length===0){agregar("No hay historial todavía.","ai");return;}
     data.slice(-20).forEach(e=>{ agregar(`<small>${e.fecha}</small><br>${e.usuario}`,"user"); agregar(`<small>${e.fecha}</small><br>${e.foschi}`,"ai"); });
   });
-}
-
-function salirModoDoc(){
-  modoDoc = false;
-  document.getElementById("mensaje").placeholder = "Escribí tu mensaje o hablá";
-  agregar("🚪 Saliste del modo documento","ai");
-}
-
-function preguntarSobreDoc(){
-
-  if(!isPremium && !isSuper){
-    alert("🔒 Esta función es Premium");
-    return;
-  }
-
-  modoDoc = true;
-
-  document.getElementById("mensaje").placeholder = "Preguntá sobre el documento...";
-
-  agregar("💬 Modo preguntas sobre documento ACTIVADO","ai");
 }
 
 function borrarPantalla(){
@@ -1601,34 +1564,6 @@ function descargarWordDictado(texto){
     a.click();
   });
 }
-
-document.getElementById("archivo_pdf_word").addEventListener("change", function(){
-
-  let file = this.files[0];
-  if(!file) return;
-
-  let formData = new FormData();
-  formData.append("file", file);
-
-  agregar("📤 Subiendo documento...","ai");
-
-  fetch("/resumir_doc", {
-    method:"POST",
-    body: formData
-  })
-  .then(r=>r.json())
-  .then(data=>{
-    agregar("📄 Documento cargado","ai");
-    agregar(data.resumen,"ai");
-
-    modoDoc = false; // 👈 CLAVE: NO activar automático
-  })
-  .catch(()=>{
-    agregar("❌ Error al subir el documento","ai");
-  });
-
-});
-
 </script>
 
 <div id="authModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:9999;">
