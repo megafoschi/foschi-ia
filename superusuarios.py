@@ -38,7 +38,17 @@ SUPERUSUARIOS = {
         "nombre": "Mariano",
         "nivel": 80
     },
+    "juanrodolfopatti@yahoo.com.ar": {
+        "rol": "admin",
+        "nombre": "Mariano",
+        "nivel": 80
+    },
     "libre2@gmail.com": {
+        "rol": "admin",
+        "nombre": "Mariano",
+        "nivel": 80
+    },
+    "libre3@gmail.com": {
         "rol": "admin",
         "nombre": "Mariano",
         "nivel": 80
