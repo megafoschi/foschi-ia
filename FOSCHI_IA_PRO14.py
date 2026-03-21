@@ -1524,19 +1524,20 @@ actualizarEstadoDictado("🎤 Escuchando...", "green");
   }
 
   // limpieza + lógica
-  let limpio = trans
+let limpio = trans
   .replace(/nuevo p[aá]rrafo/gi, "\n\n")
   .replace(/punto y aparte/gi, "\n\n")
+  .replace(/punto y coma/gi, "; ")
+  .replace(/dos puntos/gi, ": ")
   .replace(/punto/gi, ". ")
   .replace(/coma/gi, ", ")
-  .replace(/dos puntos/gi, ": ")
-  .replace(/punto y coma/gi, "; ")
   .replace(/signo de pregunta/gi, "? ")
   .replace(/signo de exclamacion/gi, "! ")
   .replace(/pausar dictado|continuar dictado|finalizar dictado/gi, "")
   .replace(/\s+([.,;:!?])/g, "$1")
   .replace(/\s+/g, " ")
   .trim();
+  .replace(/\n{3,}/g, "\n\n")
   
   let ahora = Date.now();
   
