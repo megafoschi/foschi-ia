@@ -1485,7 +1485,7 @@ function iniciarDictado(){
   document.getElementById("dictadoEstado").style.display = "block";
 actualizarEstadoDictado("🎤 Escuchando...", "green");
 
-  reconocimiento.onresult = function(event){
+reconocimiento.onresult = function(event){
 
   let parcial = "";
 
@@ -1494,7 +1494,6 @@ actualizarEstadoDictado("🎤 Escuchando...", "green");
     let trans = event.results[i][0].transcript;
     let txt = trans.toLowerCase();
 
-    // 🎤 COMANDOS
     if(txt.includes("pausar dictado")){
       pausarDictado();
       return;
@@ -1547,24 +1546,26 @@ actualizarEstadoDictado("🎤 Escuchando...", "green");
     ultimoTiempoTexto = ahora;
 
     if(limpio === ultimoTexto && ahora - ultimoTiempo < 2000){
-  continue;
-}
+      continue;
+    }
 
     ultimoTexto = limpio;
     ultimoTiempo = ahora;
 
     if(event.results[i].isFinal){
-  textoDictado += limpio + " ";
+      textoDictado += limpio + " ";
 
-  textoDictado = textoDictado
-    .replace(/\s+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n");
+      textoDictado = textoDictado
+        .replace(/\s+\n/g, "\n")
+        .replace(/\n{3,}/g, "\n\n");
 
-}else{
-  parcial += limpio;
-}
+    }else{
+      parcial += limpio;
+    }
+  }
 
-  document.getElementById("mensaje").value = capitalizarTexto(textoDictado + parcial);
+  document.getElementById("mensaje").value =
+    capitalizarTexto(textoDictado + parcial);
 };
 
 reconocimiento.onend = function(){
