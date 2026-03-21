@@ -1487,82 +1487,85 @@ actualizarEstadoDictado("🎤 Escuchando...", "green");
 
   reconocimiento.onresult = function(event){
 
-    let parcial = "";
+  let parcial = "";
 
-    for(let i=event.resultIndex;i<event.results.length;i++){
+  for(let i=event.resultIndex;i<event.results.length;i++){
 
-  let trans = event.results[i][0].transcript;
-  let txt = trans.toLowerCase();
+    let trans = event.results[i][0].transcript;
+    let txt = trans.toLowerCase();
 
-  // 🎤 COMANDOS
-  if(txt.includes("pausar dictado")){
-    pausarDictado();
-    return;
-  }
+    // 🎤 COMANDOS
+    if(txt.includes("pausar dictado")){
+      pausarDictado();
+      return;
+    }
 
-  if(txt.includes("continuar dictado")){
-    continuarDictado();
-    return;
-  }
+    if(txt.includes("continuar dictado")){
+      continuarDictado();
+      return;
+    }
 
-  if(txt.includes("finalizar dictado")){
-    finalizarDictado();
-    return;
-  }
+    if(txt.includes("finalizar dictado")){
+      finalizarDictado();
+      return;
+    }
 
-  if(txt.includes("borrar texto")){
-    textoDictado = "";
-    ultimoTexto = "";
-    document.getElementById("mensaje").value = "";
-    return;
-  }
+    if(txt.includes("borrar texto")){
+      textoDictado = "";
+      ultimoTexto = "";
+      document.getElementById("mensaje").value = "";
+      return;
+    }
 
-  if(txt.includes("enviar mensaje")){
-    finalizarDictado();
-    checkDailyLimit();
-    return;
-  }
+    if(txt.includes("enviar mensaje")){
+      finalizarDictado();
+      checkDailyLimit();
+      return;
+    }
 
-  // limpieza + lógica
-let limpio = trans
-  .replace(/nuevo p[aá]rrafo/gi, "\n\n")
-  .replace(/punto y aparte/gi, "\n\n")
-  .replace(/punto y coma/gi, "; ")
-  .replace(/dos puntos/gi, ": ")
-  .replace(/punto/gi, ". ")
-  .replace(/coma/gi, ", ")
-  .replace(/signo de pregunta/gi, "? ")
-  .replace(/signo de exclamacion/gi, "! ")
-  .replace(/pausar dictado|continuar dictado|finalizar dictado/gi, "")
-  .replace(/\s+([.,;:!?])/g, "$1")
-  .replace(/\s+/g, " ")
-  .trim();
-  .replace(/\n{3,}/g, "\n\n")
-  
-  let ahora = Date.now();
-  
-  // ⏱️ DETECTAR PAUSA = NUEVO PÁRRAFO
-if(ahora - ultimoTiempoTexto > UMBRAL_PARRAFO){
-  textoDictado += "\n\n";
+    let limpio = trans
+      .replace(/nuevo p[aá]rrafo/gi, "\n\n")
+      .replace(/punto y aparte/gi, "\n\n")
+      .replace(/punto y coma/gi, "; ")
+      .replace(/dos puntos/gi, ": ")
+      .replace(/punto/gi, ". ")
+      .replace(/coma/gi, ", ")
+      .replace(/signo de pregunta/gi, "? ")
+      .replace(/signo de exclamacion/gi, "! ")
+      .replace(/pausar dictado|continuar dictado|finalizar dictado/gi, "")
+      .replace(/\s+([.,;:!?])/g, "$1")
+      .replace(/\s+/g, " ")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+
+    let ahora = Date.now();
+
+    if(ahora - ultimoTiempoTexto > UMBRAL_PARRAFO){
+      textoDictado += "\n\n";
+    }
+
+    ultimoTiempoTexto = ahora;
+
+    if(limpio === ultimoTexto && ahora - ultimoTiempo < 2000){
+  continue;
 }
 
-ultimoTiempoTexto = ahora;
+    ultimoTexto = limpio;
+    ultimoTiempo = ahora;
 
-  if(limpio === ultimoTexto && ahora - ultimoTiempo < 2000){
-    return;
-  }
+    if(event.results[i].isFinal){
+  textoDictado += limpio + " ";
 
-  ultimoTexto = limpio;
-  ultimoTiempo = ahora;
+  textoDictado = textoDictado
+    .replace(/\s+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n");
 
-  if(event.results[i].isFinal){
-    textoDictado += limpio + " ";
-  }else{
-    parcial += limpio;
-  }
+}else{
+  parcial += limpio;
 }
 
-document.getElementById("mensaje").value = capitalizarTexto(textoDictado + parcial);
+  document.getElementById("mensaje").value = capitalizarTexto(textoDictado + parcial);
+};
 
 reconocimiento.onend = function(){
   if(dictadoActivo && !dictadoPausado){
