@@ -1420,11 +1420,6 @@ function toggleDayNight(){
     btn.textContent = body.classList.contains("day") ? "☀️" : "🌙";
   }
 }
-function actualizarEstadoDictado(texto, color){
-  let el = document.getElementById("dictadoEstado");
-  el.innerText = texto;
-  el.style.background = color;
-}
 // =====================
 // 🎤 DICTADO PREMIUM
 // =====================
@@ -1432,16 +1427,6 @@ let dictadoActivo = false;
 let dictadoPausado = false;
 let reconocimiento = null;
 let textoDictado = "";
-let ultimoTexto = "";
-let ultimoTiempo = 0;
-let ultimoTiempoTexto = Date.now();
-let UMBRAL_PARRAFO = 2000; // 2 segundos de silencio
-
-function capitalizarTexto(texto){
-  return texto
-    .toLowerCase()
-    .replace(/(^\s*\w|[.!?\n]\s*\w)/g, c => c.toUpperCase());
-}
 
 function toggleDictado(){
 
@@ -1483,96 +1468,41 @@ function iniciarDictado(){
   dictadoPausado = false;
 
   document.getElementById("dictadoEstado").style.display = "block";
-actualizarEstadoDictado("🎤 Escuchando...", "green");
 
-reconocimiento.onresult = function(event){
+  reconocimiento.onresult = function(event){
 
-  let parcial = "";
+    let parcial = "";
 
-  for(let i=event.resultIndex;i<event.results.length;i++){
+    for(let i=event.resultIndex;i<event.results.length;i++){
 
-    let trans = event.results[i][0].transcript;
-    let txt = trans.toLowerCase();
+      let trans = event.results[i][0].transcript;
+      let txt = trans.toLowerCase();
 
-    if(txt.includes("pausar dictado")){
-      pausarDictado();
-      return;
+      // 🎤 COMANDOS DE VOZ
+      if(txt.includes("pausar dictado")){
+        pausarDictado();
+        return;
+      }
+
+      if(txt.includes("continuar dictado")){
+        continuarDictado();
+        return;
+      }
+
+      if(txt.includes("finalizar dictado")){
+        finalizarDictado();
+        return;
+      }
+
+      if(event.results[i].isFinal){
+        textoDictado += trans + " ";
+      }else{
+        parcial += trans;
+      }
     }
 
-    if(txt.includes("continuar dictado")){
-      continuarDictado();
-      return;
-    }
-
-    if(txt.includes("finalizar dictado")){
-      finalizarDictado();
-      return;
-    }
-
-    if(txt.includes("borrar texto")){
-      textoDictado = "";
-      ultimoTexto = "";
-      document.getElementById("mensaje").value = "";
-      return;
-    }
-
-    if(txt.includes("enviar mensaje")){
-      finalizarDictado();
-      checkDailyLimit();
-      return;
-    }
-
-    let limpio = trans
-      .replace(/nuevo p[aá]rrafo/gi, "\n\n")
-      .replace(/punto y aparte/gi, "\n\n")
-      .replace(/punto y coma/gi, "; ")
-      .replace(/dos puntos/gi, ": ")
-      .replace(/punto/gi, ". ")
-      .replace(/coma/gi, ", ")
-      .replace(/signo de pregunta/gi, "? ")
-      .replace(/signo de exclamacion/gi, "! ")
-      .replace(/pausar dictado|continuar dictado|finalizar dictado/gi, "")
-      .replace(/\s+([.,;:!?])/g, "$1")
-      .replace(/\s+/g, " ")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
-
-    let ahora = Date.now();
-
-    if(ahora - ultimoTiempoTexto > UMBRAL_PARRAFO){
-      textoDictado += "\n\n";
-    }
-
-    ultimoTiempoTexto = ahora;
-
-    if(limpio === ultimoTexto && ahora - ultimoTiempo < 2000){
-      continue;
-    }
-
-    ultimoTexto = limpio;
-    ultimoTiempo = ahora;
-
-    if(event.results[i].isFinal){
-      textoDictado += limpio + " ";
-
-      textoDictado = textoDictado
-        .replace(/\s+\n/g, "\n")
-        .replace(/\n{3,}/g, "\n\n");
-
-    }else{
-      parcial += limpio;
-    }
-  }
-
-  document.getElementById("mensaje").value =
-    capitalizarTexto(textoDictado + parcial);
-};
-
-reconocimiento.onend = function(){
-  if(dictadoActivo && !dictadoPausado){
-    reconocimiento.start();
-  }
-};
+    document.getElementById("mensaje").value = textoDictado + parcial;
+  };
 
   reconocimiento.start();
 }
@@ -1585,7 +1515,7 @@ function pausarDictado(){
 
   dictadoPausado = true;
 
-  actualizarEstadoDictado("⏸️ Dictado pausado", "orange");
+  document.getElementById("dictadoEstado").innerText = "⏸️ Dictado pausado";
 }
 
 function continuarDictado(){
@@ -1595,7 +1525,7 @@ function continuarDictado(){
   reconocimiento.start();
   dictadoPausado = false;
 
-  actualizarEstadoDictado("🎤 Escuchando...", "green");
+  document.getElementById("dictadoEstado").innerText = "🎤 Dictado activo";
 }
 
 function finalizarDictado(){
@@ -1608,13 +1538,7 @@ function finalizarDictado(){
     reconocimiento = null;
   }
 
-  // 🔴 MOSTRAR ESTADO FINAL
-  actualizarEstadoDictado("🛑 Finalizado", "red");
-
-  // ⏳ (opcional) darle tiempo a que el usuario lo vea
-  setTimeout(()=>{
-    document.getElementById("dictadoEstado").style.display = "none";
-  }, 1000);
+  document.getElementById("dictadoEstado").style.display = "none";
 
   if(textoDictado.trim().length > 0){
     descargarWordDictado(textoDictado);
