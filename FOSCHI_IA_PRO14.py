@@ -8,8 +8,7 @@ import io
 import re
 import time
 import threading
-import secrets
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta
 
 import pytz
 import requests
@@ -27,8 +26,6 @@ from flask import (
 )
 
 from flask_session import Session
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 from gtts import gTTS
 
 from superusuarios import (
@@ -44,158 +41,120 @@ from suscripciones import activar_premium
 
 from openai import OpenAI
 
+client = OpenAI()
+
+# --- librerías adicionales para documentos ---
 import PyPDF2
 from docx import Document as DocxDocument
 import docx as docx_reader
-from werkzeug.utils import secure_filename
 
 # ---------------- CONFIG ----------------
-APP_NAME   = "FOSCHI IA WEB"
-CREADOR    = "Gustavo Enrique Foschi"
-DATA_DIR   = "data"
+APP_NAME = "FOSCHI IA WEB"
+CREADOR = "Gustavo Enrique Foschi"
+DATA_DIR = "data"
 STATIC_DIR = "static"
-TEMP_DIR   = os.path.join(DATA_DIR, "temp_docs")
-os.makedirs(DATA_DIR,   exist_ok=True)
+TEMP_DIR = os.path.join(DATA_DIR, "temp_docs")
+os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(STATIC_DIR, exist_ok=True)
-os.makedirs(TEMP_DIR,   exist_ok=True)
-os.makedirs("temp",     exist_ok=True)
+os.makedirs(TEMP_DIR, exist_ok=True)
 
 # ---------------- KEYS ----------------
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-GOOGLE_CSE_ID  = os.getenv("GOOGLE_CSE_ID")
-OWM_API_KEY    = os.getenv("OWM_API_KEY")
-
-# SECRET_KEY siempre desde variable de entorno
-SECRET_KEY = os.getenv("SECRET_KEY")
-if not SECRET_KEY:
-    SECRET_KEY = secrets.token_hex(32)
-    print("[ADVERTENCIA] SECRET_KEY no definida. Las sesiones se invalidan al reiniciar.")
-
-# ADMIN_KEY para /admin/pagos
-ADMIN_KEY = os.getenv("ADMIN_KEY")
-if not ADMIN_KEY:
-    ADMIN_KEY = secrets.token_hex(16)
-    print(f"[FOSCHI IA] ADMIN_KEY={ADMIN_KEY}  — guardala como variable de entorno ADMIN_KEY.")
-
-# ---------------- CLIENTE OPENAI GLOBAL (uno solo) ----------------
-client = OpenAI(api_key=OPENAI_API_KEY)
+GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID")
+OWM_API_KEY = os.getenv("OWM_API_KEY")
 
 # ---------------- APP ----------------
 app = Flask(__name__)
-app.secret_key = SECRET_KEY
-app.config["SESSION_TYPE"]       = "filesystem"
-app.config["SESSION_USE_SIGNER"] = True
+app.secret_key = "FoschiWebKey"
+app.config["SESSION_TYPE"] = "filesystem"
 Session(app)
 
-# ---------------- RATE LIMITER ----------------
-limiter = Limiter(
-    get_remote_address,
-    app=app,
-    default_limits=["300 per day", "60 per hour"],
-    storage_uri="memory://",
-)
-
-# ---------------- CACHE / HTTP ----------------
-HTTPS     = requests.Session()
+# ---------------- UTIL / CACHE / HTTP ----------------
+HTTPS = requests.Session()
 URL_REGEX = re.compile(r'(https?://[^\s]+)', re.UNICODE)
 
-MEMORY_FILE  = os.path.join(DATA_DIR, "memory.json")
+MEMORY_FILE = os.path.join(DATA_DIR, "memory.json")
 MEMORY_CACHE = {}
-_memory_lock = threading.Lock()
 
-# ---------------- LÍMITE DIARIO BACKEND ----------------
-MAX_DAILY_FREE  = 5
-_daily_counts   = {}
-_daily_lock     = threading.Lock()
+from datetime import date
 
-def puede_preguntar(usuario: str) -> bool:
-    if es_superusuario(usuario) or usuario_premium(usuario):
+def puede_preguntar(usuario):
+    if es_superusuario(usuario):
         return True
+
     hoy = date.today().isoformat()
-    with _daily_lock:
-        entry = _daily_counts.get(usuario, {})
-        if entry.get("fecha") != hoy:
-            entry = {"fecha": hoy, "count": 0}
-        if entry["count"] >= MAX_DAILY_FREE:
-            return False
-        entry["count"] += 1
-        _daily_counts[usuario] = entry
-        return True
 
-# ---------------- JSON / MEMORIA ----------------
+    if usuario.get("fecha_preguntas") != hoy:
+        usuario["fecha_preguntas"] = hoy
+        usuario["preguntas_hoy"] = 0
+
+    if usuario["preguntas_hoy"] >= 5:
+        return False
+
+    usuario["preguntas_hoy"] += 1
+    return True
+
 def load_json(path):
     global MEMORY_CACHE
-    with _memory_lock:
-        if MEMORY_CACHE:
+    if MEMORY_CACHE:
+        return MEMORY_CACHE
+    if not os.path.exists(path):
+        MEMORY_CACHE = {}
+        return MEMORY_CACHE
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            MEMORY_CACHE = json.load(f)
             return MEMORY_CACHE
-        if not os.path.exists(path):
-            MEMORY_CACHE = {}
-            return MEMORY_CACHE
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                MEMORY_CACHE = json.load(f)
-        except Exception:
-            MEMORY_CACHE = {}
+    except:
+        MEMORY_CACHE = {}
         return MEMORY_CACHE
 
 def save_json(path, data):
     global MEMORY_CACHE
-    with _memory_lock:
-        MEMORY_CACHE.update(data)
-        try:
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(MEMORY_CACHE, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            print("Error guardando memory.json:", e)
+    MEMORY_CACHE.update(data)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(MEMORY_CACHE, f, ensure_ascii=False, indent=2)
 
-# ---------------- HELPERS ----------------
 def fecha_hora_en_es():
-    tz    = pytz.timezone("America/Argentina/Buenos_Aires")
+    tz = pytz.timezone("America/Argentina/Buenos_Aires")
     ahora = datetime.now(tz)
-    meses = ["enero","febrero","marzo","abril","mayo","junio","julio",
-             "agosto","septiembre","octubre","noviembre","diciembre"]
-    dias  = ["lunes","martes","miércoles","jueves","viernes","sábado","domingo"]
-    return (f"{dias[ahora.weekday()]}, {ahora.day} de {meses[ahora.month-1]} "
-            f"de {ahora.year}, {ahora.hour:02d}:{ahora.minute:02d}")
+    meses = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"]
+    dias = ["lunes","martes","miércoles","jueves","viernes","sábado","domingo"]
+    return f"{dias[ahora.weekday()]}, {ahora.day} de {meses[ahora.month-1]} de {ahora.year}, {ahora.hour:02d}:{ahora.minute:02d}"
 
 def hacer_links_clicleables(texto):
-    return URL_REGEX.sub(
-        r'<a href="\1" target="_blank" rel="noopener noreferrer" style="color:#ff0000;">\1</a>',
-        texto
-    )
+    return URL_REGEX.sub(r'<a href="\1" target="_blank" style="color:#ff0000;">\1</a>', texto)
 
 # ---------------- HISTORIAL ----------------
 def guardar_en_historial(usuario, entrada, respuesta):
-    path  = os.path.join(DATA_DIR, f"{usuario}.json")
+    path = os.path.join(DATA_DIR, f"{usuario}.json")
     datos = []
     if os.path.exists(path):
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path,"r",encoding="utf-8") as f:
                 datos = json.load(f)
-        except Exception:
+        except:
             datos = []
     datos.append({
-        "fecha":   datetime.now(pytz.timezone("America/Argentina/Buenos_Aires"))
-                           .strftime("%d/%m/%Y %H:%M:%S"),
+        "fecha": datetime.now(pytz.timezone("America/Argentina/Buenos_Aires")).strftime("%d/%m/%Y %H:%M:%S"),
         "usuario": entrada,
-        "foschi":  respuesta,
+        "foschi": respuesta
     })
     datos = datos[-200:]
     try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(datos, f, ensure_ascii=False, indent=2)
+        with open(path,"w",encoding="utf-8") as f:
+            json.dump(datos,f,ensure_ascii=False,indent=2)
     except Exception as e:
         print("Error guardando historial:", e)
 
 def cargar_historial(usuario):
     path = os.path.join(DATA_DIR, f"{usuario}.json")
-    if not os.path.exists(path):
-        return []
+    if not os.path.exists(path): return []
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path,"r",encoding="utf-8") as f:
             return json.load(f)
-    except Exception:
+    except:
         return []
 
 # ---------------- CLIMA ----------------
@@ -204,116 +163,148 @@ def obtener_clima(ciudad=None, lat=None, lon=None):
         return "No está configurada la API de clima (OWM_API_KEY)."
     try:
         if lat and lon:
-            url = (f"http://api.openweathermap.org/data/2.5/weather"
-                   f"?lat={lat}&lon={lon}&appid={OWM_API_KEY}&units=metric&lang=es")
+            url = f"http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={OWM_API_KEY}&units=metric&lang=es"
         else:
-            ciudad = ciudad or "Buenos Aires"
-            url = (f"http://api.openweathermap.org/data/2.5/weather"
-                   f"?q={ciudad}&appid={OWM_API_KEY}&units=metric&lang=es")
-        r    = HTTPS.get(url, timeout=3)
+            ciudad = ciudad if ciudad else "Buenos Aires"
+            url = f"http://api.openweathermap.org/data/2.5/weather?q={ciudad}&appid={OWM_API_KEY}&units=metric&lang=es"
+        r = HTTPS.get(url, timeout=3)
         data = r.json()
         if r.status_code != 200:
-            return f"No pude obtener el clima: {r.status_code} - {data.get('message','')}"
-        desc  = data.get("weather", [{}])[0].get("description", "Sin descripción").capitalize()
-        temp  = data.get("main", {}).get("temp")
-        hum   = data.get("main", {}).get("humidity")
-        name  = data.get("name", ciudad or "la ubicación")
+            msg = data.get("message", "Respuesta no OK de OpenWeatherMap.")
+            return f"No pude obtener el clima: {r.status_code} - {msg}"
+        desc = data.get("weather", [{}])[0].get("description", "Sin descripción").capitalize()
+        temp = data.get("main", {}).get("temp")
+        hum = data.get("main", {}).get("humidity")
+        name = data.get("name", ciudad if ciudad else "la ubicación")
         parts = [f"El clima en {name} es {desc}"]
-        if temp is not None: parts.append(f"temperatura {round(temp)}°C")
-        if hum  is not None: parts.append(f"humedad {hum}%")
+        if temp is not None:
+            parts.append(f"temperatura {round(temp)}°C")
+        if hum is not None:
+            parts.append(f"humedad {hum}%")
         return ", ".join(parts) + "."
-    except Exception:
+    except:
         return "No pude obtener el clima."
 
 # ---------------- RECORDATORIOS ----------------
-RECORD_FILE  = os.path.join(DATA_DIR, "recordatorios.json")
-TZ           = pytz.timezone("America/Argentina/Buenos_Aires")
-_record_lock = threading.Lock()
+RECORD_FILE = os.path.join(DATA_DIR, "recordatorios.json")
+TZ = pytz.timezone("America/Argentina/Buenos_Aires")
 
 def load_recordatorios():
-    with _record_lock:
-        if not os.path.exists(RECORD_FILE):
-            return []
-        try:
-            with open(RECORD_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return []
+    if not os.path.exists(RECORD_FILE): return []
+    try:
+        with open(RECORD_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return []
 
 def save_recordatorios(lista):
-    with _record_lock:
-        try:
-            with open(RECORD_FILE, "w", encoding="utf-8") as f:
-                json.dump(lista, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            print("Error guardando recordatorios:", e)
+    try:
+        with open(RECORD_FILE, "w", encoding="utf-8") as f:
+            json.dump(lista, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print("Error guardando recordatorios:", e)
 
 def interpretar_fecha_hora(texto):
     ahora = datetime.now(TZ)
+
     m = re.search(r"en (\d+)\s*minutos?", texto)
-    if m: return ahora + timedelta(minutes=int(m.group(1)))
+    if m:
+        return ahora + timedelta(minutes=int(m.group(1)))
+
     m = re.search(r"en (\d+)\s*horas?", texto)
-    if m: return ahora + timedelta(hours=int(m.group(1)))
+    if m:
+        return ahora + timedelta(hours=int(m.group(1)))
+
     m = re.search(r"mañana a las (\d{1,2})(?::(\d{2}))?", texto)
     if m:
-        hora   = int(m.group(1))
+        hora = int(m.group(1))
         minuto = int(m.group(2)) if m.group(2) else 0
-        return (ahora + timedelta(days=1)).replace(hour=hora, minute=minuto, second=0, microsecond=0)
+        mañana = (ahora + timedelta(days=1)).replace(hour=hora, minute=minuto, second=0, microsecond=0)
+        return mañana
+
     m = re.search(r"a las (\d{1,2}):(\d{2})", texto)
     if m:
-        posible = ahora.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0)
-        if posible <= ahora: posible += timedelta(days=1)
+        hora = int(m.group(1))
+        minuto = int(m.group(2))
+        posible = ahora.replace(hour=hora, minute=minuto, second=0, microsecond=0)
+        if posible <= ahora:
+            posible = posible + timedelta(days=1)
         return posible
+
     m = re.search(r"el (\d{1,2}) de (\w+) a las (\d{1,2})(?::(\d{2}))?", texto)
     if m:
-        meses = {"enero":1,"febrero":2,"marzo":3,"abril":4,"mayo":5,"junio":6,
-                 "julio":7,"agosto":8,"septiembre":9,"octubre":10,"noviembre":11,"diciembre":12}
-        mes = meses.get(m.group(2).lower())
+        dia = int(m.group(1))
+        mes_texto = m.group(2).lower()
+        hora = int(m.group(3))
+        minuto = int(m.group(4)) if m.group(4) else 0
+        meses = {
+            "enero":1,"febrero":2,"marzo":3,"abril":4,"mayo":5,"junio":6,
+            "julio":7,"agosto":8,"septiembre":9,"octubre":10,"noviembre":11,"diciembre":12
+        }
+        mes = meses.get(mes_texto)
         if mes:
+            año = ahora.year
             try:
-                candidato = TZ.localize(datetime(ahora.year, mes, int(m.group(1)),
-                                                  int(m.group(3)), int(m.group(4) or 0)))
+                candidato = datetime(año, mes, dia, hora, minuto)
+                candidato = TZ.localize(candidato)
             except Exception:
                 return None
             if candidato <= ahora:
-                try: candidato = TZ.localize(datetime(ahora.year+1, mes, int(m.group(1)),
-                                                       int(m.group(3)), int(m.group(4) or 0)))
-                except Exception: return None
+                try:
+                    candidato = datetime(año+1, mes, dia, hora, minuto)
+                    candidato = TZ.localize(candidato)
+                except:
+                    return None
             return candidato
+
     return None
 
 def agregar_recordatorio(usuario, motivo_texto, fecha_hora_dt):
     if fecha_hora_dt.tzinfo is None:
         fecha_hora_dt = fecha_hora_dt.replace(tzinfo=TZ)
     lista = load_recordatorios()
-    lista.append({"usuario": usuario, "motivo": motivo_texto.strip(),
-                  "cuando": fecha_hora_dt.strftime("%Y-%m-%d %H:%M:%S")})
+    lista.append({
+        "usuario": usuario,
+        "motivo": motivo_texto.strip(),
+        "cuando": fecha_hora_dt.strftime("%Y-%m-%d %H:%M:%S")
+    })
     save_recordatorios(lista)
 
 def listar_recordatorios(usuario):
-    return [r for r in load_recordatorios() if r.get("usuario") == usuario]
+    lista = load_recordatorios()
+    return [r for r in lista if r.get("usuario") == usuario]
 
 def borrar_recordatorios(usuario):
-    save_recordatorios([r for r in load_recordatorios() if r.get("usuario") != usuario])
+    lista = load_recordatorios()
+    lista = [r for r in lista if r.get("usuario") != usuario]
+    save_recordatorios(lista)
 
 def monitor_recordatorios():
     while True:
         try:
-            lista, ahora, restantes = load_recordatorios(), datetime.now(TZ), []
+            lista = load_recordatorios()
+            ahora = datetime.now(TZ)
+            restantes = []
             for r in lista:
                 try:
-                    cuando = TZ.localize(datetime.strptime(r["cuando"], "%Y-%m-%d %H:%M:%S"))
+                    cuando = datetime.strptime(r["cuando"], "%Y-%m-%d %H:%M:%S")
+                    cuando = TZ.localize(cuando)
                 except Exception:
                     try:
                         cuando = datetime.fromisoformat(r["cuando"])
-                        if cuando.tzinfo is None: cuando = TZ.localize(cuando)
-                    except Exception: continue
+                        if cuando.tzinfo is None:
+                            cuando = TZ.localize(cuando)
+                    except:
+                        continue
                 if cuando <= ahora:
-                    aviso_txt = f"⏰ Tenés un recordatorio: {r.get('motivo','(sin motivo)')}"
-                    try: guardar_en_historial(r.get("usuario","anon"),
-                                              f"[recordatorio] {r.get('motivo','')}", aviso_txt)
-                    except Exception: pass
-                    print(aviso_txt)
+                    usuario = r.get("usuario", "anon")
+                    motivo = r.get("motivo", "(sin motivo)")
+                    aviso_texto = f"⏰ Tenés un recordatorio: {motivo}"
+                    try:
+                        guardar_en_historial(usuario, f"[recordatorio] {motivo}", aviso_texto)
+                    except Exception:
+                        pass
+                    print(aviso_texto)
                 else:
                     restantes.append(r)
             save_recordatorios(restantes)
@@ -323,23 +314,6 @@ def monitor_recordatorios():
 
 threading.Thread(target=monitor_recordatorios, daemon=True).start()
 
-# ---------------- LIMPIEZA PERIÓDICA DE TEMP ----------------
-def limpiar_temp_periodico():
-    while True:
-        time.sleep(1800)
-        limite = time.time() - 3600
-        for directorio in [TEMP_DIR, "temp"]:
-            try:
-                for nombre in os.listdir(directorio):
-                    ruta = os.path.join(directorio, nombre)
-                    try:
-                        if os.path.isfile(ruta) and os.path.getmtime(ruta) < limite:
-                            os.remove(ruta)
-                    except Exception: pass
-            except Exception: pass
-
-threading.Thread(target=limpiar_temp_periodico, daemon=True).start()
-
 # ---------------- LEARN FROM MESSAGE ----------------
 def learn_from_message(usuario, mensaje, respuesta):
     try:
@@ -348,8 +322,8 @@ def learn_from_message(usuario, mensaje, respuesta):
             memory[usuario] = {"temas": {}, "mensajes": [], "ultima_interaccion": None}
         memory[usuario]["mensajes"].append({"usuario": str(mensaje), "foschi": str(respuesta)})
         memory[usuario]["mensajes"] = memory[usuario]["mensajes"][-200:]
-        memory[usuario]["ultima_interaccion"] = (
-            datetime.now(pytz.timezone("America/Argentina/Buenos_Aires")).strftime("%d/%m/%Y %H:%M:%S"))
+        ahora = datetime.now(pytz.timezone("America/Argentina/Buenos_Aires"))
+        memory[usuario]["ultima_interaccion"] = ahora.strftime("%d/%m/%Y %H:%M:%S")
         for palabra in str(mensaje).lower().split():
             if len(palabra) > 3:
                 memory[usuario]["temas"][palabra] = memory[usuario]["temas"].get(palabra, 0) + 1
@@ -359,23 +333,27 @@ def learn_from_message(usuario, mensaje, respuesta):
 
 # ---------------- DICTADO A WORD ----------------
 @app.route("/dictado_word", methods=["POST"])
-@limiter.limit("30 per hour")
 def dictado_word():
-    data  = request.json or {}
+    data = request.json
     texto = data.get("texto", "").strip()
+
     if not texto:
         return jsonify({"ok": False, "error": "Texto vacío"})
+
     nombre = f"dictado_{uuid.uuid4().hex}.docx"
-    ruta   = os.path.join(TEMP_DIR, nombre)
-    doc    = DocxDocument()
+    ruta = os.path.join(TEMP_DIR, nombre)
+
+    doc = DocxDocument()
     doc.add_heading("Dictado Foschi IA", 0)
     doc.add_paragraph(texto)
     doc.save(ruta)
 
     @after_this_request
     def remove_file(response):
-        try: os.remove(ruta)
-        except Exception: pass
+        try:
+            os.remove(ruta)
+        except:
+            pass
         return response
 
     return send_file(ruta, as_attachment=True)
@@ -385,159 +363,210 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
 
     if not usuario_premium(usuario) and not es_superusuario(usuario):
         if len(mensaje) > 200:
-            return {"texto": ("🔒 Esta función es solo para usuarios Premium.\n\n"
-                              "💎 Activá Foschi IA Premium desde el botón superior para seguir."),
-                    "imagenes": [], "borrar_historial": False}
+            return {
+                "texto": "🔒 Esta función es solo para usuarios Premium.\n\n💎 Activá Foschi IA Premium desde el botón superior para seguir.",
+                "imagenes": [],
+                "borrar_historial": False
+            }
 
     if not isinstance(mensaje, str):
         mensaje = str(mensaje)
+
     mensaje_lower = mensaje.lower().strip()
 
-    # RECORDATORIOS
     try:
-        if mensaje_lower in ["mis recordatorios","lista de recordatorios","ver recordatorios"]:
+        if mensaje_lower in ["mis recordatorios", "lista de recordatorios", "ver recordatorios"]:
             recs = listar_recordatorios(usuario)
             if not recs:
-                return {"texto":"📭 No tenés recordatorios pendientes.","imagenes":[],"borrar_historial":False}
+                return {"texto": "📭 No tenés recordatorios pendientes.", "imagenes": [], "borrar_historial": False}
             texto = "📌 Tus recordatorios:\n" + "\n".join([f"- {r['motivo']} → {r['cuando']}" for r in recs])
-            return {"texto":texto,"imagenes":[],"borrar_historial":False}
+            return {"texto": texto, "imagenes": [], "borrar_historial": False}
+
         if "borrar recordatorios" in mensaje_lower or "eliminar recordatorios" in mensaje_lower:
             borrar_recordatorios(usuario)
-            return {"texto":"🗑️ Listo, eliminé todos tus recordatorios.","imagenes":[],"borrar_historial":False}
-        if mensaje_lower.startswith(("recordame","haceme acordar","avisame","recordá")):
+            return {"texto": "🗑️ Listo, eliminé todos tus recordatorios.", "imagenes": [], "borrar_historial": False}
+
+        if mensaje_lower.startswith(("recordame", "haceme acordar", "avisame", "recordá")):
             fecha_hora = interpretar_fecha_hora(mensaje_lower)
             if fecha_hora is None:
-                return {"texto":"⏰ Decime cuándo: ejemplo 'mañana a las 9', 'en 15 minutos' o 'el 5 de diciembre a las 18'.","imagenes":[],"borrar_historial":False}
+                return {"texto": "⏰ Decime cuándo: ejemplo 'mañana a las 9', 'en 15 minutos' o 'el 5 de diciembre a las 18'.", "imagenes": [], "borrar_historial": False}
             motivo = mensaje
-            for p in ["recordame","haceme acordar","avisame","recordá"]:
-                motivo = re.sub(p,"",motivo,flags=re.IGNORECASE).strip()
-            if not motivo: motivo = "Recordatorio"
+            for p in ["recordame", "haceme acordar", "avisame", "recordá"]:
+                motivo = re.sub(p, "", motivo, flags=re.IGNORECASE).strip()
+            if not motivo:
+                motivo = "Recordatorio"
             agregar_recordatorio(usuario, motivo, fecha_hora)
-            return {"texto":f"✅ Listo, te lo recuerdo el {fecha_hora.strftime('%d/%m %H:%M')}.","imagenes":[],"borrar_historial":False}
+            return {"texto": f"✅ Listo, te lo recuerdo el {fecha_hora.strftime('%d/%m %H:%M')}.", "imagenes": [], "borrar_historial": False}
     except Exception as e:
         print("Error en manejo de recordatorios:", e)
 
-    # BORRAR HISTORIAL
-    if any(p in mensaje_lower for p in ["borrar historial","limpiar historial","reset historial"]):
+    if any(p in mensaje_lower for p in ["borrar historial", "limpiar historial", "reset historial"]):
         path = os.path.join(DATA_DIR, f"{usuario}.json")
         if os.path.exists(path): os.remove(path)
         memory = load_json(MEMORY_FILE)
         if usuario in memory:
             memory[usuario]["mensajes"] = []
             save_json(MEMORY_FILE, memory)
-        return {"texto":"✅ Historial borrado correctamente.","imagenes":[],"borrar_historial":True}
+        return {"texto": "✅ Historial borrado correctamente.", "imagenes": [], "borrar_historial": True}
 
-    # FECHA / HORA
-    if any(p in mensaje_lower for p in ["qué día","que día","qué fecha","que fecha",
-                                         "qué hora","que hora","día es hoy","fecha hoy"]):
+    if any(p in mensaje_lower for p in ["qué día", "que día", "qué fecha", "que fecha", "qué hora", "que hora", "día es hoy", "fecha hoy"]):
         texto = fecha_hora_en_es()
         learn_from_message(usuario, mensaje, texto)
-        return {"texto":texto,"imagenes":[],"borrar_historial":False}
+        return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
-    # CLIMA
     if "clima" in mensaje_lower:
         ciudad_match = re.search(r"clima en ([a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+)", mensaje_lower)
         ciudad = ciudad_match.group(1).strip() if ciudad_match else None
-        texto  = obtener_clima(ciudad=ciudad, lat=lat, lon=lon)
+        texto = obtener_clima(ciudad=ciudad, lat=lat, lon=lon)
         learn_from_message(usuario, mensaje, texto)
-        return {"texto":texto,"imagenes":[],"borrar_historial":False}
+        return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
-    # NOTICIAS
-    if any(word in mensaje_lower for word in ["presidente","actualidad","noticias",
-                                               "quién es","últimas noticias","evento actual"]):
+    if any(word in mensaje_lower for word in ["presidente", "actualidad", "noticias", "quién es", "últimas noticias", "evento actual"]):
         resultados = []
         if GOOGLE_API_KEY and GOOGLE_CSE_ID:
             try:
-                url = (f"https://www.googleapis.com/customsearch/v1"
-                       f"?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}"
-                       f"&q={urllib.parse.quote(mensaje)}&sort=date")
-                r    = HTTPS.get(url, timeout=5)
+                url = (
+                    f"https://www.googleapis.com/customsearch/v1"
+                    f"?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}"
+                    f"&q={urllib.parse.quote(mensaje)}&sort=date"
+                )
+                r = HTTPS.get(url, timeout=5)
                 data = r.json()
-                for item in data.get("items",[])[:5]:
-                    snippet = item.get("snippet","").strip()
-                    if snippet and snippet not in resultados: resultados.append(snippet)
+                for item in data.get("items", [])[:5]:
+                    snippet = item.get("snippet", "").strip()
+                    if snippet and snippet not in resultados:
+                        resultados.append(snippet)
             except Exception as e:
                 print("Error al obtener noticias:", e)
+
         if resultados:
+            texto_bruto = " ".join(resultados)
             try:
-                prompt = (f"Tengo estos fragmentos de texto recientes: {' '.join(resultados)}\n\n"
-                          f"Respondé a la pregunta: '{mensaje}'. Usá un tono natural y directo en español "
-                          f"argentino, sin frases como 'según los textos'. Contestá con una sola oración clara.")
-                resp  = client.chat.completions.create(model="gpt-4-turbo",
-                            messages=[{"role":"user","content":prompt}], temperature=0.5, max_tokens=120)
+                client = OpenAI(api_key=OPENAI_API_KEY)
+                prompt = (
+                    f"Tengo estos fragmentos de texto recientes: {texto_bruto}\n\n"
+                    f"Respondé a la pregunta: '{mensaje}'. "
+                    f"Usá un tono natural y directo en español argentino, sin frases como "
+                    f"'según los textos', 'según los fragmentos' o 'de acuerdo a las fuentes'. "
+                    f"Contestá con una sola oración clara y actualizada. Si no hay información suficiente, decílo sin inventar."
+                )
+                resp = client.chat.completions.create(
+                    model="gpt-4-turbo",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.5,
+                    max_tokens=120
+                )
                 texto = resp.choices[0].message.content.strip()
-            except Exception:
+            except Exception as e:
                 texto = "No pude generar la respuesta con OpenAI."
         else:
             texto = "No pude obtener información actualizada en este momento."
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
-    # QUIÉN CREÓ
-    if any(p in mensaje_lower for p in ["quién te creó","quien te creo","quién te hizo","quien te hizo",
-            "quién te programó","quien te programo","quién te inventó","quien te invento",
-            "quién te desarrolló","quien te desarrollo","quién te construyó","quien te construyo"]):
+        learn_from_message(usuario, mensaje, texto)
+        return {"texto": texto, "imagenes": [], "borrar_historial": False}
+
+    if any(p in mensaje_lower for p in [
+        "quién te creó", "quien te creo", "quién te hizo", "quien te hizo",
+        "quién te programó", "quien te programo", "quién te inventó", "quien te invento",
+        "quién te desarrolló", "quien te desarrollo", "quién te construyó", "quien te construyo"
+    ]):
         texto = "Fui creada por Gustavo Enrique Foschi, el mejor 😎."
         learn_from_message(usuario, mensaje, texto)
-        return {"texto":texto,"imagenes":[],"borrar_historial":False}
+        return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
-    # DEPORTES
-    if any(p in mensaje_lower for p in ["resultado","marcador","ganó","empató","perdió",
-            "partido","deporte","fútbol","futbol","nba","tenis","f1","formula 1","motogp"]):
+    if any(p in mensaje_lower for p in [
+        "resultado", "marcador", "ganó", "empató", "perdió",
+        "partido", "deporte", "fútbol", "futbol", "nba", "tenis", "f1", "formula 1", "motogp"
+    ]):
         resultados = []
         if GOOGLE_API_KEY and GOOGLE_CSE_ID:
             try:
-                url = (f"https://www.googleapis.com/customsearch/v1"
-                       f"?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}"
-                       f"&q={urllib.parse.quote(mensaje+' resultados deportivos actualizados')}&sort=date")
-                r    = HTTPS.get(url, timeout=5)
+                url = (
+                    f"https://www.googleapis.com/customsearch/v1"
+                    f"?key={GOOGLE_API_KEY}&cx={GOOGLE_CSE_ID}"
+                    f"&q={urllib.parse.quote(mensaje + ' resultados deportivos actualizados')}"
+                    f"&sort=date"
+                )
+                r = HTTPS.get(url, timeout=5)
                 data = r.json()
-                for item in data.get("items",[])[:5]:
-                    snippet = item.get("snippet","").strip()
-                    if snippet and snippet not in resultados: resultados.append(snippet)
+                for item in data.get("items", [])[:5]:
+                    snippet = item.get("snippet", "").strip()
+                    if snippet and snippet not in resultados:
+                        resultados.append(snippet)
             except Exception as e:
                 print("Error al obtener resultados deportivos:", e)
+
         if resultados:
+            texto_bruto = " ".join(resultados)
             try:
-                prompt = (f"Tengo estos fragmentos recientes sobre deportes: {' '.join(resultados)}\n\n"
-                          f"Respondé brevemente la consulta '{mensaje}'. Usá un tono natural, "
-                          f"tipo boletín deportivo argentino, en una sola oración clara.")
-                resp  = client.chat.completions.create(model="gpt-4-turbo",
-                            messages=[{"role":"user","content":prompt}], temperature=0.5, max_tokens=150)
+                client = OpenAI(api_key=OPENAI_API_KEY)
+                prompt = (
+                    f"Tengo estos fragmentos recientes sobre deportes: {texto_bruto}\n\n"
+                    f"Respondé brevemente la consulta '{mensaje}' con los resultados deportivos actuales. "
+                    f"Usá un tono natural, tipo boletín deportivo argentino, sin frases como 'según los textos'. "
+                    f"Respondé en una sola oración clara."
+                )
+                resp = client.chat.completions.create(
+                    model="gpt-4-turbo",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.5,
+                    max_tokens=150
+                )
                 texto = resp.choices[0].message.content.strip()
-            except Exception:
+            except Exception as e:
                 texto = "No pude generar la respuesta deportiva."
         else:
             texto = "No pude encontrar resultados deportivos recientes en este momento."
-        learn_from_message(usuario, mensaje, texto)
-        return {"texto":texto,"imagenes":[],"borrar_historial":False}
 
-    # RESPUESTA GENERAL
+        learn_from_message(usuario, mensaje, texto)
+        return {"texto": texto, "imagenes": [], "borrar_historial": False}
+
     try:
-        memoria  = load_json(MEMORY_FILE)
-        historial = memoria.get(usuario,{}).get("mensajes",[])[-max_hist:]
-        resumen   = " ".join([m["usuario"]+": "+m["foschi"] for m in historial[-3:]]) if historial else ""
+        memoria = load_json(MEMORY_FILE)
+        historial = memoria.get(usuario, {}).get("mensajes", [])[-max_hist:]
+        resumen = " ".join([m["usuario"] + ": " + m["foschi"] for m in historial[-3:]]) if historial else ""
+
+        client = OpenAI(api_key=OPENAI_API_KEY)
+
         prompt_messages = [
-            {"role":"system","content":(
-                "Sos FOSCHI IA, una inteligencia amable, directa y con humor ligero. "
-                "Tus respuestas deben ser claras, ordenadas y sonar naturales en español argentino. "
-                "Si el usuario pide información o ayuda técnica, explicá paso a paso y sin mezclar temas. "
-                f"Resumen de últimas interacciones: {resumen if resumen else 'ninguna.'}")},
-            {"role":"user","content":mensaje},
+            {
+                "role": "system",
+                "content": (
+                    "Sos FOSCHI IA, una inteligencia amable, directa y con humor ligero. "
+                    "Tus respuestas deben ser claras, ordenadas y sonar naturales en español argentino. "
+                    "Si el usuario pide información o ayuda técnica, explicá paso a paso y sin mezclar temas. "
+                    f"Resumen de últimas interacciones: {resumen if resumen else 'ninguna.'}"
+                )
+            },
+            {"role": "user", "content": mensaje}
         ]
-        resp  = client.chat.completions.create(model="gpt-4-turbo", messages=prompt_messages,
-                                               temperature=0.7, max_tokens=700)
+
+        resp = client.chat.completions.create(
+            model="gpt-4-turbo",
+            messages=prompt_messages,
+            temperature=0.7,
+            max_tokens=700
+        )
+
         texto = resp.choices[0].message.content.strip()
-        texto = hacer_links_clicleables(texto)
+
     except Exception as e:
         texto = f"No pude generar respuesta: {e}"
 
-    aviso = aviso_vencimiento(usuario)
-    if aviso: texto += "\n\n" + aviso
-    learn_from_message(usuario, mensaje, texto)
-    return {"texto":texto,"imagenes":[],"borrar_historial":False}
+    texto = hacer_links_clicleables(texto)
 
-# ---------------- HTML TEMPLATE (idéntico al original) ----------------
+    aviso = aviso_vencimiento(usuario)
+    if aviso:
+        texto += "\n\n" + aviso
+
+    learn_from_message(usuario, mensaje, texto)
+    return {
+        "texto": texto,
+        "imagenes": [],
+        "borrar_historial": False
+    }
+
+# ---------------- HTML TEMPLATE ----------------
 HTML_TEMPLATE = """  
 <!doctype html>
 <html>
@@ -545,8 +574,8 @@ HTML_TEMPLATE = """
 <title>{{APP_NAME}}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-body{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background:#000814; color:#00eaff; margin:0; padding:0; display:flex; flex-direction:column; height:100vh; overflow:hidden; text-shadow:0 0 6px #00eaff; }
-#header{ display:flex; align-items:center; justify-content:space-between; padding:8px 16px; background: linear-gradient(#000814,#00111a); flex-shrink:0; position:sticky; top:0; z-index:10; box-shadow:0 0 12px #00eaff66; }
+body{ font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif; background:#000814; color:#00eaff; margin:0; padding:0; display:flex; flex-direction:column; height:100vh; overflow:hidden; text-shadow:0 0 6px #00eaff; }
+#header{ display:flex; align-items:center; justify-content:space-between; padding:8px 16px; background:linear-gradient(#000814,#00111a); flex-shrink:0; position:sticky; top:0; z-index:10; box-shadow:0 0 12px #00eaff66; }
 #leftButtons{ display:flex; align-items:center; gap:12px; }
 #rightButtons{ display:flex; align-items:center; gap:8px; }
 .separator{ border-left:1px solid #00eaff55; height:32px; margin:0 8px; }
@@ -559,12 +588,16 @@ body.day button{ background:#ffffff !important; color:#000000 !important; border
 body.day input{ background:#ffffff !important; color:#000000 !important; border:1px solid #000000 !important; box-shadow:none !important; }
 body.day #premiumBtn{ animation:none; font-weight:600; }
 #header button:hover{ background:#003547; box-shadow:0 0 14px #00eaff; }
-#premiumBtn{ animation: neonGlow 1.5s ease-in-out infinite alternate; }
-@keyframes neonGlow { 0% { box-shadow: 0 0 8px #00eaff, 0 0 12px #00eaff, 0 0 16px #00eaff; color:#00eaff; } 50% { box-shadow: 0 0 12px #00ffff, 0 0 20px #00ffff, 0 0 28px #00ffff; color:#00ffff; } 100% { box-shadow: 0 0 8px #00eaff, 0 0 12px #00eaff, 0 0 16px #00eaff; color:#00eaff; } }
-#logo{ width:120px; cursor:pointer; transition: transform 0.5s, filter 0.5s; filter: drop-shadow(0 0 12px #00eaff); }
+#premiumBtn{ animation:neonGlow 1.5s ease-in-out infinite alternate; }
+@keyframes neonGlow{
+  0%{box-shadow:0 0 8px #00eaff,0 0 12px #00eaff,0 0 16px #00eaff;color:#00eaff;}
+  50%{box-shadow:0 0 12px #00ffff,0 0 20px #00ffff,0 0 28px #00ffff;color:#00ffff;}
+  100%{box-shadow:0 0 8px #00eaff,0 0 12px #00eaff,0 0 16px #00eaff;color:#00eaff;}
+}
+#logo{ width:120px; cursor:pointer; transition:transform 0.5s,filter 0.5s; filter:drop-shadow(0 0 12px #00eaff); }
 #logo:hover{ transform:scale(1.2) rotate(6deg); filter:drop-shadow(0 0 20px #00eaff); }
-#chat{ flex:1; overflow-y:auto; padding:10px; background: linear-gradient(#00111a,#000814); border-top:2px solid #00eaff44; border-bottom:2px solid #00eaff44; box-shadow: inset 0 0 15px #00eaff55; padding-bottom:120px; }
-.message{ margin:5px 0; padding:8px 12px; border-radius:15px; max-width:80%; word-wrap:break-word; opacity:0; transition:opacity 0.5s, box-shadow 0.5s, background 0.5s; font-size:15px; }
+#chat{ flex:1; overflow-y:auto; padding:10px; background:linear-gradient(#00111a,#000814); border-top:2px solid #00eaff44; border-bottom:2px solid #00eaff44; box-shadow:inset 0 0 15px #00eaff55; padding-bottom:120px; }
+.message{ margin:5px 0; padding:8px 12px; border-radius:15px; max-width:80%; word-wrap:break-word; opacity:0; transition:opacity 0.5s,box-shadow 0.5s,background 0.5s; font-size:15px; }
 .message.show{ opacity:1; }
 .user{ background:rgba(51,0,255,0.3); color:#b4b7ff; margin-left:auto; text-align:right; border:1px solid #4455ff; box-shadow:0 0 8px #3344ff; }
 .ai{ background:rgba(0,255,255,0.2); color:#00eaff; margin-right:auto; text-align:left; border:1px solid #00eaff; box-shadow:0 0 10px #00eaff; }
@@ -583,7 +616,7 @@ body.day #clipBtn:hover{ background:#f0f0f0; }
 #adjuntos_menu button{ display:block; width:160px; margin:6px; text-align:left; }
 .hidden_file_input{ display:none; }
 #premiumMenu button{ display:block; width:120px; margin:4px 0; text-align:left; }
-@media (max-width:600px){ #inputBar input[type=text]{ font-size:18px; padding:12px; } #inputBar button{ font-size:16px; padding:10px; } #logo{ width:140px; } }
+@media(max-width:600px){ #inputBar input[type=text]{ font-size:18px; padding:12px; } #inputBar button{ font-size:16px; padding:10px; } #logo{ width:140px; } }
 body.day .user{ background:#e9e9e9; color:#000000; border:1px solid #000000; box-shadow:none; }
 body.day .ai{ background:#f5f5f5; color:#000000; border:1px solid #000000; box-shadow:none; }
 body.day .ai a, body.day .user a{ color:#000000; }
@@ -594,8 +627,69 @@ body.day .ai a, body.day .user a{ color:#000000; }
 .wave{ width:6px; height:20px; background:#00eaff; animation:wave 1s infinite ease-in-out; border-radius:4px; }
 .wave:nth-child(2){animation-delay:0.1s;} .wave:nth-child(3){animation-delay:0.2s;} .wave:nth-child(4){animation-delay:0.3s;} .wave:nth-child(5){animation-delay:0.4s;}
 @keyframes wave{ 0%,100%{height:10px;} 50%{height:40px;} }
+
+/* =============================== */
+/* === WAKE WORD INDICATOR ======= */
+/* =============================== */
+#wakeIndicator {
+  position: fixed;
+  bottom: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  z-index: 999;
+  pointer-events: none;
+}
+#wakeRing {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #00eaff55, transparent 70%);
+  border: 3px solid #00eaff;
+  box-shadow: 0 0 24px #00eaff, 0 0 48px #00eaff88;
+  animation: wakeRingPulse 1s ease-in-out infinite;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+}
+@keyframes wakeRingPulse {
+  0%   { transform: scale(1);    box-shadow: 0 0 16px #00eaff, 0 0 32px #00eaff44; }
+  50%  { transform: scale(1.15); box-shadow: 0 0 32px #00ffff, 0 0 64px #00ffff88; }
+  100% { transform: scale(1);    box-shadow: 0 0 16px #00eaff, 0 0 32px #00eaff44; }
+}
+#wakeLabel {
+  color: #00eaff;
+  font-size: 13px;
+  font-weight: bold;
+  text-shadow: 0 0 8px #00eaff;
+  letter-spacing: 1px;
+  background: rgba(0,8,20,0.8);
+  padding: 3px 10px;
+  border-radius: 8px;
+}
+/* En modo day */
+body.day #wakeRing {
+  background: radial-gradient(circle, #0055ff22, transparent 70%);
+  border-color: #0055ff;
+  box-shadow: 0 0 16px #0055ff;
+  animation: wakeRingPulseDay 1s ease-in-out infinite;
+}
+@keyframes wakeRingPulseDay {
+  0%,100% { box-shadow: 0 0 12px #0055ff; }
+  50%     { box-shadow: 0 0 28px #0088ff; }
+}
+body.day #wakeLabel {
+  color: #0044cc;
+  text-shadow: none;
+  background: rgba(255,255,255,0.9);
+}
 </style>
 </head>
+
 <body>
 <div id="header">
   <div id="leftButtons">
@@ -623,9 +717,18 @@ body.day .ai a, body.day .user a{ color:#000000; }
 </div>
 
 <div id="chat" role="log" aria-live="polite"></div>
+
 <div id="voiceWave" style="position:fixed;bottom:110px;left:50%;transform:translateX(-50%);display:none;gap:4px;z-index:999;">
-  <div class="wave"></div><div class="wave"></div><div class="wave"></div><div class="wave"></div><div class="wave"></div>
+  <div class="wave"></div><div class="wave"></div><div class="wave"></div>
+  <div class="wave"></div><div class="wave"></div>
 </div>
+
+<!-- ===== WAKE WORD INDICATOR (tipo Alexa) ===== -->
+<div id="wakeIndicator">
+  <div id="wakeRing">🎙️</div>
+  <div id="wakeLabel">Te escucho...</div>
+</div>
+
 <div id="dictadoEstado" style="position:fixed;bottom:70px;right:10px;background:#ff0000;color:white;padding:6px 10px;border-radius:6px;display:none;font-weight:bold;z-index:999;">
   🎤 Dictado activo
 </div>
@@ -648,217 +751,491 @@ body.day .ai a, body.day .user a{ color:#000000; }
 </div>
 
 <script>
-let usuario_id="{{usuario_id}}";
-let vozActiva=true,audioActual=null,mensajeActual=null;
-let modoConversacion=false,escuchandoContinuo=false,recognitionConversacion=null,silencioTimer=null;
-let MAX_NO_PREMIUM=5;
-let isPremium={{ 'true' if premium else 'false' }};
-const hoy=new Date().toISOString().slice(0,10);
-let preguntasHoy=parseInt(localStorage.getItem("preguntasHoy_"+hoy)||"0");
-let isSuper={{ 'true' if is_super else 'false' }};
-let rolUsuario="{{ rol or '' }}";
-let nivelUsuario={{ nivel or 0 }};
+// ── WAKE WORD CONFIG ──────────────────────────────────────────────
+// Palabras que activan el asistente (todas las variantes fonéticas)
+const WAKE_WORDS = ["foschi","fosqui","fochi","fochy","foski","foshii","foschy"];
 
-function toggleModoConversacion(){
-  if(!isPremium&&!isSuper){alert("🔒 El modo conversación es Premium");return;}
-  if(!modoConversacion){iniciarConversacion();}else{detenerConversacion();}
+// ── ESTADO GLOBAL ─────────────────────────────────────────────────
+let activadorActivo   = true;
+let recognitionWake   = null;
+let esperandoComando  = false;
+let wakeTimeout       = null;   // apaga el anillo si no habla en 8 segundos
+
+let usuario_id        = "{{usuario_id}}";
+let vozActiva         = true, audioActual = null, mensajeActual = null;
+let modoConversacion  = false, escuchandoContinuo = false;
+let recognitionConversacion = null, silencioTimer = null;
+let MAX_NO_PREMIUM    = 5;
+let isPremium         = {{ 'true' if premium else 'false' }};
+const hoy             = new Date().toISOString().slice(0,10);
+let preguntasHoy      = parseInt(localStorage.getItem("preguntasHoy_"+hoy)||"0");
+let isSuper           = {{ 'true' if is_super else 'false' }};
+let rolUsuario        = "{{ rol or '' }}";
+let nivelUsuario      = {{ nivel or 0 }};
+
+// ── WAKE WORD: funciones de UI ────────────────────────────────────
+function mostrarAnillo(label) {
+  const el = document.getElementById("wakeIndicator");
+  document.getElementById("wakeLabel").textContent = label || "Te escucho...";
+  el.style.display = "flex";
 }
-function iniciarConversacion(){
-  if(!('webkitSpeechRecognition' in window)&&!('SpeechRecognition' in window)){alert("Tu navegador no soporta conversación por voz");return;}
-  document.getElementById("voiceWave").style.display="flex";
-  const Rec=window.SpeechRecognition||window.webkitSpeechRecognition;
-  recognitionConversacion=new Rec();
-  recognitionConversacion.lang="es-AR";recognitionConversacion.continuous=true;recognitionConversacion.interimResults=false;
-  modoConversacion=true;escuchandoContinuo=true;
-  agregar("🧠 Modo conversación activado","ai");
-  recognitionConversacion.onresult=function(event){
-    let texto=event.results[event.results.length-1][0].transcript;
-    if(texto.length<3)return;if(texto.trim()==="")return;
-    if(audioActual){audioActual.pause();audioActual.currentTime=0;}
-    document.getElementById("mensaje").value=texto;enviar();
-    clearTimeout(silencioTimer);silencioTimer=setTimeout(()=>{console.log("Silencio detectado");},2000);
+function ocultarAnillo() {
+  document.getElementById("wakeIndicator").style.display = "none";
+  clearTimeout(wakeTimeout);
+}
+
+// ── WAKE WORD: detección ──────────────────────────────────────────
+function iniciarActivador() {
+  if(!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)){
+    console.log("Wake word no soportado en este navegador");
+    return;
+  }
+
+  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognitionWake = new Rec();
+  recognitionWake.lang            = "es-AR";
+  recognitionWake.continuous      = true;
+  recognitionWake.interimResults  = true;   // interimResults=true para reaccionar más rápido
+
+  recognitionWake.onresult = function(event) {
+    // Revisar todos los resultados nuevos (finales e intermedios)
+    for(let i = event.resultIndex; i < event.results.length; i++){
+      let texto = event.results[i][0].transcript.toLowerCase().trim();
+
+      // Buscar cualquiera de las variantes del wake word
+      let detectado = WAKE_WORDS.some(w => texto.includes(w));
+
+      if(detectado && !esperandoComando){
+        esperandoComando = true;
+
+        // Parar el reconocimiento de wake word mientras escuchamos el comando
+        recognitionWake.stop();
+
+        // Feedback visual tipo Alexa
+        mostrarAnillo("👂 Te escucho...");
+
+        // Beep de activación (silencioso si el navegador lo bloquea)
+        new Audio("/static/beep.mp3").play().catch(()=>{});
+
+        // Timeout de seguridad: si no habla en 8s, volvemos al modo escucha
+        wakeTimeout = setTimeout(()=>{
+          ocultarAnillo();
+          esperandoComando = false;
+          if(activadorActivo) recognitionWake.start();
+        }, 8000);
+
+        // Escuchar el comando real
+        escucharComando();
+        break;
+      }
+    }
   };
-  recognitionConversacion.onend=function(){if(modoConversacion&&!audioActual){recognitionConversacion.start();}};
+
+  recognitionWake.onend = function() {
+    // Reiniciar automáticamente si no estamos esperando un comando
+    if(activadorActivo && !esperandoComando){
+      try { recognitionWake.start(); } catch(e){}
+    }
+  };
+
+  recognitionWake.onerror = function(e) {
+    // En caso de error (ej: sin micrófono), reintentar en 2 segundos
+    if(activadorActivo && !esperandoComando){
+      setTimeout(()=>{ try { recognitionWake.start(); } catch(ex){} }, 2000);
+    }
+  };
+
+  recognitionWake.start();
+}
+
+// ── WAKE WORD: escuchar el comando después de activarse ───────────
+function escucharComando() {
+  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let recognitionCmd = new Rec();
+
+  recognitionCmd.lang           = "es-AR";
+  recognitionCmd.continuous     = false;
+  recognitionCmd.interimResults = false;
+
+  // Mostrar anillo pulsando mientras espera el comando
+  mostrarAnillo("🎙️ Hablá ahora...");
+
+  recognitionCmd.onresult = function(event) {
+    clearTimeout(wakeTimeout);
+    ocultarAnillo();
+
+    let comando = event.results[0][0].transcript;
+
+    // Mostrar el comando en el chat y enviarlo
+    document.getElementById("mensaje").value = comando;
+    agregar(comando, "user");
+    document.getElementById("mensaje").value = "";
+
+    fetch("/preguntar", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({mensaje: comando, usuario_id: usuario_id})
+    })
+    .then(r => r.json())
+    .then(data => {
+      agregar(data.texto, "ai", data.imagenes);
+      if(data.borrar_historial){ document.getElementById("chat").innerHTML = ""; }
+    })
+    .catch(() => agregar("Error al comunicarse con el servidor.", "ai"))
+    .finally(() => {
+      esperandoComando = false;
+      // Volver a escuchar wake word cuando termina la respuesta
+      if(activadorActivo){
+        // Dar tiempo a que termine el audio antes de reactivar
+        setTimeout(()=>{ try { recognitionWake.start(); } catch(e){} }, 1500);
+      }
+    });
+  };
+
+  recognitionCmd.onerror = function() {
+    clearTimeout(wakeTimeout);
+    ocultarAnillo();
+    esperandoComando = false;
+    if(activadorActivo){ try { recognitionWake.start(); } catch(e){} }
+  };
+
+  recognitionCmd.onend = function() {
+    // Si no se detectó nada (silencio total), volver a wake word
+    if(esperandoComando){
+      clearTimeout(wakeTimeout);
+      ocultarAnillo();
+      esperandoComando = false;
+      if(activadorActivo){ try { recognitionWake.start(); } catch(e){} }
+    }
+  };
+
+  recognitionCmd.start();
+}
+
+// ── MODO CONVERSACIÓN ─────────────────────────────────────────────
+function toggleModoConversacion(){
+  if(!isPremium && !isSuper){ alert("🔒 El modo conversación es Premium"); return; }
+  if(!modoConversacion){ iniciarConversacion(); } else { detenerConversacion(); }
+}
+
+function iniciarConversacion(){
+  if(!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)){
+    alert("Tu navegador no soporta conversación por voz"); return;
+  }
+  document.getElementById("voiceWave").style.display="flex";
+  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognitionConversacion = new Rec();
+  recognitionConversacion.lang = "es-AR";
+  recognitionConversacion.continuous = true;
+  recognitionConversacion.interimResults = false;
+  modoConversacion = true; escuchandoContinuo = true;
+  agregar("🧠 Modo conversación activado","ai");
+
+  recognitionConversacion.onresult = function(event){
+    let texto = event.results[event.results.length-1][0].transcript;
+    if(texto.length < 3 || texto.trim() === "") return;
+    if(audioActual){ audioActual.pause(); audioActual.currentTime = 0; }
+    document.getElementById("mensaje").value = texto;
+    enviar();
+    clearTimeout(silencioTimer);
+    silencioTimer = setTimeout(()=>{ console.log("Silencio detectado"); }, 2000);
+  };
+
+  recognitionConversacion.onend = function(){
+    if(modoConversacion && !audioActual){ recognitionConversacion.start(); }
+  };
+
   recognitionConversacion.start();
 }
+
 function detenerConversacion(){
-  modoConversacion=false;escuchandoContinuo=false;
-  if(recognitionConversacion){recognitionConversacion.stop();recognitionConversacion=null;}
-  document.getElementById("voiceWave").style.display="none";
+  modoConversacion = false; escuchandoContinuo = false;
+  if(recognitionConversacion){ recognitionConversacion.stop(); recognitionConversacion = null; }
+  document.getElementById("voiceWave").style.display = "none";
   agregar("🛑 Modo conversación desactivado","ai");
 }
-function logoClick(){alert("FOSCHI NUNCA MUERE, TRASCIENDE...");}
-function toggleVoz(estado=null){vozActiva=estado!==null?estado:!vozActiva;document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada";}
-function detenerVoz(){if(audioActual){audioActual.pause();audioActual.currentTime=0;audioActual.src="";audioActual.load();audioActual=null;if(mensajeActual)mensajeActual.classList.remove("playing");mensajeActual=null;}}
-function agregar(msg,cls,imagenes=[]){
-  let c=document.getElementById("chat"),div=document.createElement("div");
-  div.className="message "+cls;div.innerHTML=msg;c.appendChild(div);
-  setTimeout(()=>div.classList.add("show"),50);
-  imagenes.forEach(url=>{let img=document.createElement("img");img.src=url;div.appendChild(img);});
-  c.scroll({top:c.scrollHeight,behavior:"smooth"});
-  if(cls==="ai")hablarTexto(msg,div);
+
+// ── HELPERS GENERALES ─────────────────────────────────────────────
+function logoClick(){ alert("FOSCHI NUNCA MUERE, TRASCIENDE..."); }
+
+function toggleVoz(estado=null){
+  vozActiva = estado !== null ? estado : !vozActiva;
+  document.getElementById("vozBtn").textContent = vozActiva ? "🔊 Voz activada" : "🔇 Silenciada";
+}
+
+function detenerVoz(){
+  if(audioActual){
+    audioActual.pause(); audioActual.currentTime = 0;
+    audioActual.src = ""; audioActual.load(); audioActual = null;
+    if(mensajeActual) mensajeActual.classList.remove("playing");
+    mensajeActual = null;
+  }
+}
+
+function agregar(msg, cls, imagenes=[]){
+  let c = document.getElementById("chat"), div = document.createElement("div");
+  div.className = "message "+cls; div.innerHTML = msg;
+  c.appendChild(div);
+  setTimeout(()=> div.classList.add("show"), 50);
+  imagenes.forEach(url=>{ let img = document.createElement("img"); img.src = url; div.appendChild(img); });
+  c.scroll({top: c.scrollHeight, behavior:"smooth"});
+  if(cls === "ai") hablarTexto(msg, div);
   return div;
 }
+
 function checkDailyLimit(){
-  if(!isPremium&&!isSuper&&preguntasHoy>=MAX_NO_PREMIUM){
-    alert(`⚠️ Has alcanzado el límite de ${MAX_NO_PREMIUM} preguntas diarias. Pasá a Premium para más.`);return;
+  if(!isPremium && !isSuper && preguntasHoy >= MAX_NO_PREMIUM){
+    alert(`⚠️ Has alcanzado el límite de ${MAX_NO_PREMIUM} preguntas diarias. Pasá a Premium para más.`);
+    return;
   }
   enviar();
-  if(!isPremium){preguntasHoy++;localStorage.setItem("preguntasHoy_"+hoy,preguntasHoy);}
+  if(!isPremium){ preguntasHoy++; localStorage.setItem("preguntasHoy_"+hoy, preguntasHoy); }
 }
+
 function enviar(){
-  let msg=document.getElementById("mensaje").value.trim();if(!msg)return;
-  agregar(msg,"user");document.getElementById("mensaje").value="";
+  let msg = document.getElementById("mensaje").value.trim(); if(!msg) return;
+  agregar(msg, "user"); document.getElementById("mensaje").value = "";
   fetch("/preguntar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mensaje:msg,usuario_id:usuario_id})})
   .then(r=>r.json())
-  .then(data=>{
-    if(data.limite){agregar(data.texto,"ai");return;}
-    agregar(data.texto,"ai",data.imagenes);
-    if(data.borrar_historial){document.getElementById("chat").innerHTML="";}
-  })
-  .catch(e=>{agregar("Error al comunicarse con el servidor.","ai");console.error(e);});
+  .then(data=>{ agregar(data.texto,"ai",data.imagenes); if(data.borrar_historial){document.getElementById("chat").innerHTML="";} })
+  .catch(e=>{ agregar("Error al comunicarse con el servidor.","ai"); console.error(e); });
 }
-document.getElementById("mensaje").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();checkDailyLimit();}});
-function hablarTexto(texto,div=null){
-  if(!vozActiva)return;
-  if(modoConversacion&&recognitionConversacion){recognitionConversacion.stop();}
+
+document.getElementById("mensaje").addEventListener("keydown", e=>{
+  if(e.key === "Enter"){ e.preventDefault(); checkDailyLimit(); }
+});
+
+function hablarTexto(texto, div=null){
+  if(!vozActiva) return;
+  if(modoConversacion && recognitionConversacion){ recognitionConversacion.stop(); }
   detenerVoz();
-  if(mensajeActual)mensajeActual.classList.remove("playing");
-  if(div)div.classList.add("playing");
-  mensajeActual=div;
-  audioActual=new Audio("/tts?texto="+encodeURIComponent(texto));
-  audioActual.playbackRate=1.25;
-  audioActual.onended=()=>{
-    if(mensajeActual)mensajeActual.classList.remove("playing");
-    mensajeActual=null;
-    if(modoConversacion&&recognitionConversacion){recognitionConversacion.start();}
+  if(mensajeActual) mensajeActual.classList.remove("playing");
+  if(div) div.classList.add("playing");
+  mensajeActual = div;
+  audioActual = new Audio("/tts?texto=" + encodeURIComponent(texto));
+  audioActual.playbackRate = 1.25;
+  audioActual.onended = ()=>{
+    if(mensajeActual) mensajeActual.classList.remove("playing");
+    mensajeActual = null;
+    if(modoConversacion && recognitionConversacion){ recognitionConversacion.start(); }
   };
   audioActual.play().catch(()=>{});
 }
+
 function togglePremiumMenu(){
-  if(isPremium)return;
-  const menu=document.getElementById("premiumMenu");if(!menu)return;
-  menu.style.display=(menu.style.display==="block")?"none":"block";
-  if(menu.style.display==="block"){setTimeout(()=>{window.addEventListener("click",closePremiumMenuOnClickOutside);},50);}
+  if(isPremium) return;
+  const menu = document.getElementById("premiumMenu"); if(!menu) return;
+  menu.style.display = (menu.style.display === "block") ? "none" : "block";
+  if(menu.style.display === "block"){
+    setTimeout(()=>{ window.addEventListener("click", closePremiumMenuOnClickOutside); }, 50);
+  }
 }
+
 function closePremiumMenuOnClickOutside(e){
-  const menu=document.getElementById("premiumMenu");const btn=document.getElementById("premiumBtn");
-  if(!menu.contains(e.target)&&!btn.contains(e.target)){menu.style.display="none";window.removeEventListener('click',closePremiumMenuOnClickOutside);}
+  const menu = document.getElementById("premiumMenu");
+  const btn  = document.getElementById("premiumBtn");
+  if(!menu.contains(e.target) && !btn.contains(e.target)){
+    menu.style.display="none";
+    window.removeEventListener('click', closePremiumMenuOnClickOutside);
+  }
 }
+
 function irPremium(tipo){
   fetch(`/premium?tipo=${tipo}`)
-  .then(r=>{if(r.status===401){openAuth();return null;}return r.json();})
-  .then(data=>{if(data&&data.init_point){window.location.href=data.init_point;}})
+  .then(r=>{ if(r.status===401){ openAuth(); return null; } return r.json(); })
+  .then(data=>{ if(data && data.init_point){ window.location.href = data.init_point; } })
   .catch(err=>console.error(err));
 }
+
 function checkPremium(tipo){
-  if(!isPremium){alert("⚠️ Esta función requiere Premium. Pasá a Premium para usarla.");return;}
-  if(tipo==='audio')document.getElementById('audioInput').click();
-  if(tipo==='doc')document.getElementById('archivo_pdf_word').click();
+  if(!isPremium){ alert("⚠️ Esta función requiere Premium. Pasá a Premium para usarla."); return; }
+  if(tipo==='audio') document.getElementById('audioInput').click();
+  if(tipo==='doc')   document.getElementById('archivo_pdf_word').click();
 }
+
 function toggleAdjuntosMenu(){
-  const m=document.getElementById("adjuntos_menu");
-  m.style.display=m.style.display==="block"?"none":"block";
-  if(m.style.display==="block"){setTimeout(()=>window.addEventListener('click',closeMenuOnClickOutside),50);}
+  const m = document.getElementById("adjuntos_menu");
+  m.style.display = m.style.display === "block" ? "none" : "block";
+  if(m.style.display==="block"){ setTimeout(()=>window.addEventListener('click', closeMenuOnClickOutside), 50); }
 }
+
 function closeMenuOnClickOutside(e){
-  const menu=document.getElementById("adjuntos_menu");const clip=document.getElementById("clipBtn");
-  if(!menu.contains(e.target)&&!clip.contains(e.target)){menu.style.display="none";window.removeEventListener('click',closeMenuOnClickOutside);}
+  const menu = document.getElementById("adjuntos_menu");
+  const clip = document.getElementById("clipBtn");
+  if(!menu.contains(e.target) && !clip.contains(e.target)){
+    menu.style.display="none";
+    window.removeEventListener('click', closeMenuOnClickOutside);
+  }
 }
+
 function verHistorial(){
   fetch("/historial/"+usuario_id).then(r=>r.json()).then(data=>{
     document.getElementById("chat").innerHTML="";
-    if(data.length===0){agregar("No hay historial todavía.","ai");return;}
-    data.slice(-20).forEach(e=>{agregar(`<small>${e.fecha}</small><br>${e.usuario}`,"user");agregar(`<small>${e.fecha}</small><br>${e.foschi}`,"ai");});
+    if(data.length===0){ agregar("No hay historial todavía.","ai"); return; }
+    data.slice(-20).forEach(e=>{
+      agregar(`<small>${e.fecha}</small><br>${e.usuario}`,"user");
+      agregar(`<small>${e.fecha}</small><br>${e.foschi}`,"ai");
+    });
   });
 }
-function borrarPantalla(){detenerVoz();document.getElementById("chat").innerHTML="";}
-function openAuth(){document.getElementById("authModal").style.display="block";}
-function closeAuth(){document.getElementById("authModal").style.display="none";}
+
+function borrarPantalla(){ detenerVoz(); document.getElementById("chat").innerHTML = ""; }
+
+function openAuth(){ document.getElementById("authModal").style.display = "block"; }
+function closeAuth(){ document.getElementById("authModal").style.display = "none"; }
+
 async function login(){
-  const r=await fetch("/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:authEmail.value,password:authPassword.value})});
-  const j=await r.json();if(j.ok)location.reload();else authMsg.innerText=j.msg;
+  const r = await fetch("/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:authEmail.value,password:authPassword.value})});
+  const j = await r.json();
+  if(j.ok) location.reload(); else authMsg.innerText = j.msg;
 }
+
 async function register(){
-  const r=await fetch("/auth/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:authEmail.value,password:authPassword.value})});
-  const j=await r.json();if(j.ok)location.reload();else authMsg.innerText=j.msg;
+  const r = await fetch("/auth/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:authEmail.value,password:authPassword.value})});
+  const j = await r.json();
+  if(j.ok) location.reload(); else authMsg.innerText = j.msg;
 }
+
 function hablar(){
-  if('webkitSpeechRecognition' in window||'SpeechRecognition' in window){
-    const Rec=window.SpeechRecognition||window.webkitSpeechRecognition;
-    const recognition=new Rec();
-    recognition.lang='es-AR';recognition.continuous=false;recognition.interimResults=false;
-    recognition.onresult=function(event){
-      let textoReconocido=event.results[0][0].transcript;let txt=textoReconocido.toLowerCase();
-      if(txt.includes("activar dictado")){iniciarDictado();return;}
-      if(txt.includes("desactivar dictado")){detenerDictado();return;}
-      document.getElementById("mensaje").value=txt;checkDailyLimit();
+  if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window){
+    const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new Rec();
+    recognition.lang='es-AR'; recognition.continuous=false; recognition.interimResults=false;
+    recognition.onresult = function(event){
+      let txt = event.results[0][0].transcript.toLowerCase();
+      if(txt.includes("activar dictado")){ iniciarDictado(); return; }
+      if(txt.includes("desactivar dictado")){ detenerDictado(); return; }
+      document.getElementById("mensaje").value = txt;
+      checkDailyLimit();
     };
-    recognition.onerror=function(e){console.log(e);}
+    recognition.onerror = function(e){ console.log(e); }
     recognition.start();
-  }else{alert("Tu navegador no soporta reconocimiento de voz.");}
+  } else {
+    alert("Tu navegador no soporta reconocimiento de voz.");
+  }
 }
+
 function chequearRecordatorios(){
   fetch("/avisos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({usuario_id})})
-  .then(r=>r.json()).then(data=>{if(Array.isArray(data)&&data.length>0){data.forEach(r=>{agregar(`⏰ Tenés un recordatorio: ${r.motivo||"(sin motivo)"}`,"ai");});}}).catch(e=>console.error(e));
+  .then(r=>r.json())
+  .then(data=>{ if(Array.isArray(data)&&data.length>0){ data.forEach(r=>{ agregar(`⏰ Tenés un recordatorio: ${r.motivo||"(sin motivo)"}`,"ai"); }); } })
+  .catch(e=>console.error(e));
 }
-setInterval(chequearRecordatorios,30000);
+setInterval(chequearRecordatorios, 30000);
 
 /* --- SALUDO INICIAL --- */
-window.onload=function(){
+window.onload = function(){
   agregar("👋 ¡Hola! Bienvenido a Foschi IA","ai");
-  let saludoAudio=new Audio("/tts?texto="+encodeURIComponent("Hola, bienvenido a Foschi IA"));
-  saludoAudio.playbackRate=1.25;
+  let saludoAudio = new Audio("/tts?texto=" + encodeURIComponent("Hola, bienvenido a Foschi IA"));
+  saludoAudio.playbackRate = 1.25;
   saludoAudio.play().catch(()=>{});
+
+  // Wake word: arrancar después de 1.5s para que no compita con el saludo
+  setTimeout(iniciarActivador, 1500);
 };
 
 function toggleDayNight(){
-  const body=document.body;body.classList.toggle("day");
-  const btn=document.getElementById("dayNightBtn");
-  if(btn){btn.textContent=body.classList.contains("day")?"☀️":"🌙";}
+  document.body.classList.toggle("day");
+  const btn = document.getElementById("dayNightBtn");
+  if(btn){ btn.textContent = document.body.classList.contains("day") ? "☀️" : "🌙"; }
 }
 
-// DICTADO
-let dictadoActivo=false,dictadoPausado=false,reconocimiento=null,textoDictado="";
-function toggleDictado(){
-  if(!isPremium&&!isSuper){alert("🔒 Esta función es solo Premium");return;}
-  if(!dictadoActivo){iniciarDictado();return;}
-  if(dictadoActivo&&!dictadoPausado){pausarDictado();return;}
-  if(dictadoActivo&&dictadoPausado){continuarDictado();return;}
+function actualizarEstadoDictado(texto, color){
+  let el = document.getElementById("dictadoEstado");
+  el.innerText = texto; el.style.background = color;
 }
+
+// ── DICTADO PREMIUM ───────────────────────────────────────────────
+let dictadoActivo = false, dictadoPausado = false, reconocimiento = null, textoDictado = "";
+let ultimoTexto = "", ultimoTiempo = 0, ultimoTiempoTexto = Date.now();
+const UMBRAL_PARRAFO = 2000;
+
+function capitalizarTexto(texto){
+  return texto.toLowerCase().replace(/(^\s*\w|[.!?\n]\s*\w)/g, c => c.toUpperCase());
+}
+
+function toggleDictado(){
+  if(!isPremium && !isSuper){ alert("🔒 Esta función es solo Premium"); return; }
+  if(!dictadoActivo){ iniciarDictado(); return; }
+  if(dictadoActivo && !dictadoPausado){ pausarDictado(); return; }
+  if(dictadoActivo && dictadoPausado){ continuarDictado(); return; }
+}
+
 function iniciarDictado(){
-  if(!('webkitSpeechRecognition' in window)){alert("Tu navegador no soporta dictado por voz");return;}
-  reconocimiento=new webkitSpeechRecognition();
-  reconocimiento.lang="es-AR";reconocimiento.continuous=true;reconocimiento.interimResults=true;
-  textoDictado="";dictadoActivo=true;dictadoPausado=false;
-  document.getElementById("dictadoEstado").style.display="block";
-  reconocimiento.onresult=function(event){
-    let parcial="";
-    for(let i=event.resultIndex;i<event.results.length;i++){
-      let trans=event.results[i][0].transcript;let txt=trans.toLowerCase();
-      if(txt.includes("pausar dictado")){pausarDictado();return;}
-      if(txt.includes("continuar dictado")){continuarDictado();return;}
-      if(txt.includes("finalizar dictado")){finalizarDictado();return;}
-      if(event.results[i].isFinal){textoDictado+=trans+" ";}else{parcial+=trans;}
+  if(!('webkitSpeechRecognition' in window)){ alert("Tu navegador no soporta dictado por voz"); return; }
+  reconocimiento = new webkitSpeechRecognition();
+  reconocimiento.lang = "es-AR"; reconocimiento.continuous = true; reconocimiento.interimResults = true;
+  textoDictado = ""; dictadoActivo = true; dictadoPausado = false;
+  document.getElementById("dictadoEstado").style.display = "block";
+  actualizarEstadoDictado("🎤 Escuchando...", "green");
+
+  reconocimiento.onresult = function(event){
+    let parcial = "";
+    for(let i=event.resultIndex; i<event.results.length; i++){
+      let trans = event.results[i][0].transcript;
+      let txt = trans.toLowerCase();
+      if(txt.includes("pausar dictado")){ pausarDictado(); return; }
+      if(txt.includes("continuar dictado")){ continuarDictado(); return; }
+      if(txt.includes("finalizar dictado")){ finalizarDictado(); return; }
+      if(txt.includes("borrar texto")){ textoDictado=""; ultimoTexto=""; document.getElementById("mensaje").value=""; return; }
+      if(txt.includes("enviar mensaje")){ finalizarDictado(); checkDailyLimit(); return; }
+
+      let limpio = trans
+        .replace(/nuevo párrafo/gi,"\n\n").replace(/punto y aparte/gi,"\n\n")
+        .replace(/punto/gi,". ").replace(/coma/gi,", ").replace(/dos puntos/gi,": ")
+        .replace(/punto y coma/gi,"; ").replace(/signo de pregunta/gi,"? ")
+        .replace(/signo de exclamación/gi,"! ")
+        .replace(/pausar dictado|continuar dictado|finalizar dictado/gi,"")
+        .replace(/\s+([.,;:!?])/g,"$1").replace(/\s+/g," ").trim();
+
+      let ahora = Date.now();
+      if(ahora - ultimoTiempoTexto > UMBRAL_PARRAFO) textoDictado += "\n\n";
+      ultimoTiempoTexto = ahora;
+      if(limpio === ultimoTexto && ahora - ultimoTiempo < 2000) return;
+      ultimoTexto = limpio; ultimoTiempo = ahora;
+      if(event.results[i].isFinal){ textoDictado += limpio+" "; } else { parcial += limpio; }
     }
-    document.getElementById("mensaje").value=textoDictado+parcial;
+    document.getElementById("mensaje").value = capitalizarTexto(textoDictado + parcial);
   };
-  // ✅ onend fuera de onresult (bug fix)
-  reconocimiento.onend=function(){if(dictadoActivo&&!dictadoPausado){reconocimiento.start();}};
+
+  // ✅ onend fuera de onresult
+  reconocimiento.onend = function(){
+    if(dictadoActivo && !dictadoPausado){ reconocimiento.start(); }
+  };
+
   reconocimiento.start();
 }
-function pausarDictado(){if(reconocimiento){reconocimiento.stop();}dictadoPausado=true;document.getElementById("dictadoEstado").innerText="⏸️ Dictado pausado";}
-function continuarDictado(){if(!dictadoActivo)return;reconocimiento.start();dictadoPausado=false;document.getElementById("dictadoEstado").innerText="🎤 Dictado activo";}
-function finalizarDictado(){
-  dictadoActivo=false;dictadoPausado=false;
-  if(reconocimiento){reconocimiento.stop();reconocimiento=null;}
-  document.getElementById("dictadoEstado").style.display="none";
-  if(textoDictado.trim().length>0){descargarWordDictado(textoDictado);}
+
+function pausarDictado(){
+  if(reconocimiento) reconocimiento.stop();
+  dictadoPausado = true;
+  actualizarEstadoDictado("⏸️ Dictado pausado","orange");
 }
-function detenerDictado(){finalizarDictado();}
+
+function continuarDictado(){
+  if(!dictadoActivo) return;
+  reconocimiento.start(); dictadoPausado = false;
+  actualizarEstadoDictado("🎤 Escuchando...","green");
+}
+
+function finalizarDictado(){
+  dictadoActivo = false; dictadoPausado = false;
+  if(reconocimiento){ reconocimiento.stop(); reconocimiento = null; }
+  actualizarEstadoDictado("🛑 Finalizado","red");
+  setTimeout(()=>{ document.getElementById("dictadoEstado").style.display="none"; }, 1000);
+  if(textoDictado.trim().length > 0){ descargarWordDictado(textoDictado); }
+}
+
+function detenerDictado(){ finalizarDictado(); }
+
 function descargarWordDictado(texto){
-  fetch("/dictado_word",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({texto:texto})})
-  .then(r=>r.blob()).then(blob=>{let url=window.URL.createObjectURL(blob);let a=document.createElement("a");a.href=url;a.download="dictado_foschi.docx";a.click();});
+  fetch("/dictado_word",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({texto})})
+  .then(r=>r.blob())
+  .then(blob=>{
+    let url = window.URL.createObjectURL(blob);
+    let a = document.createElement("a");
+    a.href = url; a.download = "dictado_foschi.docx"; a.click();
+  });
 }
 </script>
 
@@ -875,6 +1252,7 @@ function descargarWordDictado(texto){
     <button onclick="closeAuth()" style="margin-top:10px;">Cerrar</button>
   </div>
 </div>
+
 </body>
 </html>
 """
@@ -884,23 +1262,19 @@ import mercadopago
 sdk = mercadopago.SDK(os.getenv("MP_ACCESS_TOKEN"))
 
 @app.route("/auth/register", methods=["POST"])
-@limiter.limit("10 per hour")
 def register():
-    data     = request.get_json() or {}
-    email    = data.get("email","").lower().strip()
+    data = request.get_json()
+    email = data.get("email","").lower().strip()
     password = data.get("password","")
-    if not email or not password:
-        return jsonify({"ok":False,"msg":"Email y contraseña requeridos"})
     ok, msg = registrar_usuario(email, password)
     if not ok: return jsonify({"ok":False,"msg":msg})
     session["user_email"] = email
     return jsonify({"ok":True})
 
 @app.route("/auth/login", methods=["POST"])
-@limiter.limit("20 per hour")
 def login():
-    data     = request.get_json() or {}
-    email    = data.get("email","").lower().strip()
+    data = request.get_json()
+    email = data.get("email","").lower().strip()
     password = data.get("password","")
     if not autenticar_usuario(email, password):
         return jsonify({"ok":False,"msg":"Credenciales incorrectas"})
@@ -913,7 +1287,7 @@ def logout():
     return redirect("/")
 
 @app.route("/premium")
-def premium_route():
+def premium():
     usuario = session.get("user_email")
     if not usuario: return jsonify({"error":"No logueado"}), 401
     tipo = request.args.get("tipo","mensual")
@@ -921,9 +1295,11 @@ def premium_route():
         titulo = "Foschi IA Premium Anual (12 meses PAGA 10)"; precio = 100000
     else:
         titulo = "Foschi IA Premium Mensual"; precio = 10000
-    pref = {"items":[{"title":titulo,"quantity":1,"unit_price":precio}],
-            "external_reference":usuario,
-            "notification_url":"https://foschi-ia.onrender.com/webhook/mp"}
+    pref = {
+        "items":[{"title":titulo,"quantity":1,"unit_price":precio}],
+        "external_reference":usuario,
+        "notification_url":"https://foschi-ia.onrender.com/webhook/mp"
+    }
     preference = sdk.preference().create(pref)
     return jsonify(preference["response"])
 
@@ -935,67 +1311,56 @@ def webhook_mp():
     payment_id = data["data"].get("id")
     if not payment_id: return "ok"
     payment = sdk.payment().get(payment_id)
-    info    = payment.get("response",{})
-    mp_merchant = os.getenv("MP_MERCHANT_ID")
-    if mp_merchant and info.get("merchant_account_id") != mp_merchant: return "ok"
+    info = payment.get("response",{})
+    if info.get("merchant_account_id") != os.getenv("MP_MERCHANT_ID"): return "ok"
     if info.get("status") != "approved": return "ok"
     usuario = info.get("external_reference")
     if not usuario: return "ok"
     from pagos import pago_ya_registrado, registrar_pago
     if pago_ya_registrado(str(payment_id)): return "ok"
-    items  = info.get("additional_info",{}).get("items",[])
+    items = info.get("additional_info",{}).get("items",[])
     titulo = items[0]["title"] if items else ""
-    plan   = "anual" if "12" in titulo or "Anual" in titulo else "mensual"
-    monto  = info.get("transaction_amount",0)
+    plan = "anual" if "12" in titulo or "Anual" in titulo else "mensual"
+    monto = info.get("transaction_amount",0)
     activar_premium(usuario, plan)
     registrar_pago(usuario=usuario, monto=monto, plan=plan, payment_id=str(payment_id))
     return "ok"
 
 @app.route("/")
 def index():
-    if "usuario_id" not in session: session["usuario_id"] = str(uuid.uuid4())
+    if "usuario_id" not in session:
+        session["usuario_id"] = str(uuid.uuid4())
     usuario  = session.get("user_email") or session["usuario_id"]
     premium  = usuario_premium(usuario)
     is_super = es_superusuario(usuario)
-    return render_template_string(HTML_TEMPLATE, APP_NAME=APP_NAME, usuario_id=usuario,
-                                  premium=premium, is_super=is_super,
-                                  rol=rol_superusuario(usuario), nivel=nivel_superusuario(usuario))
+    rol      = rol_superusuario(usuario)
+    nivel    = nivel_superusuario(usuario)
+    return render_template_string(
+        HTML_TEMPLATE, APP_NAME=APP_NAME, usuario_id=usuario,
+        premium=premium, is_super=is_super, rol=rol, nivel=nivel
+    )
 
 @app.route("/preguntar", methods=["POST"])
-@limiter.limit("30 per minute")
 def preguntar():
-    data    = request.get_json() or {}
-    mensaje = data.get("mensaje","").strip()
-    if not mensaje:
-        return jsonify({"texto":"Mensaje vacío.","imagenes":[],"borrar_historial":False})
-    if "usuario_id" not in session: session["usuario_id"] = str(uuid.uuid4())
+    data    = request.get_json()
+    mensaje = data.get("mensaje","")
+    if "usuario_id" not in session:
+        session["usuario_id"] = str(uuid.uuid4())
     usuario = session.get("user_email") or session["usuario_id"]
-
-    # Límite diario real en backend
-    if not puede_preguntar(usuario):
-        return jsonify({"texto":(f"⚠️ Alcanzaste el límite de {MAX_DAILY_FREE} preguntas diarias. "
-                                  "💎 Pasá a Premium para preguntas ilimitadas."),
-                        "imagenes":[],"borrar_historial":False,"limite":True})
-
     lat = data.get("lat"); lon = data.get("lon")
     tz  = data.get("timeZone") or data.get("time_zone") or None
     respuesta = generar_respuesta(mensaje, usuario, lat=lat, lon=lon, tz=tz)
-    texto_hist = (respuesta["texto"] if isinstance(respuesta,dict) and "texto" in respuesta
-                  else str(respuesta))
-    guardar_en_historial(usuario, mensaje, texto_hist)
+    texto_para_hist = (respuesta["texto"] if isinstance(respuesta,dict) and "texto" in respuesta else str(respuesta))
+    guardar_en_historial(usuario, mensaje, texto_para_hist)
     return jsonify(respuesta)
 
 @app.route("/historial/<usuario_id>")
 def historial(usuario_id):
-    usuario_sesion = session.get("user_email") or session.get("usuario_id","")
-    if usuario_id != usuario_sesion and not es_superusuario(usuario_sesion):
-        return jsonify([]), 403
     return jsonify(cargar_historial(usuario_id))
 
 @app.route("/tts")
-@limiter.limit("60 per minute")
 def tts():
-    texto = request.args.get("texto","")[:500]
+    texto = request.args.get("texto","")
     try:
         tts_obj = gTTS(text=texto, lang="es", slow=False, tld="com.mx")
         archivo = io.BytesIO()
@@ -1018,40 +1383,40 @@ def favicon():
 
 @app.route("/avisos", methods=["POST"])
 def avisos():
-    usuario = (request.json or {}).get("usuario_id","anon")
+    usuario = request.json.get("usuario_id","anon")
     lista   = load_recordatorios()
     ahora   = datetime.now(TZ)
     vencidos, restantes = [], []
     for r in lista:
-        try: when = TZ.localize(datetime.strptime(r["cuando"],"%Y-%m-%d %H:%M:%S"))
-        except Exception: restantes.append(r); continue
-        if when <= ahora and r.get("usuario") == usuario: vencidos.append(r)
+        when = TZ.localize(datetime.strptime(r["cuando"],"%Y-%m-%d %H:%M:%S"))
+        if when <= ahora and r["usuario"] == usuario: vencidos.append(r)
         else: restantes.append(r)
     save_recordatorios(restantes)
     return jsonify(vencidos)
 
 @app.route("/admin/pagos")
 def admin_pagos():
-    # Clave en header HTTP — nunca en URL (no queda expuesta en logs)
-    if request.headers.get("X-Admin-Key") != ADMIN_KEY:
+    if request.args.get("key") != "foschi_admin_2026":
         return "Acceso denegado", 403
-    archivo = os.path.join(DATA_DIR,"pagos.json")
+    archivo = "data/pagos.json"
     if not os.path.exists(archivo): return "<h2>No hay pagos todavía</h2>"
-    with open(archivo) as f: pagos = json.load(f)
-    filas = "".join(f"<tr><td>{u}</td><td>{p['plan']}</td><td>{p['fecha']}</td>"
-                    f"<td>{p['payment_id']}</td><td>{p['status']}</td></tr>" for u,p in pagos.items())
-    return ("<h2>💎 Pagos Foschi IA</h2><table border='1' cellpadding='8'>"
-            "<tr><th>Usuario</th><th>Plan</th><th>Fecha</th><th>Payment ID</th><th>Status</th></tr>"
-            + filas + "</table>")
+    pagos = json.load(open(archivo))
+    html = "<h2>💎 Pagos Foschi IA</h2><table border='1' cellpadding='8'><tr><th>Usuario</th><th>Plan</th><th>Fecha</th><th>Payment ID</th><th>Status</th></tr>"
+    for u, p in pagos.items():
+        html += f"<tr><td>{u}</td><td>{p['plan']}</td><td>{p['fecha']}</td><td>{p['payment_id']}</td><td>{p['status']}</td></tr>"
+    html += "</table>"
+    return html
+
+from werkzeug.utils import secure_filename
 
 @app.route("/upload_audio", methods=["POST"])
-@limiter.limit("10 per hour")
 def upload_audio():
     if "audio" not in request.files: return "No se envió archivo", 400
-    file      = request.files["audio"]
-    filename  = secure_filename(file.filename or "audio")
+    file = request.files["audio"]
+    filename = secure_filename(file.filename)
     if not filename: return "Nombre de archivo inválido", 400
     temp_path = os.path.join("temp", f"{uuid.uuid4()}_{filename}")
+    os.makedirs("temp", exist_ok=True)
     file.save(temp_path)
     docx_path = None
     try:
@@ -1104,12 +1469,11 @@ def extract_text_from_docx(path):
     return text
 
 @app.route("/upload_doc", methods=["POST"])
-@limiter.limit("20 per hour")
 def upload_doc():
     if "archivo" not in request.files: return "No se envió archivo", 400
-    file     = request.files["archivo"]
-    filename = secure_filename(file.filename or "")
-    if not filename: return "Archivo sin nombre", 400
+    file = request.files["archivo"]
+    filename = secure_filename(file.filename)
+    if filename == "": return "Archivo sin nombre", 400
     ext = filename.rsplit(".",1)[-1].lower()
     if ext not in ["pdf","docx"]: return "Formato no permitido. Solo PDF o DOCX.", 400
     doc_id    = str(uuid.uuid4())
@@ -1117,22 +1481,21 @@ def upload_doc():
     try: file.save(temp_path)
     except Exception as e: return f"Error guardando archivo temporal: {e}", 500
     text = extract_text_from_pdf(temp_path) if ext=="pdf" else extract_text_from_docx(temp_path)
-    if not text or not text.strip():
+    if not text or len(text.strip())==0:
         try: os.remove(temp_path)
-        except Exception: pass
+        except: pass
         return "No pude extraer texto del documento.", 400
     txt_path = os.path.join(TEMP_DIR, f"{doc_id}.txt")
     try:
         with open(txt_path,"w",encoding="utf-8") as f: f.write(text)
     except Exception as e:
         try: os.remove(temp_path)
-        except Exception: pass
+        except: pass
         return f"Error guardando texto temporal: {e}", 500
     snippet = text[:800].replace("\n"," ")+("..." if len(text)>800 else "")
     return jsonify({"doc_id":doc_id,"name":filename,"snippet":snippet})
 
 @app.route("/resumir_doc", methods=["POST"])
-@limiter.limit("10 per hour")
 def resumir_doc():
     data   = request.get_json() or {}
     doc_id = data.get("doc_id"); modo = data.get("modo","normal")
@@ -1142,24 +1505,28 @@ def resumir_doc():
     try:
         with open(txt_path,"r",encoding="utf-8") as f: texto = f.read()
     except Exception as e: return f"Error leyendo texto temporal: {e}", 500
-    instrucciones = {
-        "breve":    "Resumí el siguiente texto en 4-6 líneas muy concisas, en español claro y directo, con puntos numerados si aplica.",
-        "profundo": "Hacé un resumen detallado del siguiente texto: explicá los puntos clave, sub-puntos, y posibles conclusiones. Usá viñetas y subtítulos cuando corresponda. Mantené un estilo formal y completo.",
-    }.get(modo,"Resumí el siguiente texto en puntos claros y ordenados, abarcando las ideas importantes y destacando conclusiones.")
-    max_chars   = 120000
+    if modo=="breve":
+        instrucciones = "Resumí el siguiente texto en 4-6 líneas muy concisas, en español claro y directo, con puntos numerados si aplica."
+    elif modo=="profundo":
+        instrucciones = "Hacé un resumen detallado del siguiente texto: explicá los puntos clave, sub-puntos, y posibles conclusiones. Usá viñetas y subtítulos cuando corresponda. Mantené un estilo formal y completo."
+    else:
+        instrucciones = "Resumí el siguiente texto en puntos claros y ordenados, abarcando las ideas importantes y destacando conclusiones."
+    max_chars = 120000
     texto_envio = texto[:max_chars]+("\n\n[El documento original fue truncado por tamaño.]\n" if len(texto)>max_chars else "")
-    prompt      = f"{instrucciones}\n\n--- TEXTO A RESUMIR ---\n\n{texto_envio}"
+    prompt = f"{instrucciones}\n\n--- TEXTO A RESUMIR ---\n\n{texto_envio}"
     try:
-        resp   = client.chat.completions.create(model="gpt-4-turbo",
-                     messages=[{"role":"user","content":prompt}], temperature=0.3, max_tokens=1000)
+        client_local = OpenAI(api_key=OPENAI_API_KEY)
+        resp = client_local.chat.completions.create(model="gpt-4-turbo",
+                   messages=[{"role":"user","content":prompt}], temperature=0.3, max_tokens=1000)
         resumen = resp.choices[0].message.content.strip()
     except Exception as e: return f"No pude generar el resumen: {e}", 500
-    fecha            = datetime.now().strftime("%Y-%m-%d")
+    fecha = datetime.now().strftime("%Y-%m-%d")
     resumen_filename = f"Resumen_{fecha}.docx"
-    resumen_path     = os.path.join(TEMP_DIR, f"{doc_id}_resumen_{fecha}.docx")
+    resumen_path = os.path.join(TEMP_DIR, f"{doc_id}_resumen_{fecha}.docx")
     try:
         doc = DocxDocument(); doc.add_heading("Resumen del Documento",level=1)
-        for linea in resumen.split("\n"): doc.add_paragraph("" if not linea.strip() else linea)
+        for linea in resumen.split("\n"):
+            doc.add_paragraph("" if not linea.strip() else linea)
         doc.save(resumen_path)
     except Exception as e: return f"Error creando archivo Word: {e}", 500
 
@@ -1184,4 +1551,4 @@ def resumir_doc():
 # ---------------- RUN ----------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    app.run(host="0.0.0.0", port=port)
