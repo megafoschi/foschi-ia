@@ -973,19 +973,38 @@ function activarFoschi(){
   agregar("👂 Foschi activado","ai");
   agregar("Hola, soy Foschi. ¿En qué puedo ayudarte?","ai");
 
-  hablarTexto("Hola, soy Foschi. ¿En qué puedo ayudarte?");
-
-  reiniciarTimeoutFoschi();
+  // ✅ FIX: usar hablarTextoFoschi para que el timeout arranque DESPUÉS del audio
+  hablarTextoFoschi("Hola, soy Foschi. ¿En qué puedo ayudarte?");
+}
+function hablarTextoFoschi(texto){
+  // Reproduce el saludo y arranca el timeout RECIÉN cuando termina el audio
+  if(!vozActiva){
+    reiniciarTimeoutFoschi();
+    return;
+  }
+  detenerVoz();
+  audioActual = new Audio("/tts?texto=" + encodeURIComponent(texto));
+  audioActual.playbackRate = 1.25;
+  audioActual.onended = () => {
+    audioActual = null;
+    // ✅ El timer de espera empieza cuando Foschi termina de hablar
+    reiniciarTimeoutFoschi();
+  };
+  audioActual.play().catch(() => {
+    // Si el audio falla, igual arrancamos el timeout
+    reiniciarTimeoutFoschi();
+  });
 }
 function reiniciarTimeoutFoschi(){
   if(foschiTimeout){
     clearTimeout(foschiTimeout);
   }
 
+  // ✅ FIX: 15 segundos en lugar de 6 para dar tiempo al usuario
   foschiTimeout = setTimeout(()=>{
     modoFoschiActivo = false;
     agregar("💤 Foschi en espera","ai");
-  }, 6000);
+  }, 15000);
 }
 </script>
 
