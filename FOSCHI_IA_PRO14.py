@@ -672,12 +672,39 @@ function iniciarConversacion(){
   modoConversacion=true;escuchandoContinuo=true;
   agregar("🧠 Modo conversación activado","ai");
   recognitionConversacion.onresult=function(event){
-    let texto=event.results[event.results.length-1][0].transcript;
-    if(texto.length<3)return;if(texto.trim()==="")return;
-    if(audioActual){audioActual.pause();audioActual.currentTime=0;}
-    document.getElementById("mensaje").value=texto;enviar();
-    clearTimeout(silencioTimer);silencioTimer=setTimeout(()=>{console.log("Silencio detectado");},2000);
-  };
+  let texto=event.results[event.results.length-1][0].transcript.toLowerCase().trim();
+
+  if(texto.length<3)return;
+  if(texto==="")return;
+
+  // 🔥 ACTIVACIÓN POR PALABRA CLAVE
+  if(!texto.includes("foschi") && !texto.includes("fosqui")){
+    return; // ❌ no hace nada si no lo llamaste
+  }
+
+  // 🔥 limpiar la palabra clave del mensaje
+  texto = texto.replace("foschi","").replace("fosqui","").trim();
+
+  if(texto===""){
+    console.log("Esperando orden después de activación...");
+    return;
+  }
+
+  // cortar audio si estaba hablando
+  if(audioActual){
+    audioActual.pause();
+    audioActual.currentTime=0;
+  }
+
+  document.getElementById("mensaje").value=texto;
+  enviar();
+
+  clearTimeout(silencioTimer);
+  silencioTimer=setTimeout(()=>{
+    console.log("Silencio detectado");
+  },2000);
+};
+
   recognitionConversacion.onend=function(){if(modoConversacion&&!audioActual){recognitionConversacion.start();}};
   recognitionConversacion.start();
 }
@@ -789,11 +816,20 @@ function hablar(){
     const recognition=new Rec();
     recognition.lang='es-AR';recognition.continuous=false;recognition.interimResults=false;
     recognition.onresult=function(event){
-      let textoReconocido=event.results[0][0].transcript;let txt=textoReconocido.toLowerCase();
-      if(txt.includes("activar dictado")){iniciarDictado();return;}
-      if(txt.includes("desactivar dictado")){detenerDictado();return;}
-      document.getElementById("mensaje").value=txt;checkDailyLimit();
-    };
+  let textoReconocido=event.results[0][0].transcript.toLowerCase();
+
+  if(!textoReconocido.includes("foschi") && !textoReconocido.includes("fosqui")){
+    return;
+  }
+
+  let txt=textoReconocido.replace("foschi","").replace("fosqui","").trim();
+
+  if(txt.includes("activar dictado")){iniciarDictado();return;}
+  if(txt.includes("desactivar dictado")){detenerDictado();return;}
+
+  document.getElementById("mensaje").value=txt;
+  checkDailyLimit();
+};
     recognition.onerror=function(e){console.log(e);}
     recognition.start();
   }else{alert("Tu navegador no soporta reconocimiento de voz.");}
