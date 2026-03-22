@@ -649,6 +649,11 @@ body.day .ai a, body.day .user a{ color:#000000; }
 
 <script>
 let usuario_id="{{usuario_id}}";
+// 🔥 WAKE WORD PRO
+let wakeRecognition = null;
+let escuchandoWakeWord = false;
+let modoFoschiActivo = false;
+let foschiTimeout = null;
 let vozActiva=true,audioActual=null,mensajeActual=null;
 let modoConversacion=false,escuchandoContinuo=false,recognitionConversacion=null,silencioTimer=null;
 let MAX_NO_PREMIUM=5;
@@ -708,6 +713,9 @@ function checkDailyLimit(){
 }
 function enviar(){
   let msg=document.getElementById("mensaje").value.trim();if(!msg)return;
+  if(modoFoschiActivo){
+  reiniciarTimeoutFoschi();
+}
   agregar(msg,"user");document.getElementById("mensaje").value="";
   fetch("/preguntar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mensaje:msg,usuario_id:usuario_id})})
   .then(r=>r.json())
@@ -807,9 +815,12 @@ setInterval(chequearRecordatorios,30000);
 /* --- SALUDO INICIAL --- */
 window.onload=function(){
   agregar("👋 ¡Hola! Bienvenido a Foschi IA","ai");
-  let saludoAudio=new Audio("/tts?texto="+encodeURIComponent("Hola, bienvenido a Foschi IA"));
+
+  let saludoAudio=new Audio("/tts?texto="+encodeURIComponent("Hola, en que puedo ayudarte"));
   saludoAudio.playbackRate=1.25;
   saludoAudio.play().catch(()=>{});
+
+  iniciarWakeWord(); // 🔥 ACA
 };
 
 function toggleDayNight(){
@@ -859,6 +870,78 @@ function detenerDictado(){finalizarDictado();}
 function descargarWordDictado(texto){
   fetch("/dictado_word",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({texto:texto})})
   .then(r=>r.blob()).then(blob=>{let url=window.URL.createObjectURL(blob);let a=document.createElement("a");a.href=url;a.download="dictado_foschi.docx";a.click();});
+}
+
+// 🚀 INICIAR ESCUCHA WAKE WORD
+function iniciarWakeWord(){
+
+  if(!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)){
+    console.log("Wake word no soportado");
+    return;
+  }
+
+  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  wakeRecognition = new Rec();
+
+  wakeRecognition.lang = "es-AR";
+  wakeRecognition.continuous = true;
+  wakeRecognition.interimResults = false;
+
+  escuchandoWakeWord = true;
+
+  wakeRecognition.onresult = function(event){
+
+    let texto = event.results[event.results.length-1][0].transcript
+      .toLowerCase()
+      .trim();
+
+    // 🔥 SOLO si NO está en modo conversación ni dictado
+    if(modoConversacion || dictadoActivo) return;
+
+    if(!modoFoschiActivo){
+      if(
+        texto.includes("foschi") ||
+        texto.includes("fosqui") ||
+        texto.includes("fochi")
+      ){
+        activarFoschi();
+      }
+    }else{
+      // si ya está activo → manda directo
+      document.getElementById("mensaje").value = texto;
+      enviar();
+      reiniciarTimeoutFoschi();
+    }
+  };
+
+  wakeRecognition.onend = function(){
+    // 🔁 reinicio automático SIEMPRE
+    if(escuchandoWakeWord){
+      try{ wakeRecognition.start(); }catch(e){}
+    }
+  };
+
+  try{ wakeRecognition.start(); }catch(e){}
+}
+function activarFoschi(){
+  modoFoschiActivo = true;
+
+  agregar("👂 Foschi activado","ai");
+  agregar("Hola, soy Foschi. ¿En qué puedo ayudarte?","ai");
+
+  hablarTexto("Hola, soy Foschi. ¿En qué puedo ayudarte?");
+
+  reiniciarTimeoutFoschi();
+}
+function reiniciarTimeoutFoschi(){
+  if(foschiTimeout){
+    clearTimeout(foschiTimeout);
+  }
+
+  foschiTimeout = setTimeout(()=>{
+    modoFoschiActivo = false;
+    agregar("💤 Foschi en espera","ai");
+  }, 6000);
 }
 </script>
 
