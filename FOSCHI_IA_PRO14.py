@@ -669,10 +669,11 @@ function toggleModoConversacion(){
   if(!modoConversacion){iniciarConversacion();}else{detenerConversacion();}
 }
 function iniciarConversacion(){
-  // 🔴 PAUSAR WAKE WORD
+  // 🔴 PAUSAR WAKE WORD — primero false para que onend no lo reinicie
+  escuchandoWakeWord = false;
   if(wakeRecognition){
-  try{ wakeRecognition.stop(); }catch(e){}
-}  
+    try{ wakeRecognition.stop(); }catch(e){}
+  }
   if(!('webkitSpeechRecognition' in window)&&!('SpeechRecognition' in window)){alert("Tu navegador no soporta conversación por voz");return;}
   document.getElementById("voiceWave").style.display="flex";
   const Rec=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -801,6 +802,8 @@ async function register(){
 }
 function hablar(){
 
+  // 🔴 PAUSAR WAKE WORD — primero false para que onend no lo reinicie
+  escuchandoWakeWord = false;
   if(wakeRecognition){
     try{ wakeRecognition.stop(); }catch(e){}
   }
@@ -826,9 +829,10 @@ function hablar(){
     };
 
     recognition.onend=function(){
+      // 🟢 REACTIVAR WAKE WORD al soltar el micrófono
       setTimeout(()=>{
         iniciarWakeWord();
-      }, 500);
+      }, 300);
     };
 
     recognition.start(); // 🔥 FALTABA ESTO TAMBIÉN
