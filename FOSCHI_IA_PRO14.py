@@ -867,8 +867,12 @@ setInterval(chequearRecordatorios,30000);
 /* --- SALUDO INICIAL --- */
 window.onload=function(){
   agregar("👋 ¡Hola! Bienvenido a Foschi IA","ai");
-  // Audio de saludo eliminado — Foschi saluda al activarse con la wake word
-  iniciarWakeWord();
+
+  let saludoAudio=new Audio("/tts?texto="+encodeURIComponent("Hola, en que puedo ayudarte"));
+  saludoAudio.playbackRate=1.25;
+  saludoAudio.play().catch(()=>{});
+
+  iniciarWakeWord(); // 🔥 ACA
 };
 
 function toggleDayNight(){
@@ -937,20 +941,22 @@ function iniciarWakeWord(){
 
   wakeRecognition.lang = "es-AR";
   wakeRecognition.continuous = true;
-  wakeRecognition.interimResults = true; // mas rapido: detecta mientras hablas
+  wakeRecognition.interimResults = false;
 
   escuchandoWakeWord = true;
 
   wakeRecognition.onresult = function(event){
-    let ultimo = event.results[event.results.length-1];
-    let esFinal = ultimo.isFinal;
-    let texto = ultimo[0].transcript.toLowerCase().trim();
 
-    if(!texto || texto.length < 2) return;
+    let texto = event.results[event.results.length-1][0].transcript
+      .toLowerCase()
+      .trim();
+
+    if(!texto || texto.length < 3) return;
+
     if(modoConversacion || dictadoActivo) return;
 
     if(!modoFoschiActivo){
-      // Reaccionar en cuanto aparece "foschi" aunque sea resultado intermedio
+
       if(
         texto.includes("foschi") ||
         texto.includes("fosqui") ||
@@ -958,9 +964,8 @@ function iniciarWakeWord(){
       ){
         activarFoschi();
       }
+
     }else{
-      // Solo procesar preguntas cuando el resultado es final (evita enviar frases a medias)
-      if(!esFinal) return;
 
       if(
         texto.includes("foschi") ||
@@ -972,6 +977,7 @@ function iniciarWakeWord(){
 
       document.getElementById("mensaje").value = texto;
       checkDailyLimit();
+
       reiniciarTimeoutFoschi();
     }
   };
