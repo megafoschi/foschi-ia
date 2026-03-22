@@ -669,6 +669,10 @@ function toggleModoConversacion(){
   if(!modoConversacion){iniciarConversacion();}else{detenerConversacion();}
 }
 function iniciarConversacion(){
+  // 🔴 PAUSAR WAKE WORD
+  if(wakeRecognition){
+  try{ wakeRecognition.stop(); }catch(e){}
+}  
   if(!('webkitSpeechRecognition' in window)&&!('SpeechRecognition' in window)){alert("Tu navegador no soporta conversación por voz");return;}
   document.getElementById("voiceWave").style.display="flex";
   const Rec=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -691,6 +695,10 @@ function detenerConversacion(){
   if(recognitionConversacion){recognitionConversacion.stop();recognitionConversacion=null;}
   document.getElementById("voiceWave").style.display="none";
   agregar("🛑 Modo conversación desactivado","ai");
+  // 🟢 REACTIVAR WAKE WORD
+setTimeout(()=>{
+  iniciarWakeWord();
+}, 500);
 }
 function logoClick(){alert("FOSCHI NUNCA MUERE, TRASCIENDE...");}
 function toggleVoz(estado=null){vozActiva=estado!==null?estado:!vozActiva;document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada";}
@@ -792,19 +800,39 @@ async function register(){
   const j=await r.json();if(j.ok)location.reload();else authMsg.innerText=j.msg;
 }
 function hablar(){
+
+  if(wakeRecognition){
+    try{ wakeRecognition.stop(); }catch(e){}
+  }
+
   if('webkitSpeechRecognition' in window||'SpeechRecognition' in window){
+
     const Rec=window.SpeechRecognition||window.webkitSpeechRecognition;
     const recognition=new Rec();
-    recognition.lang='es-AR';recognition.continuous=false;recognition.interimResults=false;
+
+    recognition.lang='es-AR';
+    recognition.continuous=false;
+    recognition.interimResults=false;
+
     recognition.onresult=function(event){
-      let textoReconocido=event.results[0][0].transcript;let txt=textoReconocido.toLowerCase();
+      let textoReconocido=event.results[0][0].transcript;
+      let txt=textoReconocido.toLowerCase();
+
       if(txt.includes("activar dictado")){iniciarDictado();return;}
       if(txt.includes("desactivar dictado")){detenerDictado();return;}
-      document.getElementById("mensaje").value=txt;checkDailyLimit();
+
+      document.getElementById("mensaje").value=txt;
+      checkDailyLimit();
     };
-    recognition.onerror=function(e){console.log(e);}
-    recognition.start();
-  }else{alert("Tu navegador no soporta reconocimiento de voz.");}
+
+    recognition.onend=function(){
+      setTimeout(()=>{
+        iniciarWakeWord();
+      }, 500);
+    };
+
+    recognition.start(); // 🔥 FALTABA ESTO TAMBIÉN
+  }
 }
 function chequearRecordatorios(){
   fetch("/avisos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({usuario_id})})
@@ -875,6 +903,10 @@ function descargarWordDictado(texto){
 // 🚀 INICIAR ESCUCHA WAKE WORD
 function iniciarWakeWord(){
 
+  if(wakeRecognition){
+    try{ wakeRecognition.stop(); }catch(e){}
+  }
+
   if(!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)){
     console.log("Wake word no soportado");
     return;
@@ -895,10 +927,12 @@ function iniciarWakeWord(){
       .toLowerCase()
       .trim();
 
-    // 🔥 SOLO si NO está en modo conversación ni dictado
+    if(!texto || texto.length < 3) return;
+
     if(modoConversacion || dictadoActivo) return;
 
     if(!modoFoschiActivo){
+
       if(
         texto.includes("foschi") ||
         texto.includes("fosqui") ||
@@ -906,16 +940,25 @@ function iniciarWakeWord(){
       ){
         activarFoschi();
       }
+
     }else{
-      // si ya está activo → manda directo
+
+      if(
+        texto.includes("foschi") ||
+        texto.includes("fosqui") ||
+        texto.includes("fochi")
+      ){
+        return;
+      }
+
       document.getElementById("mensaje").value = texto;
-      enviar();
+      checkDailyLimit();
+
       reiniciarTimeoutFoschi();
     }
   };
 
   wakeRecognition.onend = function(){
-    // 🔁 reinicio automático SIEMPRE
     if(escuchandoWakeWord){
       try{ wakeRecognition.start(); }catch(e){}
     }
@@ -923,6 +966,7 @@ function iniciarWakeWord(){
 
   try{ wakeRecognition.start(); }catch(e){}
 }
+
 function activarFoschi(){
   modoFoschiActivo = true;
 
