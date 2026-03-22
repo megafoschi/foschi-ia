@@ -651,7 +651,6 @@ body.day .ai a, body.day .user a{ color:#000000; }
 let usuario_id="{{usuario_id}}";
 let vozActiva=true,audioActual=null,mensajeActual=null;
 let modoConversacion=false,escuchandoContinuo=false,recognitionConversacion=null,silencioTimer=null;
-let foschiActivo=false; 
 let MAX_NO_PREMIUM=5;
 let isPremium={{ 'true' if premium else 'false' }};
 const hoy=new Date().toISOString().slice(0,10);
@@ -673,42 +672,12 @@ function iniciarConversacion(){
   modoConversacion=true;escuchandoContinuo=true;
   agregar("🧠 Modo conversación activado","ai");
   recognitionConversacion.onresult=function(event){
-  let texto = event.results[event.results.length-1][0].transcript.toLowerCase().trim();
-
-  if(texto.length < 2) return;
-
-  // 🔥 ACTIVAR UNA SOLA VEZ
-  if(!foschiActivo){
-    if(texto.includes("foschi") || texto.includes("fosqui") || texto.includes("fochi")){
-      foschiActivo = true;
-      console.log("Foschi ACTIVADO");
-      return;
-    }else{
-      return;
-    }
-  }
-
-  // 🔥 AUTO APAGADO POR SILENCIO
-  clearTimeout(silencioTimer);
-  silencioTimer = setTimeout(()=>{
-    foschiActivo = false;
-    console.log("Foschi DESACTIVADO");
-  },6000);
-
-  // limpiar palabra clave si aparece mezclada
-  texto = texto.replace(/foschi|fosqui|fochi/gi,"").trim();
-
-  if(texto === "") return;
-
-  if(audioActual){
-    audioActual.pause();
-    audioActual.currentTime = 0;
-  }
-
-  document.getElementById("mensaje").value = texto;
-  enviar();
-};
-
+    let texto=event.results[event.results.length-1][0].transcript;
+    if(texto.length<3)return;if(texto.trim()==="")return;
+    if(audioActual){audioActual.pause();audioActual.currentTime=0;}
+    document.getElementById("mensaje").value=texto;enviar();
+    clearTimeout(silencioTimer);silencioTimer=setTimeout(()=>{console.log("Silencio detectado");},2000);
+  };
   recognitionConversacion.onend=function(){if(modoConversacion&&!audioActual){recognitionConversacion.start();}};
   recognitionConversacion.start();
 }
@@ -717,7 +686,6 @@ function detenerConversacion(){
   if(recognitionConversacion){recognitionConversacion.stop();recognitionConversacion=null;}
   document.getElementById("voiceWave").style.display="none";
   agregar("🛑 Modo conversación desactivado","ai");
-  foschiActivo=false;
 }
 function logoClick(){alert("FOSCHI NUNCA MUERE, TRASCIENDE...");}
 function toggleVoz(estado=null){vozActiva=estado!==null?estado:!vozActiva;document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada";}
@@ -816,38 +784,20 @@ async function register(){
   const j=await r.json();if(j.ok)location.reload();else authMsg.innerText=j.msg;
 }
 function hablar(){
-  if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window){
-    const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new Rec();
-
-    recognition.lang = 'es-AR';
-    recognition.continuous = false;
-    recognition.interimResults = false;
-
-    recognition.onresult = function(event){
-      let textoReconocido = event.results[0][0].transcript;
-      let txt = textoReconocido.toLowerCase();
-
-      // comandos especiales
-      if(txt.includes("activar dictado")){ iniciarDictado(); return; }
-      if(txt.includes("desactivar dictado")){ detenerDictado(); return; }
-
-      // ✅ SIN palabra clave (esto arregla tu bug)
-      document.getElementById("mensaje").value = txt;
-      checkDailyLimit();
+  if('webkitSpeechRecognition' in window||'SpeechRecognition' in window){
+    const Rec=window.SpeechRecognition||window.webkitSpeechRecognition;
+    const recognition=new Rec();
+    recognition.lang='es-AR';recognition.continuous=false;recognition.interimResults=false;
+    recognition.onresult=function(event){
+      let textoReconocido=event.results[0][0].transcript;let txt=textoReconocido.toLowerCase();
+      if(txt.includes("activar dictado")){iniciarDictado();return;}
+      if(txt.includes("desactivar dictado")){detenerDictado();return;}
+      document.getElementById("mensaje").value=txt;checkDailyLimit();
     };
-
-    recognition.onerror = function(e){
-      console.log(e);
-    };
-
+    recognition.onerror=function(e){console.log(e);}
     recognition.start();
-
-  }else{
-    alert("Tu navegador no soporta reconocimiento de voz.");
-  }
+  }else{alert("Tu navegador no soporta reconocimiento de voz.");}
 }
-    
 function chequearRecordatorios(){
   fetch("/avisos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({usuario_id})})
   .then(r=>r.json()).then(data=>{if(Array.isArray(data)&&data.length>0){data.forEach(r=>{agregar(`⏰ Tenés un recordatorio: ${r.motivo||"(sin motivo)"}`,"ai");});}}).catch(e=>console.error(e));
