@@ -630,6 +630,61 @@ body.day .ai a, body.day .user a{ color:#000000; }
   🎤 Dictado activo
 </div>
 
+<!-- 📝 PANEL DICTADO A WORD -->
+<div id="dictadoPanel" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:9998;overflow:auto;">
+  <div style="max-width:600px;margin:40px auto;background:#001d3d;border-radius:14px;border:1px solid #00eaff55;box-shadow:0 0 30px #00eaff44;padding:24px;color:#00eaff;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h3 style="margin:0;font-size:20px;text-shadow:0 0 8px #00eaff;">📝 Dictado a Word</h3>
+      <button onclick="cerrarDictadoPanel()" style="background:transparent;border:1px solid #00eaff55;color:#00eaff;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:16px;">✕</button>
+    </div>
+
+    <!-- Estado -->
+    <div id="dictadoBadge" style="display:inline-block;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:bold;margin-bottom:14px;background:#333;color:#aaa;">
+      ⬤ Inactivo
+    </div>
+    <span id="dictadoPalabras" style="margin-left:12px;font-size:13px;color:#aaaaaa;">0 palabras</span>
+
+    <!-- Área de texto -->
+    <textarea id="dictadoTextoArea"
+      placeholder="El texto dictado aparecerá aquí en tiempo real..."
+      style="width:100%;min-height:220px;background:#00111a;color:#00eaff;border:1px solid #003344;border-radius:8px;padding:12px;font-size:15px;resize:vertical;box-sizing:border-box;margin-bottom:14px;font-family:inherit;line-height:1.6;"
+    ></textarea>
+
+    <!-- Comandos de voz -->
+    <div style="font-size:12px;color:#00eaff88;margin-bottom:14px;">
+      💡 Comandos de voz: <em>"pausar dictado"</em> · <em>"continuar dictado"</em> · <em>"nueva línea"</em> · <em>"finalizar dictado"</em>
+    </div>
+
+    <!-- Botones de control -->
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <button id="btnIniciarDictado" onclick="iniciarDictado()"
+        style="flex:1;padding:10px;border-radius:8px;background:#003547;color:#00eaff;border:1px solid #006688;cursor:pointer;font-size:15px;">
+        🎤 Iniciar
+      </button>
+      <button id="btnPausarDictado" onclick="pausarDictado()" disabled
+        style="flex:1;padding:10px;border-radius:8px;background:#001f2e;color:#666;border:1px solid #333;cursor:not-allowed;font-size:15px;">
+        ⏸️ Pausar
+      </button>
+      <button id="btnContinuarDictado" onclick="continuarDictado()" disabled
+        style="flex:1;padding:10px;border-radius:8px;background:#001f2e;color:#666;border:1px solid #333;cursor:not-allowed;font-size:15px;">
+        ▶️ Continuar
+      </button>
+      <button id="btnFinalizarDictado" onclick="finalizarDictado()" disabled
+        style="flex:1;padding:10px;border-radius:8px;background:#001f2e;color:#666;border:1px solid #333;cursor:not-allowed;font-size:15px;">
+        ⬛ Finalizar y descargar
+      </button>
+    </div>
+
+    <!-- Botón limpiar -->
+    <div style="margin-top:10px;text-align:right;">
+      <button onclick="limpiarDictado()"
+        style="background:transparent;border:1px solid #333;color:#888;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:13px;">
+        🗑️ Limpiar texto
+      </button>
+    </div>
+  </div>
+</div>
+
 <div id="inputBar">
   <div style="position:relative;">
     <div id="clipBtn" title="Adjuntar" onclick="toggleAdjuntosMenu()">📎</div>
@@ -637,7 +692,7 @@ body.day .ai a, body.day .user a{ color:#000000; }
       <button onclick="toggleModoConversacion()">🧠 Modo conversación</button>
       <button onclick="checkPremium('audio')">🎵 Audio (mp3/wav) a Texto</button>
       <button onclick="checkPremium('doc')">📄 Resumir PDF / WORD</button>
-      <button onclick="toggleDictado()">🎤 Dictado por voz</button>
+      <button onclick="abrirDictadoWord()">📝 Dictado a Word</button>
     </div>
   </div>
   <input id="audioInput" class="hidden_file_input" type="file" accept=".mp3,audio/*,.wav" />
@@ -984,48 +1039,125 @@ function toggleDayNight(){
   if(btn){btn.textContent=body.classList.contains("day")?"☀️":"🌙";}
 }
 
-// DICTADO
+// DICTADO A WORD — mejorado
 let dictadoActivo=false,dictadoPausado=false,reconocimiento=null,textoDictado="";
-function toggleDictado(){
+
+function abrirDictadoWord(){
   if(!isPremium&&!isSuper){alert("🔒 Esta función es solo Premium");return;}
-  if(!dictadoActivo){iniciarDictado();return;}
-  if(dictadoActivo&&!dictadoPausado){pausarDictado();return;}
-  if(dictadoActivo&&dictadoPausado){continuarDictado();return;}
+  document.getElementById("dictadoPanel").style.display="block";
+  document.getElementById("adjuntos_menu").style.display="none";
+}
+function cerrarDictadoPanel(){
+  if(dictadoActivo){ finalizarDictado(); }
+  document.getElementById("dictadoPanel").style.display="none";
+}
+function limpiarDictado(){
+  if(dictadoActivo){alert("Finalizá el dictado antes de limpiar.");return;}
+  textoDictado="";
+  document.getElementById("dictadoTextoArea").value="";
+  actualizarContadorPalabras();
+}
+function actualizarContadorPalabras(){
+  let txt = document.getElementById("dictadoTextoArea").value.trim();
+  let palabras = txt ? txt.split(/\s+/).length : 0;
+  document.getElementById("dictadoPalabras").textContent = palabras + " palabra" + (palabras===1?"":"s");
+}
+function setBadge(estado){
+  const b = document.getElementById("dictadoBadge");
+  if(estado==="activo"){b.style.background="#003300";b.style.color="#00ff88";b.innerHTML="⬤ Grabando";}
+  else if(estado==="pausado"){b.style.background="#332200";b.style.color="#ffaa00";b.innerHTML="⏸ Pausado";}
+  else{b.style.background="#222";b.style.color="#888";b.innerHTML="⬤ Inactivo";}
+}
+function setBotones(activo, pausado){
+  const ini=document.getElementById("btnIniciarDictado");
+  const pau=document.getElementById("btnPausarDictado");
+  const con=document.getElementById("btnContinuarDictado");
+  const fin=document.getElementById("btnFinalizarDictado");
+  ini.disabled=activo;ini.style.color=activo?"#333":"#00eaff";ini.style.cursor=activo?"not-allowed":"pointer";
+  pau.disabled=!activo||pausado;pau.style.color=(!activo||pausado)?"#666":"#00eaff";pau.style.cursor=(!activo||pausado)?"not-allowed":"pointer";
+  con.disabled=!pausado;con.style.color=!pausado?"#666":"#00eaff";con.style.cursor=!pausado?"not-allowed":"pointer";
+  fin.disabled=!activo;fin.style.color=!activo?"#666":"#ff6666";fin.style.cursor=!activo?"not-allowed":"pointer";
 }
 function iniciarDictado(){
-  if(!('webkitSpeechRecognition' in window)){alert("Tu navegador no soporta dictado por voz");return;}
-  reconocimiento=new webkitSpeechRecognition();
-  reconocimiento.lang="es-AR";reconocimiento.continuous=true;reconocimiento.interimResults=true;
-  textoDictado="";dictadoActivo=true;dictadoPausado=false;
-  document.getElementById("dictadoEstado").style.display="block";
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SpeechRec){alert("Tu navegador no soporta dictado por voz");return;}
+  reconocimiento = new SpeechRec();
+  reconocimiento.lang="es-AR";
+  reconocimiento.continuous=true;
+  reconocimiento.interimResults=true;
+  textoDictado = document.getElementById("dictadoTextoArea").value;
+  dictadoActivo=true; dictadoPausado=false;
+  setBadge("activo"); setBotones(true,false);
+
   reconocimiento.onresult=function(event){
     let parcial="";
     for(let i=event.resultIndex;i<event.results.length;i++){
-      let trans=event.results[i][0].transcript;let txt=trans.toLowerCase();
+      let trans=event.results[i][0].transcript;
+      let txt=trans.toLowerCase().trim();
+      // Comandos de voz
       if(txt.includes("pausar dictado")){pausarDictado();return;}
       if(txt.includes("continuar dictado")){continuarDictado();return;}
       if(txt.includes("finalizar dictado")){finalizarDictado();return;}
-      if(event.results[i].isFinal){textoDictado+=trans+" ";}else{parcial+=trans;}
+      if(txt.includes("nueva línea")||txt.includes("nueva linea")){
+        if(event.results[i].isFinal){textoDictado+="\n";}
+        continue;
+      }
+      if(event.results[i].isFinal){textoDictado+=trans+" ";}
+      else{parcial+=trans;}
     }
-    document.getElementById("mensaje").value=textoDictado+parcial;
+    document.getElementById("dictadoTextoArea").value=textoDictado+parcial;
+    actualizarContadorPalabras();
+    // auto scroll al final del textarea
+    let ta=document.getElementById("dictadoTextoArea");ta.scrollTop=ta.scrollHeight;
   };
-  // ✅ onend fuera de onresult (bug fix)
-  reconocimiento.onend=function(){if(dictadoActivo&&!dictadoPausado){reconocimiento.start();}};
+  reconocimiento.onend=function(){
+    if(dictadoActivo&&!dictadoPausado){
+      try{reconocimiento.start();}catch(e){}
+    }
+  };
   reconocimiento.start();
 }
-function pausarDictado(){if(reconocimiento){reconocimiento.stop();}dictadoPausado=true;document.getElementById("dictadoEstado").innerText="⏸️ Dictado pausado";}
-function continuarDictado(){if(!dictadoActivo)return;reconocimiento.start();dictadoPausado=false;document.getElementById("dictadoEstado").innerText="🎤 Dictado activo";}
+function pausarDictado(){
+  if(reconocimiento){reconocimiento.stop();}
+  dictadoPausado=true;
+  setBadge("pausado"); setBotones(true,true);
+}
+function continuarDictado(){
+  if(!dictadoActivo)return;
+  dictadoPausado=false;
+  setBadge("activo"); setBotones(true,false);
+  try{reconocimiento.start();}catch(e){}
+}
 function finalizarDictado(){
-  dictadoActivo=false;dictadoPausado=false;
+  dictadoActivo=false; dictadoPausado=false;
   if(reconocimiento){reconocimiento.stop();reconocimiento=null;}
-  document.getElementById("dictadoEstado").style.display="none";
-  if(textoDictado.trim().length>0){descargarWordDictado(textoDictado);}
+  setBadge("inactivo"); setBotones(false,false);
+  let textoFinal = document.getElementById("dictadoTextoArea").value.trim();
+  if(textoFinal.length>0){descargarWordDictado(textoFinal);}
 }
 function detenerDictado(){finalizarDictado();}
 function descargarWordDictado(texto){
-  fetch("/dictado_word",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({texto:texto})})
-  .then(r=>r.blob()).then(blob=>{let url=window.URL.createObjectURL(blob);let a=document.createElement("a");a.href=url;a.download="dictado_foschi.docx";a.click();});
+  // nombre con fecha y hora
+  let ahora=new Date();
+  let stamp=ahora.getFullYear()+""+String(ahora.getMonth()+1).padStart(2,"0")+
+            ""+String(ahora.getDate()).padStart(2,"0")+"_"+
+            String(ahora.getHours()).padStart(2,"0")+String(ahora.getMinutes()).padStart(2,"0");
+  let nombre="dictado_foschi_"+stamp+".docx";
+  fetch("/dictado_word",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({texto:texto})})
+  .then(r=>r.blob())
+  .then(blob=>{
+    let url=window.URL.createObjectURL(blob);
+    let a=document.createElement("a");a.href=url;a.download=nombre;a.click();
+    window.URL.revokeObjectURL(url);
+  })
+  .catch(e=>alert("Error al generar el Word: "+e));
 }
+// permitir edición manual del textarea
+document.addEventListener("DOMContentLoaded",function(){
+  let ta=document.getElementById("dictadoTextoArea");
+  if(ta){ta.addEventListener("input",function(){textoDictado=ta.value;actualizarContadorPalabras();});}
+});
 
 // 🚀 INICIAR ESCUCHA WAKE WORD
 function iniciarWakeWord(){
