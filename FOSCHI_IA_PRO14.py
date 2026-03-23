@@ -654,6 +654,7 @@ const esMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 // 🔥 WAKE WORD PRO
 let wakeRecognition = null;
 let escuchandoWakeWord = false;
+let ultimoAudioDetectado = 0;
 let modoFoschiActivo = false;
 let foschiTimeout = null;
 let vozActiva=true,audioActual=null,mensajeActual=null;
@@ -1057,8 +1058,13 @@ function iniciarWakeWord(){
   wakeRecognition.onresult = function(event){
 
     let resultado = event.results[event.results.length-1];
-    // 📱 FIX MÓVIL: filtrar reconocimientos de baja confianza (ruido ambiente, parlante)
-    if(resultado[0].confidence < 0.65) return;
+    let ahora = Date.now();
+ultimoAudioDetectado = ahora;
+
+// 🔥 FILTRO INTELIGENTE SEGÚN DISPOSITIVO
+const MIN_CONFIDENCE = esMobile ? 0.80 : 0.65;
+
+if(resultado[0].confidence < MIN_CONFIDENCE) return;
 
     let texto = resultado[0].transcript
       .toLowerCase()
@@ -1075,6 +1081,11 @@ function iniciarWakeWord(){
              t.includes("foshy")  || t.includes("foski")  || t.includes("foxchi") ||
              t.includes("fo chi") || t.includes("for chi");
     }
+    
+    // 🔥 REQUIERE SILENCIO PREVIO (ANTI RUIDO)
+if(Date.now() - ultimoAudioDetectado < 1000){
+  return;
+}
 
     if(!modoFoschiActivo){
       if(esPalabraActivacion(texto)){ activarFoschi(); }
