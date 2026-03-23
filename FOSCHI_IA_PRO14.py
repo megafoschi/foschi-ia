@@ -637,7 +637,7 @@ body.day .ai a, body.day .user a{ color:#000000; }
       <button onclick="toggleModoConversacion()">🧠 Modo conversación</button>
       <button onclick="checkPremium('audio')">🎵 Audio (mp3/wav) a Texto</button>
       <button onclick="checkPremium('doc')">📄 Resumir PDF / WORD</button>
-      <button onclick="toggleDictado()">🎤 Dictado por voz</button>
+      <button onclick="toggleDictado()">🎤 Dictado a Word</button>
     </div>
   </div>
   <input id="audioInput" class="hidden_file_input" type="file" accept=".mp3,audio/*,.wav" />
@@ -1002,6 +1002,16 @@ function iniciarDictado(){
     let parcial="";
     for(let i=event.resultIndex;i<event.results.length;i++){
       let trans=event.results[i][0].transcript;let txt=trans.toLowerCase();
+      // 🧠 MEJORA PRO
+trans = trans
+  .replace(/nuevo p[aá]rrafo/gi, "\n\n")
+  .replace(/punto y aparte/gi, "\n\n")
+  .replace(/punto y coma/gi, "; ")
+  .replace(/dos puntos/gi, ": ")
+  .replace(/coma/gi, ", ")
+  .replace(/punto/gi, ". ")
+  .replace(/signo de pregunta/gi, "? ")
+  .replace(/signo de exclamaci[oó]n/gi, "! ");
       if(txt.includes("pausar dictado")){pausarDictado();return;}
       if(txt.includes("continuar dictado")){continuarDictado();return;}
       if(txt.includes("finalizar dictado")){finalizarDictado();return;}
