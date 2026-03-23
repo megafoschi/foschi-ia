@@ -866,13 +866,25 @@ setInterval(chequearRecordatorios,30000);
 
 /* --- SALUDO INICIAL --- */
 window.onload=function(){
-  agregar("👋 ¡Hola! Bienvenido a Foschi IA","ai");
+  // ✅ FIX: Solo un mensaje de texto visual, SIN audio duplicado.
+  // hablarTexto() ya maneja el audio del saludo y al terminar llama a iniciarWakeWord().
+  // Así el micrófono no capta el parlante.
+  let div = document.createElement("div");
+  div.className = "message ai";
+  div.innerHTML = "👋 ¡Hola! Bienvenido a Foschi IA";
+  document.getElementById("chat").appendChild(div);
+  setTimeout(()=>div.classList.add("show"), 50);
+  document.getElementById("chat").scroll({top:9999,behavior:"smooth"});
 
-  let saludoAudio=new Audio("/tts?texto="+encodeURIComponent("Hola, en que puedo ayudarte"));
-  saludoAudio.playbackRate=1.25;
-  saludoAudio.play().catch(()=>{});
-
-  iniciarWakeWord(); // 🔥 ACA
+  // Saludo de audio: al terminar, RECIÉN inicia el wake word
+  let saludoAudio = new Audio("/tts?texto=" + encodeURIComponent("Hola, en qué puedo ayudarte"));
+  saludoAudio.playbackRate = 1.25;
+  saludoAudio.onended = function(){
+    iniciarWakeWord(); // 🟢 Wake word DESPUÉS del saludo
+  };
+  saludoAudio.play().catch(()=>{
+    iniciarWakeWord(); // Si el audio falla igual arranca el wake word
+  });
 };
 
 function toggleDayNight(){
@@ -955,23 +967,30 @@ function iniciarWakeWord(){
 
     if(modoConversacion || dictadoActivo) return;
 
+    // ✅ FIX: variantes ampliadas para mejor reconocimiento de "foschi"
+    function esPalabraActivacion(t){
+      return t.includes("foschi") ||
+             t.includes("fosqui") ||
+             t.includes("fochi")  ||
+             t.includes("forchi") ||
+             t.includes("froshi") ||
+             t.includes("foshi")  ||
+             t.includes("foshy")  ||
+             t.includes("foski")  ||
+             t.includes("foxchi") ||
+             t.includes("for chi")||
+             t.includes("fo chi");
+    }
+
     if(!modoFoschiActivo){
 
-      if(
-        texto.includes("foschi") ||
-        texto.includes("fosqui") ||
-        texto.includes("fochi")
-      ){
+      if(esPalabraActivacion(texto)){
         activarFoschi();
       }
 
     }else{
 
-      if(
-        texto.includes("foschi") ||
-        texto.includes("fosqui") ||
-        texto.includes("fochi")
-      ){
+      if(esPalabraActivacion(texto)){
         return;
       }
 
