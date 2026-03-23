@@ -1011,7 +1011,7 @@ trans = trans
   .replace(/coma/gi, ", ")
   .replace(/punto/gi, ". ")
   .replace(/signo de pregunta/gi, "? ")
-  .replace(/signo de exclamaci[oó]n/gi, "! ");
+  .replace(/signo de exclamacion/gi, "! ")
       if(txt.includes("pausar dictado")){pausarDictado();return;}
       if(txt.includes("continuar dictado")){continuarDictado();return;}
       if(txt.includes("finalizar dictado")){finalizarDictado();return;}
