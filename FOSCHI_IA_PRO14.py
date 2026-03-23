@@ -649,8 +649,6 @@ body.day .ai a, body.day .user a{ color:#000000; }
 
 <script>
 let usuario_id="{{usuario_id}}";
-// 📱 DETECCIÓN DE DISPOSITIVO MÓVIL — para ajustar comportamiento del micrófono
-const esMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 // 🔥 WAKE WORD PRO
 let wakeRecognition = null;
 let escuchandoWakeWord = false;
@@ -658,10 +656,6 @@ let modoFoschiActivo = false;
 let foschiTimeout = null;
 let vozActiva=true,audioActual=null,mensajeActual=null;
 let modoConversacion=false,escuchandoContinuo=false,recognitionConversacion=null,silencioTimer=null;
-// 🔥 INTERRUPCIÓN — escucha mientras Foschi habla para poder cortarlo
-let interruptRecognition=null;
-let foschiHablando=false;
-let ultimaInterrupcion=0;
 let MAX_NO_PREMIUM=5;
 let isPremium={{ 'true' if premium else 'false' }};
 const hoy=new Date().toISOString().slice(0,10);
@@ -675,11 +669,10 @@ function toggleModoConversacion(){
   if(!modoConversacion){iniciarConversacion();}else{detenerConversacion();}
 }
 function iniciarConversacion(){
-  // 🔴 PAUSAR WAKE WORD — primero false para que onend no lo reinicie
-  escuchandoWakeWord = false;
+  // 🔴 PAUSAR WAKE WORD
   if(wakeRecognition){
-    try{ wakeRecognition.stop(); }catch(e){}
-  }
+  try{ wakeRecognition.stop(); }catch(e){}
+}  
   if(!('webkitSpeechRecognition' in window)&&!('SpeechRecognition' in window)){alert("Tu navegador no soporta conversación por voz");return;}
   document.getElementById("voiceWave").style.display="flex";
   const Rec=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -688,11 +681,7 @@ function iniciarConversacion(){
   modoConversacion=true;escuchandoContinuo=true;
   agregar("🧠 Modo conversación activado","ai");
   recognitionConversacion.onresult=function(event){
-    let resultado = event.results[event.results.length-1];
-    if(!resultado.isFinal) return;
-    // 📱 FIX MÓVIL: ignorar reconocimientos de baja confianza
-    if(resultado[0].confidence < 0.60) return;
-    let texto=resultado[0].transcript;
+    let texto=event.results[event.results.length-1][0].transcript;
     if(texto.length<3)return;if(texto.trim()==="")return;
     if(audioActual){audioActual.pause();audioActual.currentTime=0;}
     document.getElementById("mensaje").value=texto;enviar();
@@ -713,11 +702,7 @@ setTimeout(()=>{
 }
 function logoClick(){alert("FOSCHI NUNCA MUERE, TRASCIENDE...");}
 function toggleVoz(estado=null){vozActiva=estado!==null?estado:!vozActiva;document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada";}
-function detenerVoz(){
-  foschiHablando = false;
-  detenerEscuchaInterrupcion();
-  if(audioActual){audioActual.pause();audioActual.currentTime=0;audioActual.src="";audioActual.load();audioActual=null;if(mensajeActual)mensajeActual.classList.remove("playing");mensajeActual=null;}
-}
+function detenerVoz(){if(audioActual){audioActual.pause();audioActual.currentTime=0;audioActual.src="";audioActual.load();audioActual=null;if(mensajeActual)mensajeActual.classList.remove("playing");mensajeActual=null;}}
 function agregar(msg,cls,imagenes=[]){
   let c=document.getElementById("chat"),div=document.createElement("div");
   div.className="message "+cls;div.innerHTML=msg;c.appendChild(div);
@@ -736,8 +721,9 @@ function checkDailyLimit(){
 }
 function enviar(){
   let msg=document.getElementById("mensaje").value.trim();if(!msg)return;
-  // Pausar timeout Foschi mientras el servidor procesa
-  if(modoFoschiActivo && foschiTimeout){ clearTimeout(foschiTimeout); foschiTimeout = null; }
+  if(modoFoschiActivo){
+  reiniciarTimeoutFoschi();
+}
   agregar(msg,"user");document.getElementById("mensaje").value="";
   fetch("/preguntar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mensaje:msg,usuario_id:usuario_id})})
   .then(r=>r.json())
@@ -746,128 +732,24 @@ function enviar(){
     agregar(data.texto,"ai",data.imagenes);
     if(data.borrar_historial){document.getElementById("chat").innerHTML="";}
   })
-  .catch(e=>{
-    agregar("Error al comunicarse con el servidor.","ai");console.error(e);
-    if(modoFoschiActivo){ reiniciarTimeoutFoschi(); }
-  });
+  .catch(e=>{agregar("Error al comunicarse con el servidor.","ai");console.error(e);});
 }
 document.getElementById("mensaje").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();checkDailyLimit();}});
 function hablarTexto(texto,div=null){
   if(!vozActiva)return;
   if(modoConversacion&&recognitionConversacion){recognitionConversacion.stop();}
-
-  // 🔴 PAUSAR WAKE WORD mientras TTS habla
-  escuchandoWakeWord = false;
-  if(wakeRecognition){ try{ wakeRecognition.stop(); }catch(e){} }
-
-  // 🔴 PAUSAR timeout Foschi mientras habla
-  if(foschiTimeout){ clearTimeout(foschiTimeout); foschiTimeout = null; }
-
   detenerVoz();
-  detenerEscuchaInterrupcion(); // limpia instancia anterior
-
   if(mensajeActual)mensajeActual.classList.remove("playing");
   if(div)div.classList.add("playing");
   mensajeActual=div;
-
-  // 🔥 Limpiar HTML del texto para que el TTS no lea etiquetas ni URLs
-  let textoLimpio = texto.replace(/<[^>]*>/g,"").replace(/https?:\/\/\S+/g,"").trim();
-  // Limitar a 450 chars para respuesta ágil (el resto está en pantalla)
-  if(textoLimpio.length > 450){ textoLimpio = textoLimpio.substring(0,450) + "..."; }
-
-  audioActual=new Audio("/tts?texto="+encodeURIComponent(textoLimpio));
-  audioActual.playbackRate=1.28;
-  foschiHablando = true;
-
-  // 🎤 INICIAR ESCUCHA DE INTERRUPCIÓN
-  iniciarEscuchaInterrupcion();
-
+  audioActual=new Audio("/tts?texto="+encodeURIComponent(texto));
+  audioActual.playbackRate=1.25;
   audioActual.onended=()=>{
-    foschiHablando = false;
-    detenerEscuchaInterrupcion();
     if(mensajeActual)mensajeActual.classList.remove("playing");
     mensajeActual=null;
-    if(modoConversacion&&recognitionConversacion){
-      recognitionConversacion.start();
-    } else {
-      setTimeout(()=>{ iniciarWakeWord(); }, 300);
-      if(modoFoschiActivo){ reiniciarTimeoutFoschi(); }
-    }
+    if(modoConversacion&&recognitionConversacion){recognitionConversacion.start();}
   };
-  audioActual.play().catch(()=>{
-    foschiHablando = false;
-    detenerEscuchaInterrupcion();
-    setTimeout(()=>{ iniciarWakeWord(); }, 300);
-    if(modoFoschiActivo){ reiniciarTimeoutFoschi(); }
-  });
-}
-
-// 🎤 Escucha en paralelo mientras Foschi habla — detecta interrupción del usuario
-function iniciarEscuchaInterrupcion(){
-  // 📱 En móvil la escucha de interrupción capta el audio del parlante — desactivar
-  if(esMobile) return;
-
-  if(!('webkitSpeechRecognition' in window)&&!('SpeechRecognition' in window)) return;
-  if(interruptRecognition){ try{ interruptRecognition.stop(); }catch(e){} }
-  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
-  interruptRecognition = new Rec();
-  interruptRecognition.lang = "es-AR";
-  interruptRecognition.continuous = true;
-  interruptRecognition.interimResults = true; // resultados parciales para respuesta inmediata
-  interruptRecognition.onresult = function(event){
-    let ahora = Date.now();
-    if(ahora - ultimaInterrupcion < 1500) return; // anti-doble-disparo
-    let resultado = event.results[event.results.length-1];
-    let textoDetectado = resultado[0].transcript.toLowerCase().trim();
-    if(!textoDetectado || textoDetectado.length < 2) return;
-    // 🔥 Si el usuario habló y Foschi está hablando → interrumpir
-    if(foschiHablando && resultado.isFinal){
-      ultimaInterrupcion = ahora;
-      interrumpirFoschi(resultado[0].transcript.trim());
-    }
-  };
-  interruptRecognition.onend = function(){
-    // Si Foschi sigue hablando, reiniciar la escucha
-    if(foschiHablando){
-      try{ interruptRecognition.start(); }catch(e){}
-    }
-  };
-  // 🔊 FIX: esperar 900ms antes de escuchar para no captar el audio del parlante
-  setTimeout(()=>{ try{ interruptRecognition.start(); }catch(e){} }, 900);
-}
-
-function detenerEscuchaInterrupcion(){
-  if(interruptRecognition){
-    try{ interruptRecognition.stop(); }catch(e){}
-    interruptRecognition = null;
-  }
-}
-
-// 🔥 INTERRUMPIR A FOSCHI — corta el audio y procesa lo que dijo el usuario
-function interrumpirFoschi(textoUsuario){
-  if(!foschiHablando) return;
-  foschiHablando = false;
-  detenerEscuchaInterrupcion();
-  detenerVoz(); // corta audio inmediatamente
-
-  // Feedback visual
-  let div = document.getElementById("chat");
-  let badge = document.createElement("div");
-  badge.className="message ai";
-  badge.innerHTML="⚡ <em>Interrumpido</em>";
-  div.appendChild(badge);
-  setTimeout(()=>badge.classList.add("show"),50);
-  div.scroll({top:div.scrollHeight,behavior:"smooth"});
-
-  // Procesar la pregunta del usuario que interrumpió
-  if(textoUsuario && textoUsuario.length > 2){
-    document.getElementById("mensaje").value = textoUsuario;
-    checkDailyLimit();
-  } else {
-    // Si no capturó texto suficiente, reactivar para que el usuario hable
-    setTimeout(()=>{ iniciarWakeWord(); },300);
-    if(modoFoschiActivo){ reiniciarTimeoutFoschi(); }
-  }
+  audioActual.play().catch(()=>{});
 }
 function togglePremiumMenu(){
   if(isPremium)return;
@@ -919,8 +801,6 @@ async function register(){
 }
 function hablar(){
 
-  // 🔴 PAUSAR WAKE WORD — primero false para que onend no lo reinicie
-  escuchandoWakeWord = false;
   if(wakeRecognition){
     try{ wakeRecognition.stop(); }catch(e){}
   }
@@ -946,10 +826,9 @@ function hablar(){
     };
 
     recognition.onend=function(){
-      // 🟢 REACTIVAR WAKE WORD al soltar el micrófono
       setTimeout(()=>{
         iniciarWakeWord();
-      }, 300);
+      }, 500);
     };
 
     recognition.start(); // 🔥 FALTABA ESTO TAMBIÉN
@@ -963,19 +842,13 @@ setInterval(chequearRecordatorios,30000);
 
 /* --- SALUDO INICIAL --- */
 window.onload=function(){
-  // ✅ Solo texto visual — SIN pasar por agregar() para no lanzar hablarTexto() también
-  let chatDiv = document.getElementById("chat");
-  let saludoDiv = document.createElement("div");
-  saludoDiv.className = "message ai";
-  saludoDiv.innerHTML = "👋 ¡Hola! Bienvenido a <strong>Foschi IA</strong>";
-  chatDiv.appendChild(saludoDiv);
-  setTimeout(()=>saludoDiv.classList.add("show"), 50);
+  agregar("👋 ¡Hola! Bienvenido a Foschi IA","ai");
 
-  // ✅ Audio único del saludo — wake word arranca RECIÉN cuando termina
-  let saludoAudio = new Audio("/tts?texto="+encodeURIComponent("Hola, en qué puedo ayudarte"));
-  saludoAudio.playbackRate = 1.28;
-  saludoAudio.onended = function(){ iniciarWakeWord(); };
-  saludoAudio.play().catch(()=>{ iniciarWakeWord(); });
+  let saludoAudio=new Audio("/tts?texto="+encodeURIComponent("Hola, en que puedo ayudarte"));
+  saludoAudio.playbackRate=1.25;
+  saludoAudio.play().catch(()=>{});
+
+  iniciarWakeWord(); // 🔥 ACA
 };
 
 function toggleDayNight(){
@@ -1030,12 +903,6 @@ function descargarWordDictado(texto){
 // 🚀 INICIAR ESCUCHA WAKE WORD
 function iniciarWakeWord(){
 
-  // 📱 En móvil no usar wake word automático — el micrófono capta el audio del parlante
-  if(esMobile){
-    console.log("Wake word desactivado en móvil — usá el botón 🎤");
-    return;
-  }
-
   if(wakeRecognition){
     try{ wakeRecognition.stop(); }catch(e){}
   }
@@ -1056,30 +923,33 @@ function iniciarWakeWord(){
 
   wakeRecognition.onresult = function(event){
 
-    let resultado = event.results[event.results.length-1];
-    // 📱 FIX MÓVIL: filtrar reconocimientos de baja confianza (ruido ambiente, parlante)
-    if(resultado[0].confidence < 0.65) return;
-
-    let texto = resultado[0].transcript
+    let texto = event.results[event.results.length-1][0].transcript
       .toLowerCase()
       .trim();
 
-    if(!texto || texto.length < 2) return;
+    if(!texto || texto.length < 3) return;
 
     if(modoConversacion || dictadoActivo) return;
 
-    // 🔥 Variantes fonéticas amplias para mejor reconocimiento
-    function esPalabraActivacion(t){
-      return t.includes("foschi") || t.includes("fosqui") || t.includes("fochi")  ||
-             t.includes("forchi") || t.includes("froshi") || t.includes("foshi")  ||
-             t.includes("foshy")  || t.includes("foski")  || t.includes("foxchi") ||
-             t.includes("fo chi") || t.includes("for chi");
-    }
-
     if(!modoFoschiActivo){
-      if(esPalabraActivacion(texto)){ activarFoschi(); }
+
+      if(
+        texto.includes("foschi") ||
+        texto.includes("fosqui") ||
+        texto.includes("fochi")
+      ){
+        activarFoschi();
+      }
+
     }else{
-      if(esPalabraActivacion(texto)){ return; } // ignorar nombre propio como comando
+
+      if(
+        texto.includes("foschi") ||
+        texto.includes("fosqui") ||
+        texto.includes("fochi")
+      ){
+        return;
+      }
 
       document.getElementById("mensaje").value = texto;
       checkDailyLimit();
@@ -1099,34 +969,30 @@ function iniciarWakeWord(){
 
 function activarFoschi(){
   modoFoschiActivo = true;
-  agregar("👂 <strong>Foschi activado</strong> — te escucho","ai");
-  // El saludo de voz ya lo maneja hablarTextoFoschi, sin agregar() extra para no duplicar TTS
+
+  agregar("👂 Foschi activado","ai");
+  agregar("Hola, soy Foschi. ¿En qué puedo ayudarte?","ai");
+
+  // ✅ FIX: usar hablarTextoFoschi para que el timeout arranque DESPUÉS del audio
   hablarTextoFoschi("Hola, soy Foschi. ¿En qué puedo ayudarte?");
 }
 function hablarTextoFoschi(texto){
+  // Reproduce el saludo y arranca el timeout RECIÉN cuando termina el audio
   if(!vozActiva){
     reiniciarTimeoutFoschi();
     return;
   }
   detenerVoz();
-  detenerEscuchaInterrupcion();
-  foschiHablando = true;
   audioActual = new Audio("/tts?texto=" + encodeURIComponent(texto));
-  audioActual.playbackRate = 1.28;
-  // 🎤 escuchar por si el usuario interrumpe el saludo
-  iniciarEscuchaInterrupcion();
+  audioActual.playbackRate = 1.25;
   audioActual.onended = () => {
-    foschiHablando = false;
-    detenerEscuchaInterrupcion();
     audioActual = null;
+    // ✅ El timer de espera empieza cuando Foschi termina de hablar
     reiniciarTimeoutFoschi();
-    setTimeout(()=>{ iniciarWakeWord(); }, 200);
   };
   audioActual.play().catch(() => {
-    foschiHablando = false;
-    detenerEscuchaInterrupcion();
+    // Si el audio falla, igual arrancamos el timeout
     reiniciarTimeoutFoschi();
-    setTimeout(()=>{ iniciarWakeWord(); }, 200);
   });
 }
 function reiniciarTimeoutFoschi(){
