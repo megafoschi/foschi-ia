@@ -649,6 +649,8 @@ body.day .ai a, body.day .user a{ color:#000000; }
 
 <script>
 let usuario_id="{{usuario_id}}";
+// 📱 DETECCIÓN DE DISPOSITIVO MÓVIL — para ajustar comportamiento del micrófono
+const esMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 // 🔥 WAKE WORD PRO
 let wakeRecognition = null;
 let escuchandoWakeWord = false;
@@ -686,7 +688,11 @@ function iniciarConversacion(){
   modoConversacion=true;escuchandoContinuo=true;
   agregar("🧠 Modo conversación activado","ai");
   recognitionConversacion.onresult=function(event){
-    let texto=event.results[event.results.length-1][0].transcript;
+    let resultado = event.results[event.results.length-1];
+    if(!resultado.isFinal) return;
+    // 📱 FIX MÓVIL: ignorar reconocimientos de baja confianza
+    if(resultado[0].confidence < 0.60) return;
+    let texto=resultado[0].transcript;
     if(texto.length<3)return;if(texto.trim()==="")return;
     if(audioActual){audioActual.pause();audioActual.currentTime=0;}
     document.getElementById("mensaje").value=texto;enviar();
@@ -798,6 +804,9 @@ function hablarTexto(texto,div=null){
 
 // 🎤 Escucha en paralelo mientras Foschi habla — detecta interrupción del usuario
 function iniciarEscuchaInterrupcion(){
+  // 📱 En móvil la escucha de interrupción capta el audio del parlante — desactivar
+  if(esMobile) return;
+
   if(!('webkitSpeechRecognition' in window)&&!('SpeechRecognition' in window)) return;
   if(interruptRecognition){ try{ interruptRecognition.stop(); }catch(e){} }
   const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -823,7 +832,8 @@ function iniciarEscuchaInterrupcion(){
       try{ interruptRecognition.start(); }catch(e){}
     }
   };
-  try{ interruptRecognition.start(); }catch(e){}
+  // 🔊 FIX: esperar 900ms antes de escuchar para no captar el audio del parlante
+  setTimeout(()=>{ try{ interruptRecognition.start(); }catch(e){} }, 900);
 }
 
 function detenerEscuchaInterrupcion(){
@@ -1020,6 +1030,12 @@ function descargarWordDictado(texto){
 // 🚀 INICIAR ESCUCHA WAKE WORD
 function iniciarWakeWord(){
 
+  // 📱 En móvil no usar wake word automático — el micrófono capta el audio del parlante
+  if(esMobile){
+    console.log("Wake word desactivado en móvil — usá el botón 🎤");
+    return;
+  }
+
   if(wakeRecognition){
     try{ wakeRecognition.stop(); }catch(e){}
   }
@@ -1040,7 +1056,11 @@ function iniciarWakeWord(){
 
   wakeRecognition.onresult = function(event){
 
-    let texto = event.results[event.results.length-1][0].transcript
+    let resultado = event.results[event.results.length-1];
+    // 📱 FIX MÓVIL: filtrar reconocimientos de baja confianza (ruido ambiente, parlante)
+    if(resultado[0].confidence < 0.65) return;
+
+    let texto = resultado[0].transcript
       .toLowerCase()
       .trim();
 
