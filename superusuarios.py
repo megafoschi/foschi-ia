@@ -38,9 +38,9 @@ SUPERUSUARIOS = {
         "nombre": "Jeremias",
         "nivel": 80
     },
-    "juanrodolfopatti@yahoo.com.ar": {
+    "valentinaborras5@yahoo.com.ar": {
         "rol": "admin",
-        "nombre": "Juan",
+        "nombre": "Valentina",
         "nivel": 80
     },
     "javodambrosi@hotmail.com": {
