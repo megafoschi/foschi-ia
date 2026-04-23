@@ -8,9 +8,9 @@ SUPERUSUARIOS = {
         "nombre": "Gustavo",
         "nivel": 100
     },
-    "sebasmed2040@gmail.com": {
+    "libre@gmail.com": {
         "rol": "admin",
-        "nombre": "Sebastian",
+        "nombre": "libre",
         "nivel": 80
     },
     "mariabelenfoschi10@gmail.com": {
@@ -28,9 +28,9 @@ SUPERUSUARIOS = {
         "nombre": "Antonella",
         "nivel": 80
     },
-     "emibravo1991@gmail.com": {
+     "libre@gmail.com": {
         "rol": "admin",
-        "nombre": "Malvi Bravo",
+        "nombre": "libre",
         "nivel": 80
     },
     "jeremiasgimenez253@gmail.com": {
@@ -38,7 +38,7 @@ SUPERUSUARIOS = {
         "nombre": "Jeremias",
         "nivel": 80
     },
-    "valentinaborras5@yahoo.com.ar": {
+    "valentinaborras5@gmail.com": {
         "rol": "admin",
         "nombre": "Valentina",
         "nivel": 80
