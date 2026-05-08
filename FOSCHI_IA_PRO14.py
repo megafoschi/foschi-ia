@@ -340,32 +340,69 @@ def learn_from_message(usuario, mensaje, respuesta):
         print("Error en learn_from_message:", e)
 
 # ---------------- DICTADO A WORD ----------------
+MAX_DICTADO_CHARS = 50_000  # ~25 páginas aprox., límite razonable para producción
+
 @app.route("/dictado_word", methods=["POST"])
 def dictado_word():
-    data = request.json
+    # --- autenticación: solo usuarios logueados o con sesión activa ---
+    usuario = session.get("user_email") or session.get("usuario_id")
+    if not usuario:
+        return jsonify({"ok": False, "error": "Sesión no válida"}), 401
+
+    # --- validación premium ---
+    if not usuario_premium(usuario) and not es_superusuario(usuario):
+        return jsonify({"ok": False, "error": "Función solo para usuarios Premium"}), 403
+
+    data = request.get_json(silent=True) or {}
     texto = data.get("texto", "").strip()
 
     if not texto:
-        return jsonify({"ok": False, "error": "Texto vacío"})
+        return jsonify({"ok": False, "error": "Texto vacío"}), 400
+
+    if len(texto) > MAX_DICTADO_CHARS:
+        return jsonify({
+            "ok": False,
+            "error": f"El dictado supera el límite permitido ({MAX_DICTADO_CHARS:,} caracteres)."
+        }), 400
 
     nombre = f"dictado_{uuid.uuid4().hex}.docx"
     ruta = os.path.join(TEMP_DIR, nombre)
 
-    doc = DocxDocument()
-    doc.add_heading("Dictado Foschi IA", 0)
-    doc.add_paragraph(texto)
+    try:
+        tz_arg = pytz.timezone("America/Argentina/Buenos_Aires")
+        fecha_str = datetime.now(tz_arg).strftime("%d/%m/%Y %H:%M")
 
-    doc.save(ruta)
+        doc = DocxDocument()
+        doc.add_heading("Dictado Foschi IA", 0)
+        doc.add_paragraph(f"Fecha: {fecha_str}  |  Usuario: {usuario}")
+        doc.add_paragraph("")  # separador
+
+        # Dividir por párrafos conservando saltos de línea naturales
+        for linea in texto.splitlines():
+            doc.add_paragraph(linea if linea.strip() else "")
+
+        doc.save(ruta)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Error al crear el documento: {str(e)}"}), 500
 
     @after_this_request
     def remove_file(response):
         try:
-            os.remove(ruta)
-        except:
+            if os.path.exists(ruta):
+                os.remove(ruta)
+        except Exception:
             pass
         return response
 
-    return send_file(ruta, as_attachment=True)
+    try:
+        return send_file(
+            ruta,
+            as_attachment=True,
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            download_name=f"dictado_foschi_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+        )
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Error enviando archivo: {str(e)}"}), 500
 
 # ---------------- RESPUESTA IA ----------------
 
@@ -911,7 +948,151 @@ body.day .user a{
   color:#000000;
 }
 
-/* ===== FORMULARIO PREMIUM CENTRADO ===== */
+/* ===== MODAL DOCUMENTO ===== */
+#docModal{
+  display:none;
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,5,.88);
+  z-index:9998;
+  align-items:center;
+  justify-content:center;
+}
+#docModal.open{ display:flex; }
+#docModalBox{
+  background:#001525;
+  border:1px solid #00eaff44;
+  border-radius:14px;
+  padding:22px 24px;
+  width:min(440px,94vw);
+  color:#00eaff;
+  box-shadow:0 0 40px #00eaff22;
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+}
+#docModalBox h3{ margin:0; font-size:17px; }
+#docModalBox .doc-snippet{
+  font-size:12px;
+  color:#00eaff99;
+  background:#00111a;
+  border-radius:6px;
+  padding:8px 10px;
+  max-height:100px;
+  overflow-y:auto;
+  white-space:pre-wrap;
+  word-break:break-word;
+}
+#docModalBox .doc-tabs{
+  display:flex;
+  gap:8px;
+}
+#docModalBox .tab-btn{
+  flex:1;
+  padding:9px 0;
+  border-radius:8px;
+  border:1px solid #006688;
+  background:#001f2e;
+  color:#00eaff;
+  cursor:pointer;
+  font-size:14px;
+  font-weight:600;
+  transition:.2s;
+}
+#docModalBox .tab-btn.active,
+#docModalBox .tab-btn:hover{
+  background:#003547;
+  box-shadow:0 0 12px #00eaff66;
+}
+#docResumirPanel, #docPreguntarPanel{
+  display:none;
+  flex-direction:column;
+  gap:10px;
+}
+#docResumirPanel.active, #docPreguntarPanel.active{
+  display:flex;
+}
+#docResumirPanel select{
+  padding:8px;
+  border-radius:6px;
+  border:1px solid #006688;
+  background:#00121d;
+  color:#00eaff;
+  font-size:14px;
+}
+#docPreguntarPanel textarea{
+  resize:vertical;
+  min-height:70px;
+  padding:9px;
+  border-radius:6px;
+  border:1px solid #006688;
+  background:#00121d;
+  color:#00eaff;
+  font-size:14px;
+  font-family:inherit;
+}
+#docPreguntarPanel textarea::placeholder{ color:#00eaff55; }
+#docModalBox .doc-qa-historial{
+  max-height:180px;
+  overflow-y:auto;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+#docModalBox .doc-qa-item{
+  background:#00111a;
+  border-radius:6px;
+  padding:7px 10px;
+  font-size:13px;
+  line-height:1.5;
+}
+#docModalBox .doc-qa-item .qa-q{ color:#00eaff99; font-style:italic; margin-bottom:3px; }
+#docModalBox .doc-qa-item .qa-a{ color:#00eaff; }
+#docModalBox .doc-action-btn{
+  padding:9px;
+  border-radius:8px;
+  border:1px solid #006688;
+  background:#001f2e;
+  color:#00eaff;
+  cursor:pointer;
+  font-size:14px;
+  font-weight:600;
+  transition:.2s;
+}
+#docModalBox .doc-action-btn:hover{ background:#003547; box-shadow:0 0 12px #00eaff66; }
+#docModalBox .doc-action-btn:disabled{ opacity:.4; cursor:not-allowed; }
+#docModalBox .doc-cerrar{
+  align-self:flex-end;
+  background:none;
+  border:none;
+  color:#00eaff66;
+  font-size:20px;
+  cursor:pointer;
+  padding:0;
+  line-height:1;
+}
+#docModalBox .doc-cerrar:hover{ color:#00eaff; }
+
+body.day #docModalBox{
+  background:#fff;
+  color:#000;
+  border-color:#ccc;
+}
+body.day #docModalBox .doc-snippet,
+body.day #docPreguntarPanel textarea,
+body.day #docResumirPanel select{
+  background:#f5f5f5;
+  color:#000;
+  border-color:#aaa;
+}
+body.day #docModalBox .tab-btn,
+body.day #docModalBox .doc-action-btn{
+  background:#fff;
+  color:#000;
+  border-color:#000;
+}
+body.day #docModalBox .doc-qa-item{ background:#f0f0f0; color:#000; }
+body.day #docModalBox .doc-qa-item .qa-q{ color:#555; }
 .form-premium{
   width:100%;
   max-width:320px;
@@ -1016,27 +1197,52 @@ bottom:110px;
 left:50%;
 transform:translateX(-50%);
 display:none;
-gap:4px;
+flex-direction:column;
+align-items:center;
+gap:6px;
 z-index:999;
 ">
+<div style="display:flex; gap:4px;">
 <div class="wave"></div>
 <div class="wave"></div>
 <div class="wave"></div>
 <div class="wave"></div>
 <div class="wave"></div>
 </div>
+<div id="convEstadoLabel" style="
+  display:none;
+  font-size:12px;
+  font-weight:bold;
+  color:#fff;
+  padding:3px 10px;
+  border-radius:20px;
+  background:#00aaff;
+  text-shadow:none;
+  white-space:nowrap;
+"></div>
+</div>
 
-<div id="dictadoEstado" style="
- position:fixed;
- bottom:70px;
- right:10px;
- background:#ff0000;
- color:white;
- padding:6px 10px;
- border-radius:6px;
- display:none;
- font-weight:bold;
- z-index:999;">
+<div id="dictadoEstado"
+  onclick="toggleDictado()"
+  title="Clic para pausar / continuar / reanudar"
+  style="
+    position:fixed;
+    bottom:70px;
+    right:10px;
+    background:#cc0000;
+    color:white;
+    padding:7px 14px;
+    border-radius:8px;
+    display:none;
+    font-weight:bold;
+    z-index:999;
+    cursor:pointer;
+    box-shadow:0 0 10px #ff000088;
+    user-select:none;
+    max-width:260px;
+    font-size:13px;
+    line-height:1.4;
+    transition: background 0.2s;">
 🎤 Dictado activo
 </div>
 <!-- BARRA DE ENTRADA -->
@@ -1061,99 +1267,270 @@ z-index:999;
 // --- Variables y funciones generales ---
 let usuario_id="{{usuario_id}}";
 let vozActiva=true,audioActual=null,mensajeActual=null;
-let modoConversacion = false;
-let escuchandoContinuo = false;
+// =====================
+// 🧠 MODO CONVERSACIÓN — producción
+// =====================
+let modoConversacion   = false;
 let recognitionConversacion = null;
-let silencioTimer=null;
 
-function toggleModoConversacion(){
+// Estados internos del ciclo escucha → procesar → hablar → escuchar
+const CONV_ESTADO = { IDLE: 0, ESCUCHANDO: 1, PROCESANDO: 2, HABLANDO: 3 };
+let convEstado = CONV_ESTADO.IDLE;
+let convReintentos = 0;
+const CONV_MAX_REINTENTOS = 6;
+let convPendiente = false;   // true mientras hay un fetch en vuelo
+let convIgnorarEnd = false;  // true cuando nosotros mismos llamamos a .stop()
 
-  if(!isPremium && !isSuper){
-    alert("🔒 El modo conversación es Premium");
+// Comandos de voz para salir del modo conversación
+const CONV_CMDS_SALIR = ["salir", "terminar", "terminar conversación", "chau", "adiós", "adios", "cerrar conversación", "detener conversación"];
+
+// --- Indicador visual ---
+function _convSetUI(estado){
+  const wave  = document.getElementById("voiceWave");
+  const label = document.getElementById("convEstadoLabel");
+
+  const cfg = {
+    [CONV_ESTADO.IDLE]:       { wave: false, txt: "",                        color: "" },
+    [CONV_ESTADO.ESCUCHANDO]: { wave: true,  txt: "🎤 Escuchando…",           color: "#00cc66" },
+    [CONV_ESTADO.PROCESANDO]: { wave: true,  txt: "⏳ Procesando…",           color: "#ffaa00" },
+    [CONV_ESTADO.HABLANDO]:   { wave: true,  txt: "🔊 Foschi IA hablando…",   color: "#00aaff" },
+  }[estado] || { wave: false, txt: "", color: "" };
+
+  if(wave){
+    wave.style.display = cfg.wave ? "flex" : "none";
+    // colorear las barras según estado
+    wave.querySelectorAll(".wave").forEach(b => b.style.background = cfg.color || "#00eaff");
+  }
+  if(label){
+    label.textContent = cfg.txt;
+    label.style.display = cfg.txt ? "block" : "none";
+    label.style.background = cfg.color || "#001f2e";
+  }
+}
+
+// --- Crear una instancia limpia de reconocimiento ---
+function _crearRecConversacion(){
+  const r = new SpeechRecognitionAPI();
+  r.lang = "es-AR";
+  r.continuous = false;      // false es más estable entre navegadores
+  r.interimResults = false;
+  r.maxAlternatives = 1;
+
+  r.onstart = function(){
+    convEstado = CONV_ESTADO.ESCUCHANDO;
+    _convSetUI(CONV_ESTADO.ESCUCHANDO);
+  };
+
+  r.onresult = function(event){
+    const texto = event.results[event.results.length - 1][0].transcript.trim();
+    const lower = texto.toLowerCase();
+
+    if(texto.length < 2) return;
+
+    // Comandos de salida por voz
+    if(CONV_CMDS_SALIR.some(c => lower === c || lower.endsWith(c))){
+      detenerConversacion();
+      return;
+    }
+
+    // Si la IA está hablando, la interrumpimos y respondemos
+    if(audioActual){
+      detenerVoz();
+    }
+
+    // Mostrar texto reconocido en el input y enviar
+    document.getElementById("mensaje").value = texto;
+    _convEnviar(texto);
+  };
+
+  r.onerror = function(event){
+    if(event.error === "aborted" || convIgnorarEnd) return;
+
+    console.warn("Conv error:", event.error);
+
+    if(event.error === "not-allowed" || event.error === "service-not-allowed"){
+      agregar("🚫 Sin permiso de micrófono. Habilitalo en la barra del navegador.", "ai");
+      detenerConversacion();
+      return;
+    }
+
+    if(event.error === "network"){
+      agregar("⚠️ Error de red en el micrófono. Reintentando…", "ai");
+    }
+    // no-speech: normal, se reintenta automáticamente en onend
+  };
+
+  r.onend = function(){
+    if(convIgnorarEnd){ convIgnorarEnd = false; return; }
+    if(!modoConversacion) return;
+    // Si no estamos procesando ni hablando → reiniciar escucha
+    if(convEstado === CONV_ESTADO.ESCUCHANDO || convEstado === CONV_ESTADO.IDLE){
+      _convIniciarEscucha();
+    }
+    // Si estamos procesando o hablando, la reanudación ocurre al terminar esas fases
+  };
+
+  return r;
+}
+
+// --- Arrancar escucha (con control de reintentos) ---
+function _convIniciarEscucha(){
+  if(!modoConversacion || convPendiente) return;
+
+  if(convReintentos >= CONV_MAX_REINTENTOS){
+    agregar("⚠️ Demasiados errores consecutivos. Modo conversación detenido.", "ai");
+    detenerConversacion();
     return;
   }
 
-  if(!modoConversacion){
-    iniciarConversacion();
-  }else{
-    detenerConversacion();
+  try {
+    convIgnorarEnd = false;
+    recognitionConversacion = _crearRecConversacion();
+    recognitionConversacion.start();
+    convReintentos++;
+  } catch(e){
+    console.warn("Conv start error:", e);
+    setTimeout(_convIniciarEscucha, 800);
+  }
+}
+
+// --- Parar escucha de forma controlada ---
+function _convPararEscucha(){
+  convIgnorarEnd = true;
+  if(recognitionConversacion){
+    try { recognitionConversacion.stop(); } catch(e){}
+    recognitionConversacion = null;
+  }
+}
+
+// --- Enviar mensaje al servidor en modo conversación ---
+async function _convEnviar(texto){
+  if(convPendiente) return;   // evitar duplicados si habla rápido
+
+  convPendiente = true;
+  convEstado = CONV_ESTADO.PROCESANDO;
+  _convSetUI(CONV_ESTADO.PROCESANDO);
+  _convPararEscucha();
+
+  // Mostrar en chat
+  agregar(texto, "user", [], false);  // false = no TTS en el mensaje del usuario
+  document.getElementById("mensaje").value = "";
+
+  try {
+    const r = await fetch("/preguntar", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({mensaje: texto, usuario_id: usuario_id})
+    });
+    if(!r.ok) throw new Error("HTTP " + r.status);
+    const data = await r.json();
+    if(data.borrar_historial) document.getElementById("chat").innerHTML = "";
+
+    convReintentos = 0;   // éxito → resetear reintentos
+    convEstado = CONV_ESTADO.HABLANDO;
+    _convSetUI(CONV_ESTADO.HABLANDO);
+
+    // agregar respuesta — hablarTexto llamará _convReanudarTrasAudio al terminar
+    _convAgregarRespuesta(data.texto, data.imagenes || []);
+
+  } catch(e){
+    console.error("Conv fetch error:", e);
+    agregar("❌ Error al conectar con el servidor. Reintentando escucha…", "ai", [], false);
+    convPendiente = false;
+    convEstado = CONV_ESTADO.IDLE;
+    setTimeout(_convIniciarEscucha, 1200);
+  } finally {
+    convPendiente = false;
+  }
+}
+
+// --- Agregar respuesta de la IA con TTS controlado ---
+function _convAgregarRespuesta(msg, imagenes){
+  const c   = document.getElementById("chat");
+  const div = document.createElement("div");
+  div.className = "message ai";
+  div.innerHTML = msg;
+  c.appendChild(div);
+  setTimeout(() => div.classList.add("show"), 50);
+  imagenes.forEach(url => {
+    const img = document.createElement("img"); img.src = url; div.appendChild(img);
+  });
+  c.scroll({top: c.scrollHeight, behavior: "smooth"});
+
+  if(!vozActiva){
+    // Sin TTS: volver a escuchar directamente
+    convEstado = CONV_ESTADO.IDLE;
+    setTimeout(_convIniciarEscucha, 400);
+    return;
   }
 
+  // Con TTS: escuchar DESPUÉS de que termine el audio
+  detenerVoz();
+  mensajeActual = div;
+  div.classList.add("playing");
+
+  audioActual = new Audio("/tts?texto=" + encodeURIComponent(msg));
+  audioActual.playbackRate = 1.25;
+
+  audioActual.onended = function(){
+    if(mensajeActual) mensajeActual.classList.remove("playing");
+    mensajeActual = null;
+    audioActual   = null;
+    convEstado = CONV_ESTADO.IDLE;
+    _convSetUI(CONV_ESTADO.IDLE);
+    if(modoConversacion) setTimeout(_convIniciarEscucha, 300);
+  };
+
+  audioActual.onerror = function(){
+    audioActual = null;
+    convEstado = CONV_ESTADO.IDLE;
+    if(modoConversacion) setTimeout(_convIniciarEscucha, 400);
+  };
+
+  audioActual.play().catch(() => {
+    // Autoplay bloqueado por el navegador
+    audioActual = null;
+    convEstado = CONV_ESTADO.IDLE;
+    if(modoConversacion) setTimeout(_convIniciarEscucha, 400);
+  });
+}
+
+// --- API pública ---
+function toggleModoConversacion(){
+  if(!isPremium && !isSuper){
+    alert("🔒 El modo conversación es solo para usuarios Premium");
+    return;
+  }
+  if(!modoConversacion){ iniciarConversacion(); }
+  else                 { detenerConversacion(); }
 }
 
 function iniciarConversacion(){
-
-  if(!('webkitSpeechRecognition' in window)){
-    alert("Tu navegador no soporta conversación por voz");
+  if(!SpeechRecognitionAPI){
+    alert("⚠️ Tu navegador no soporta conversación por voz.\nUsá Chrome o Edge en escritorio.");
     return;
   }
 
-  document.getElementById("voiceWave").style.display="flex";
+  modoConversacion  = true;
+  convPendiente     = false;
+  convReintentos    = 0;
+  convEstado        = CONV_ESTADO.IDLE;
+  convIgnorarEnd    = false;
 
-
-  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-  recognitionConversacion = new Rec();
-
-  recognitionConversacion.lang = "es-AR";
-  recognitionConversacion.continuous = true;
-  recognitionConversacion.interimResults = false;
-
-  modoConversacion = true;
-  escuchandoContinuo = true;
-
-  agregar("🧠 Modo conversación activado","ai");
-
-recognitionConversacion.onresult = function(event){
-
-  let texto = event.results[event.results.length-1][0].transcript;
-  if(texto.length < 3) return;
-
-  if(texto.trim() === "") return;
-
-  if(audioActual){
-  audioActual.pause();
-  audioActual.currentTime = 0;
-}
-  document.getElementById("mensaje").value = texto;
-
-  enviar();
-
-  // 👇 DETECTOR DE SILENCIO
-  clearTimeout(silencioTimer);
-
-  silencioTimer = setTimeout(()=>{
-     console.log("Silencio detectado");
-  },2000);
-
-};
-
-  recognitionConversacion.onend = function(){
-
-  if(modoConversacion && !audioActual){
-    recognitionConversacion.start();
-  }
-
-};
-
-  recognitionConversacion.start();
-
+  agregar("🧠 Modo conversación activado. Hablá cuando quieras. Decí <b>\"salir\"</b> o <b>\"chau\"</b> para terminar.", "ai", [], false);
+  _convIniciarEscucha();
 }
 
 function detenerConversacion(){
-
   modoConversacion = false;
-  escuchandoContinuo = false;
+  convPendiente    = false;
+  convEstado       = CONV_ESTADO.IDLE;
 
-  if(recognitionConversacion){
-    recognitionConversacion.stop();
-    recognitionConversacion = null;
-  }
+  _convPararEscucha();
+  detenerVoz();
+  _convSetUI(CONV_ESTADO.IDLE);
 
-  document.getElementById("voiceWave").style.display = "none";
-
-  agregar("🛑 Modo conversación desactivado","ai");
-
+  agregar("🛑 Modo conversación desactivado.", "ai", [], false);
 }
 
 let MAX_NO_PREMIUM = 5;
@@ -1171,14 +1548,15 @@ function logoClick(){ alert("FOSCHI NUNCA MUERE, TRASCIENDE..."); }
 function toggleVoz(estado=null){ vozActiva=estado!==null?estado:!vozActiva; document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada"; }
 function detenerVoz(){ if(audioActual){ audioActual.pause(); audioActual.currentTime=0; audioActual.src=""; audioActual.load(); audioActual=null; if(mensajeActual) mensajeActual.classList.remove("playing"); mensajeActual=null; } }
 
-function agregar(msg,cls,imagenes=[]){
+function agregar(msg, cls, imagenes=[], conTTS=true){
   let c=document.getElementById("chat"),div=document.createElement("div");
   div.className="message "+cls; div.innerHTML=msg;
   c.appendChild(div);
   setTimeout(()=>div.classList.add("show"),50);
   imagenes.forEach(url=>{ let img=document.createElement("img"); img.src=url; div.appendChild(img); });
   c.scroll({top:c.scrollHeight,behavior:"smooth"});
-  if(cls==="ai") hablarTexto(msg,div);
+  // En modo conversación el TTS lo maneja _convAgregarRespuesta (con callback)
+  if(cls==="ai" && conTTS && !modoConversacion) hablarTexto(msg, div);
   return div;
 }
 
@@ -1207,36 +1585,28 @@ function enviar(){
 document.getElementById("mensaje").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); checkDailyLimit(); } });
 
 function hablarTexto(texto, div=null){
-
   if(!vozActiva) return;
-
-  // 🛑 detener escucha solo si está en modo conversación
-  if(modoConversacion && recognitionConversacion){
-    recognitionConversacion.stop();
-  }
 
   detenerVoz();
 
   if(mensajeActual) mensajeActual.classList.remove("playing");
-  if(div) div.classList.add("playing");
+  if(div){ div.classList.add("playing"); }
   mensajeActual = div;
 
   audioActual = new Audio("/tts?texto=" + encodeURIComponent(texto));
   audioActual.playbackRate = 1.25;
 
-  audioActual.onended = () => {
-
+  audioActual.onended = function(){
     if(mensajeActual) mensajeActual.classList.remove("playing");
     mensajeActual = null;
-
-    // 🎤 volver a escuchar cuando termina
-    if(modoConversacion && recognitionConversacion){
-      recognitionConversacion.start();
-    }
-
+    audioActual   = null;
   };
 
-  audioActual.play();
+  audioActual.onerror = function(){
+    audioActual = null;
+  };
+
+  audioActual.play().catch(()=>{ audioActual = null; });
 }
 
 function togglePremiumMenu(){
@@ -1353,10 +1723,9 @@ async function register() {
 }
 
 function hablar(){
-  if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window){
+  if(SpeechRecognitionAPI){
 
-    const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new Rec();
+    const recognition = new SpeechRecognitionAPI();
 
     recognition.lang='es-AR';
     recognition.continuous=false;
@@ -1391,7 +1760,7 @@ function hablar(){
     recognition.start();
 
   }else{
-    alert("Tu navegador no soporta reconocimiento de voz.");
+    alert("Tu navegador no soporta reconocimiento de voz.\nUsá Chrome o Edge en escritorio.");
   }
 }
 
@@ -1421,150 +1790,456 @@ function toggleDayNight(){
   }
 }
 // =====================
-// 🎤 DICTADO PREMIUM
+// 🎤 DICTADO PREMIUM — producción
 // =====================
-let dictadoActivo = false;
+const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+let dictadoActivo  = false;
 let dictadoPausado = false;
 let reconocimiento = null;
-let textoDictado = "";
+let textoDictado   = "";          // texto final acumulado (solo resultados isFinal)
+let textoParcial   = "";          // texto interim (preview en tiempo real)
+let dictadoReintentos = 0;
+const DICTADO_MAX_REINTENTOS = 5;
 
+// --- helpers UI ---
+function _dictadoSetEstado(html, visible){
+  const el = document.getElementById("dictadoEstado");
+  if(!el) return;
+  el.innerHTML = html;
+  el.style.display = visible ? "block" : "none";
+}
+function _dictadoSetInput(){
+  const el = document.getElementById("mensaje");
+  if(el) el.value = textoDictado + textoParcial;
+}
+
+// --- comprobación de soporte ---
+function _soporteDictado(){
+  if(!SpeechRecognitionAPI){
+    alert("⚠️ Tu navegador no soporta dictado por voz.\nUsá Chrome o Edge en escritorio.");
+    return false;
+  }
+  return true;
+}
+
+// --- crear / configurar una nueva instancia ---
+function _crearReconocimiento(){
+  const r = new SpeechRecognitionAPI();
+  r.lang = "es-AR";
+  r.continuous = true;
+  r.interimResults = true;
+  r.maxAlternatives = 1;
+
+  r.onresult = function(event){
+    textoParcial = "";
+    for(let i = event.resultIndex; i < event.results.length; i++){
+      const trans = event.results[i][0].transcript;
+      const lower = trans.toLowerCase().trim();
+
+      // Comandos de voz (solo en resultados finales para evitar falsos positivos)
+      if(event.results[i].isFinal){
+        if(lower === "pausar dictado" || lower.endsWith("pausar dictado")){
+          pausarDictado(); return;
+        }
+        if(lower === "continuar dictado" || lower.endsWith("continuar dictado")){
+          continuarDictado(); return;
+        }
+        if(lower === "finalizar dictado" || lower.endsWith("finalizar dictado")){
+          finalizarDictado(); return;
+        }
+        // acumular texto real (capitalizar inicio de oración si viene en minúscula)
+        let seg = trans.trim();
+        if(textoDictado.length === 0 || textoDictado.slice(-1).match(/[.!?]/)){
+          seg = seg.charAt(0).toUpperCase() + seg.slice(1);
+        }
+        textoDictado += (textoDictado && !textoDictado.endsWith(" ") ? " " : "") + seg;
+      } else {
+        textoParcial += trans;
+      }
+    }
+    _dictadoSetInput();
+  };
+
+  r.onerror = function(event){
+    const ignorar = ["no-speech", "aborted"];
+    if(ignorar.includes(event.error)) return;
+
+    console.warn("Dictado error:", event.error);
+
+    if(event.error === "not-allowed" || event.error === "service-not-allowed"){
+      _dictadoSetEstado("🚫 Sin permiso de micrófono", true);
+      _detenerRec();
+      dictadoActivo = false;
+      return;
+    }
+
+    if(event.error === "network"){
+      _dictadoSetEstado("⚠️ Error de red — reintentando…", true);
+    }
+  };
+
+  r.onend = function(){
+    // Si sigue activo y no está pausado: reiniciar automáticamente (bug de Chrome)
+    if(dictadoActivo && !dictadoPausado){
+      if(dictadoReintentos < DICTADO_MAX_REINTENTOS){
+        dictadoReintentos++;
+        try { reconocimiento.start(); } catch(e){ console.warn("Dictado restart:", e); }
+      } else {
+        _dictadoSetEstado("⚠️ Dictado interrumpido — hacé clic en 📎 → Dictado para reanudar", true);
+        dictadoActivo = false;
+      }
+    }
+  };
+
+  return r;
+}
+
+function _detenerRec(){
+  if(reconocimiento){
+    try { reconocimiento.stop(); } catch(e){}
+    reconocimiento = null;
+  }
+}
+
+// --- API pública ---
 function toggleDictado(){
-
   if(!isPremium && !isSuper){
-    alert("🔒 Esta función es solo Premium");
+    alert("🔒 Esta función es solo para usuarios Premium");
     return;
   }
-
-  if(!dictadoActivo){
-    iniciarDictado();
-    return;
-  }
-
-  if(dictadoActivo && !dictadoPausado){
-    pausarDictado();
-    return;
-  }
-
-  if(dictadoActivo && dictadoPausado){
-    continuarDictado();
-    return;
-  }
+  if(!dictadoActivo)               { iniciarDictado();    return; }
+  if(dictadoActivo && !dictadoPausado) { pausarDictado(); return; }
+  if(dictadoActivo &&  dictadoPausado) { continuarDictado(); }
 }
 
 function iniciarDictado(){
+  if(!_soporteDictado()) return;
 
-  if(!('webkitSpeechRecognition' in window)){
-    alert("Tu navegador no soporta dictado por voz");
-    return;
-  }
-
-  reconocimiento = new webkitSpeechRecognition();
-  reconocimiento.lang = "es-AR";
-  reconocimiento.continuous = true;
-  reconocimiento.interimResults = true;
-
-  textoDictado = "";
-  dictadoActivo = true;
+  textoDictado   = "";
+  textoParcial   = "";
+  dictadoActivo  = true;
   dictadoPausado = false;
+  dictadoReintentos = 0;
 
-  document.getElementById("dictadoEstado").style.display = "block";
+  _detenerRec();
+  reconocimiento = _crearReconocimiento();
 
-  reconocimiento.onresult = function(event){
-
-    let parcial = "";
-
-    for(let i=event.resultIndex;i<event.results.length;i++){
-
-      let trans = event.results[i][0].transcript;
-      let txt = trans.toLowerCase();
-
-      // 🎤 COMANDOS DE VOZ
-      if(txt.includes("pausar dictado")){
-        pausarDictado();
-        return;
-      }
-
-      if(txt.includes("continuar dictado")){
-        continuarDictado();
-        return;
-      }
-
-      if(txt.includes("finalizar dictado")){
-        finalizarDictado();
-        return;
-      }
-
-      if(event.results[i].isFinal){
-        textoDictado += trans + " ";
-      }else{
-        parcial += trans;
-      }
-    }
-
-    document.getElementById("mensaje").value = textoDictado + parcial;
-  };
-
-  reconocimiento.start();
+  try {
+    reconocimiento.start();
+    _dictadoSetEstado("🎤 Dictado activo — hablá", true);
+  } catch(e){
+    alert("No se pudo iniciar el dictado: " + e.message);
+    dictadoActivo = false;
+  }
 }
 
 function pausarDictado(){
-
-  if(reconocimiento){
-    reconocimiento.stop();
-  }
-
+  if(!dictadoActivo) return;
   dictadoPausado = true;
-
-  document.getElementById("dictadoEstado").innerText = "⏸️ Dictado pausado";
+  textoParcial = "";
+  _detenerRec();
+  _dictadoSetEstado("⏸️ Dictado pausado — clic para continuar", true);
 }
 
 function continuarDictado(){
-
   if(!dictadoActivo) return;
-
-  reconocimiento.start();
   dictadoPausado = false;
-
-  document.getElementById("dictadoEstado").innerText = "🎤 Dictado activo";
+  dictadoReintentos = 0;
+  reconocimiento = _crearReconocimiento();
+  try {
+    reconocimiento.start();
+    _dictadoSetEstado("🎤 Dictado activo — hablá", true);
+  } catch(e){
+    alert("No se pudo reanudar el dictado: " + e.message);
+  }
 }
 
 function finalizarDictado(){
+  const textoFinal = (textoDictado + textoParcial).trim();
 
-  dictadoActivo = false;
+  dictadoActivo  = false;
   dictadoPausado = false;
+  textoDictado   = "";
+  textoParcial   = "";
 
-  if(reconocimiento){
-    reconocimiento.stop();
-    reconocimiento = null;
+  _detenerRec();
+  _dictadoSetEstado("", false);
+
+  if(textoFinal.length === 0){
+    agregar("⚠️ No se capturó texto en el dictado.", "ai");
+    return;
   }
 
-  document.getElementById("dictadoEstado").style.display = "none";
-
-  if(textoDictado.trim().length > 0){
-    descargarWordDictado(textoDictado);
-  }
+  agregar("📄 Dictado finalizado. Generando Word…", "ai");
+  descargarWordDictado(textoFinal);
 }
 
-function detenerDictado(){
-  finalizarDictado();
-}
+function detenerDictado(){ finalizarDictado(); }
 
-function descargarWordDictado(texto){
-  fetch("/dictado_word",{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({texto: texto})
-  })
-  .then(r=>r.blob())
-  .then(blob=>{
-    let url = window.URL.createObjectURL(blob);
-    let a = document.createElement("a");
-    a.href = url;
-    a.download = "dictado_foschi.docx";
+async function descargarWordDictado(texto){
+  try {
+    const r = await fetch("/dictado_word", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({texto})
+    });
+
+    if(!r.ok){
+      let msg = "Error del servidor";
+      try {
+        const j = await r.json();
+        msg = j.error || msg;
+      } catch(e){}
+      agregar("❌ No se pudo generar el Word: " + msg, "ai");
+      return;
+    }
+
+    const blob = await r.blob();
+    const url  = window.URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = "dictado_foschi_" + new Date().toISOString().slice(0,10) + ".docx";
+    document.body.appendChild(a);
     a.click();
-  });
+    setTimeout(() => { a.remove(); window.URL.revokeObjectURL(url); }, 2000);
+    agregar("✅ Archivo Word descargado correctamente.", "ai");
+
+  } catch(e){
+    agregar("❌ Error de red al descargar el Word: " + e.message, "ai");
+  }
 }
-</script>
+// =====================
+// 📄 DOCUMENTO PDF/WORD — modal con Resumir y Preguntar
+// =====================
+let docActivo = null;   // { doc_id, name } del documento cargado en esta sesión
+
+// --- Activado desde checkPremium('doc') → input onchange ---
+document.getElementById("archivo_pdf_word").addEventListener("change", async function(){
+  const file = this.files[0];
+  if(!file) return;
+  this.value = "";   // permitir re-subir el mismo archivo
+
+  agregar(`📤 Subiendo <b>${file.name}</b>…`, "ai");
+
+  const fd = new FormData();
+  fd.append("archivo", file);
+  fd.append("usuario_id", usuario_id);
+
+  try {
+    const r = await fetch("/upload_doc", { method:"POST", body: fd });
+    if(!r.ok){
+      const msg = await r.text();
+      agregar("❌ Error al subir el documento: " + msg, "ai");
+      return;
+    }
+    const data = await r.json();
+    docActivo = { doc_id: data.doc_id, name: data.name };
+    abrirDocModal(data.name, data.snippet || "");
+  } catch(e){
+    agregar("❌ Error de red al subir el documento: " + e.message, "ai");
+  }
+});
+
+function abrirDocModal(nombre, snippet){
+  document.getElementById("docModalNombre").textContent = nombre;
+
+  const snippetEl = document.getElementById("docSnippet");
+  const snippetWrap = document.getElementById("docSnippetWrap");
+  if(snippet){
+    snippetEl.textContent = snippet;
+    snippetWrap.style.display = "block";
+  } else {
+    snippetWrap.style.display = "none";
+  }
+
+  // resetear QA
+  document.getElementById("docQaHistorial").innerHTML = "";
+  document.getElementById("docPreguntaInput").value   = "";
+
+  docSwitchTab("resumir");
+  document.getElementById("docModal").classList.add("open");
+  // foco accesible
+  setTimeout(() => document.getElementById("docModoResumen").focus(), 100);
+}
+
+function cerrarDocModal(){
+  document.getElementById("docModal").classList.remove("open");
+}
+
+// cerrar con Escape
+document.addEventListener("keydown", function(e){
+  if(e.key === "Escape") cerrarDocModal();
+});
+
+// cerrar al clic fuera del box
+document.getElementById("docModal").addEventListener("click", function(e){
+  if(e.target === this) cerrarDocModal();
+});
+
+function docSwitchTab(tab){
+  const resumirPanel    = document.getElementById("docResumirPanel");
+  const preguntarPanel  = document.getElementById("docPreguntarPanel");
+  const tabResumirBtn   = document.getElementById("tabResumirBtn");
+  const tabPreguntarBtn = document.getElementById("tabPreguntarBtn");
+
+  if(tab === "resumir"){
+    resumirPanel.classList.add("active");    resumirPanel.style.display   = "flex";
+    preguntarPanel.classList.remove("active"); preguntarPanel.style.display = "none";
+    tabResumirBtn.classList.add("active");
+    tabPreguntarBtn.classList.remove("active");
+  } else {
+    preguntarPanel.classList.add("active");  preguntarPanel.style.display  = "flex";
+    resumirPanel.classList.remove("active"); resumirPanel.style.display    = "none";
+    tabPreguntarBtn.classList.add("active");
+    tabResumirBtn.classList.remove("active");
+    setTimeout(() => document.getElementById("docPreguntaInput").focus(), 80);
+  }
+}
+
+// --- RESUMIR ---
+async function docResumirAccion(){
+  if(!docActivo){ agregar("⚠️ No hay documento cargado.", "ai"); return; }
+
+  const modo = document.getElementById("docModoResumen").value;
+  const btn  = document.getElementById("docResumirBtn");
+  btn.disabled = true;
+  btn.textContent = "⏳ Generando resumen…";
+
+  try {
+    const r = await fetch("/resumir_doc", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ doc_id: docActivo.doc_id, modo, usuario_id })
+    });
+
+    if(!r.ok){
+      const msg = await r.text();
+      agregar("❌ Error al resumir: " + msg, "ai");
+      return;
+    }
+
+    const blob = await r.blob();
+    const url  = window.URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url;
+    a.download = "Resumen_" + new Date().toISOString().slice(0,10) + ".docx";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { a.remove(); window.URL.revokeObjectURL(url); }, 2000);
+
+    agregar("✅ Resumen descargado correctamente.", "ai");
+    cerrarDocModal();
+
+  } catch(e){
+    agregar("❌ Error de red al resumir: " + e.message, "ai");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "⬇️ Generar resumen Word";
+  }
+}
+
+// --- PREGUNTAR ---
+async function docPreguntarAccion(){
+  if(!docActivo){ agregar("⚠️ No hay documento cargado.", "ai"); return; }
+
+  const input    = document.getElementById("docPreguntaInput");
+  const pregunta = input.value.trim();
+  if(!pregunta) return;
+
+  const btn = document.getElementById("docPreguntarBtn");
+  btn.disabled = true;
+  btn.textContent = "⏳ Buscando en el documento…";
+  input.value = "";
+
+  // Agregar pregunta al historial del modal
+  const historial = document.getElementById("docQaHistorial");
+  const item = document.createElement("div");
+  item.className = "doc-qa-item";
+  item.innerHTML = `<div class="qa-q">❓ ${_escapeHtml(pregunta)}</div><div class="qa-a">⏳ Buscando…</div>`;
+  historial.appendChild(item);
+  historial.scrollTop = historial.scrollHeight;
+
+  try {
+    const r = await fetch("/preguntar_doc", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ doc_id: docActivo.doc_id, pregunta, usuario_id })
+    });
+
+    const data = await r.json();
+
+    if(!r.ok || !data.ok){
+      const msg = data.error || "Error desconocido";
+      item.querySelector(".qa-a").textContent = "❌ " + msg;
+      return;
+    }
+
+    item.querySelector(".qa-a").innerHTML = _escapeHtml(data.respuesta).replace(/\n/g, "<br>");
+    historial.scrollTop = historial.scrollHeight;
+
+    // También mostrar la respuesta en el chat principal
+    agregar(`🔍 <b>${_escapeHtml(pregunta)}</b><br><br>${_escapeHtml(data.respuesta).replace(/\n/g,"<br>")}`, "ai");
+
+  } catch(e){
+    item.querySelector(".qa-a").textContent = "❌ Error de red: " + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "🔍 Preguntar al documento";
+    input.focus();
+  }
+}
+
+function _escapeHtml(t){
+  return t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+
+<!-- MODAL DOCUMENTO PDF/WORD -->
+<div id="docModal" role="dialog" aria-modal="true" aria-labelledby="docModalTitle">
+  <div id="docModalBox">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h3 id="docModalTitle">📄 <span id="docModalNombre">Documento</span></h3>
+      <button class="doc-cerrar" onclick="cerrarDocModal()" title="Cerrar">✕</button>
+    </div>
+
+    <div id="docSnippetWrap" style="display:none;">
+      <div class="doc-snippet" id="docSnippet"></div>
+    </div>
+
+    <!-- Pestañas -->
+    <div class="doc-tabs">
+      <button class="tab-btn active" id="tabResumirBtn" onclick="docSwitchTab('resumir')">📋 Resumir</button>
+      <button class="tab-btn"        id="tabPreguntarBtn" onclick="docSwitchTab('preguntar')">💬 Preguntar</button>
+    </div>
+
+    <!-- Panel Resumir -->
+    <div class="active" id="docResumirPanel" style="display:flex;">
+      <select id="docModoResumen">
+        <option value="breve">📌 Breve (4-6 líneas)</option>
+        <option value="normal" selected>📄 Normal (puntos clave)</option>
+        <option value="profundo">🔍 Profundo (detallado)</option>
+      </select>
+      <button class="doc-action-btn" id="docResumirBtn" onclick="docResumirAccion()">
+        ⬇️ Generar resumen Word
+      </button>
+    </div>
+
+    <!-- Panel Preguntar -->
+    <div id="docPreguntarPanel">
+      <div class="doc-qa-historial" id="docQaHistorial"></div>
+      <textarea id="docPreguntaInput"
+        placeholder="Escribí tu pregunta sobre el documento…"
+        rows="3"
+        onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();docPreguntarAccion();}">
+      </textarea>
+      <button class="doc-action-btn" id="docPreguntarBtn" onclick="docPreguntarAccion()">
+        🔍 Preguntar al documento
+      </button>
+    </div>
+
+  </div>
+</div>
 
 <div id="authModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:9999;">
   <div style="max-width:360px; margin:10% auto; background:#001d3d; padding:20px; border-radius:12px; color:#00eaff;">
@@ -2126,6 +2801,71 @@ def resumir_doc():
         mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         download_name=resumen_filename
     )
+
+# ---------------- PREGUNTAR SOBRE DOCUMENTO ----------------
+@app.route("/preguntar_doc", methods=["POST"])
+def preguntar_doc():
+    """
+    Recibe JSON { doc_id, pregunta, usuario_id }.
+    Responde SOLO basándose en el texto del documento.
+    """
+    data = request.get_json(silent=True) or {}
+    doc_id    = data.get("doc_id", "").strip()
+    pregunta  = data.get("pregunta", "").strip()
+    usuario_id = data.get("usuario_id", "anon")
+
+    # --- validaciones ---
+    if not doc_id:
+        return jsonify({"ok": False, "error": "Falta doc_id"}), 400
+    if not pregunta:
+        return jsonify({"ok": False, "error": "Pregunta vacía"}), 400
+    if len(pregunta) > 1000:
+        return jsonify({"ok": False, "error": "Pregunta demasiado larga (máx 1000 caracteres)"}), 400
+
+    txt_path = os.path.join(TEMP_DIR, f"{doc_id}.txt")
+    if not os.path.exists(txt_path):
+        return jsonify({"ok": False, "error": "Documento no encontrado. Volvé a subirlo."}), 404
+
+    try:
+        with open(txt_path, "r", encoding="utf-8") as f:
+            texto_doc = f.read()
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Error leyendo documento: {e}"}), 500
+
+    # Truncar si es muy largo (mantener contexto relevante)
+    MAX_CHARS = 120_000
+    if len(texto_doc) > MAX_CHARS:
+        texto_doc = texto_doc[:MAX_CHARS] + "\n\n[Texto truncado por longitud.]"
+
+    system_prompt = (
+        "Sos un asistente que responde preguntas EXCLUSIVAMENTE basándose en el texto del documento "
+        "que se te proporciona. No uses conocimiento externo ni inventes información. "
+        "Si la respuesta no está en el documento, decí claramente: "
+        "'No encontré esa información en el documento.' "
+        "Respondé en español claro y directo. Citá el fragmento relevante si es útil."
+    )
+
+    user_prompt = (
+        f"--- DOCUMENTO ---\n{texto_doc}\n\n"
+        f"--- PREGUNTA ---\n{pregunta}"
+    )
+
+    try:
+        client_local = OpenAI(api_key=OPENAI_API_KEY)
+        resp = client_local.chat.completions.create(
+            model="gpt-4-turbo",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user",   "content": user_prompt}
+            ],
+            temperature=0.1,   # baja temperatura = respuestas más fieles al texto
+            max_tokens=800
+        )
+        respuesta = resp.choices[0].message.content.strip()
+        return jsonify({"ok": True, "respuesta": respuesta})
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Error generando respuesta: {e}"}), 500
+
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
