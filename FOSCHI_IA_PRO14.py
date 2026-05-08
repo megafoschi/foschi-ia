@@ -950,15 +950,10 @@ body.day .user a{
 
 /* ===== MODAL DOCUMENTO ===== */
 #docModal{
-  display:none;
-  position:fixed;
-  inset:0;
-  background:rgba(0,0,5,.88);
-  z-index:9998;
+  /* abierto/cerrado lo maneja JS con style.display */
   align-items:center;
   justify-content:center;
 }
-#docModal.open{ display:flex; }
 #docModalBox{
   background:#001525;
   border:1px solid #00eaff44;
@@ -2058,13 +2053,13 @@ function abrirDocModal(nombre, snippet){
   document.getElementById("docPreguntaInput").value   = "";
 
   docSwitchTab("resumir");
-  document.getElementById("docModal").classList.add("open");
+  document.getElementById("docModal").style.display = "flex";
   // foco accesible
   setTimeout(() => document.getElementById("docModoResumen").focus(), 100);
 }
 
 function cerrarDocModal(){
-  document.getElementById("docModal").classList.remove("open");
+  document.getElementById("docModal").style.display = "none";
 }
 
 // cerrar con Escape
@@ -2193,10 +2188,10 @@ async function docPreguntarAccion(){
 function _escapeHtml(t){
   return t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
-
+</script>
 
 <!-- MODAL DOCUMENTO PDF/WORD -->
-<div id="docModal" role="dialog" aria-modal="true" aria-labelledby="docModalTitle">
+<div id="docModal" role="dialog" aria-modal="true" aria-labelledby="docModalTitle" style="display:none; position:fixed; inset:0; background:rgba(0,0,5,.88); z-index:9998; align-items:center; justify-content:center;">
   <div id="docModalBox">
     <div style="display:flex;justify-content:space-between;align-items:center;">
       <h3 id="docModalTitle">📄 <span id="docModalNombre">Documento</span></h3>
