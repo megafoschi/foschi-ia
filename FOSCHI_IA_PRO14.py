@@ -1258,6 +1258,52 @@ z-index:999;
   <button onclick="hablar()">🎤 Hablar</button>
 </div>
 
+<!-- MODAL DOCUMENTO PDF/WORD -->
+<div id="docModal" role="dialog" aria-modal="true" aria-labelledby="docModalTitle" style="display:none; position:fixed; inset:0; background:rgba(0,0,5,.88); z-index:9998; align-items:center; justify-content:center;">
+  <div id="docModalBox">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h3 id="docModalTitle">📄 <span id="docModalNombre">Documento</span></h3>
+      <button class="doc-cerrar" onclick="cerrarDocModal()" title="Cerrar">✕</button>
+    </div>
+
+    <div id="docSnippetWrap" style="display:none;">
+      <div class="doc-snippet" id="docSnippet"></div>
+    </div>
+
+    <!-- Pestañas -->
+    <div class="doc-tabs">
+      <button class="tab-btn active" id="tabResumirBtn" onclick="docSwitchTab('resumir')">📋 Resumir</button>
+      <button class="tab-btn"        id="tabPreguntarBtn" onclick="docSwitchTab('preguntar')">💬 Preguntar</button>
+    </div>
+
+    <!-- Panel Resumir -->
+    <div class="active" id="docResumirPanel" style="display:flex;">
+      <select id="docModoResumen">
+        <option value="breve">📌 Breve (4-6 líneas)</option>
+        <option value="normal" selected>📄 Normal (puntos clave)</option>
+        <option value="profundo">🔍 Profundo (detallado)</option>
+      </select>
+      <button class="doc-action-btn" id="docResumirBtn" onclick="docResumirAccion()">
+        ⬇️ Generar resumen Word
+      </button>
+    </div>
+
+    <!-- Panel Preguntar -->
+    <div id="docPreguntarPanel">
+      <div class="doc-qa-historial" id="docQaHistorial"></div>
+      <textarea id="docPreguntaInput"
+        placeholder="Escribí tu pregunta sobre el documento…"
+        rows="3"
+        onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();docPreguntarAccion();}">
+      </textarea>
+      <button class="doc-action-btn" id="docPreguntarBtn" onclick="docPreguntarAccion()">
+        🔍 Preguntar al documento
+      </button>
+    </div>
+
+  </div>
+</div>
+
 <script>
 // --- Variables y funciones generales ---
 let usuario_id="{{usuario_id}}";
@@ -2009,8 +2055,11 @@ async function descargarWordDictado(texto){
 // =====================
 let docActivo = null;   // { doc_id, name } del documento cargado en esta sesión
 
-// --- Activado desde checkPremium('doc') → input onchange ---
-document.getElementById("archivo_pdf_word").addEventListener("change", async function(){
+// Registrar listeners del modal cuando el DOM esté completamente listo
+document.addEventListener("DOMContentLoaded", function(){
+
+  // --- Activado desde checkPremium('doc') → input onchange ---
+  document.getElementById("archivo_pdf_word").addEventListener("change", async function(){
   const file = this.files[0];
   if(!file) return;
   this.value = "";   // permitir re-subir el mismo archivo
@@ -2062,15 +2111,17 @@ function cerrarDocModal(){
   document.getElementById("docModal").style.display = "none";
 }
 
-// cerrar con Escape
-document.addEventListener("keydown", function(e){
-  if(e.key === "Escape") cerrarDocModal();
-});
+  // cerrar con Escape
+  document.addEventListener("keydown", function(e){
+    if(e.key === "Escape") cerrarDocModal();
+  });
 
-// cerrar al clic fuera del box
-document.getElementById("docModal").addEventListener("click", function(e){
-  if(e.target === this) cerrarDocModal();
-});
+  // cerrar al clic fuera del box
+  document.getElementById("docModal").addEventListener("click", function(e){
+    if(e.target === this) cerrarDocModal();
+  });
+
+}); // fin DOMContentLoaded
 
 function docSwitchTab(tab){
   const resumirPanel    = document.getElementById("docResumirPanel");
@@ -2190,51 +2241,6 @@ function _escapeHtml(t){
 }
 </script>
 
-<!-- MODAL DOCUMENTO PDF/WORD -->
-<div id="docModal" role="dialog" aria-modal="true" aria-labelledby="docModalTitle" style="display:none; position:fixed; inset:0; background:rgba(0,0,5,.88); z-index:9998; align-items:center; justify-content:center;">
-  <div id="docModalBox">
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-      <h3 id="docModalTitle">📄 <span id="docModalNombre">Documento</span></h3>
-      <button class="doc-cerrar" onclick="cerrarDocModal()" title="Cerrar">✕</button>
-    </div>
-
-    <div id="docSnippetWrap" style="display:none;">
-      <div class="doc-snippet" id="docSnippet"></div>
-    </div>
-
-    <!-- Pestañas -->
-    <div class="doc-tabs">
-      <button class="tab-btn active" id="tabResumirBtn" onclick="docSwitchTab('resumir')">📋 Resumir</button>
-      <button class="tab-btn"        id="tabPreguntarBtn" onclick="docSwitchTab('preguntar')">💬 Preguntar</button>
-    </div>
-
-    <!-- Panel Resumir -->
-    <div class="active" id="docResumirPanel" style="display:flex;">
-      <select id="docModoResumen">
-        <option value="breve">📌 Breve (4-6 líneas)</option>
-        <option value="normal" selected>📄 Normal (puntos clave)</option>
-        <option value="profundo">🔍 Profundo (detallado)</option>
-      </select>
-      <button class="doc-action-btn" id="docResumirBtn" onclick="docResumirAccion()">
-        ⬇️ Generar resumen Word
-      </button>
-    </div>
-
-    <!-- Panel Preguntar -->
-    <div id="docPreguntarPanel">
-      <div class="doc-qa-historial" id="docQaHistorial"></div>
-      <textarea id="docPreguntaInput"
-        placeholder="Escribí tu pregunta sobre el documento…"
-        rows="3"
-        onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();docPreguntarAccion();}">
-      </textarea>
-      <button class="doc-action-btn" id="docPreguntarBtn" onclick="docPreguntarAccion()">
-        🔍 Preguntar al documento
-      </button>
-    </div>
-
-  </div>
-</div>
 
 <div id="authModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:9999;">
   <div style="max-width:360px; margin:10% auto; background:#001d3d; padding:20px; border-radius:12px; color:#00eaff;">
