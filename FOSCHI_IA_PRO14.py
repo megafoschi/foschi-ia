@@ -1598,7 +1598,7 @@ document
         return;
       }
 
-      if(txt.includes("nuevo párrafo")){
+      if(txt.includes("nuevo parrafo")){
 
         textoDictado += "\n\n";
 
@@ -1655,7 +1655,7 @@ document
     }
 
     actualizarEstadoDictado(
-      "⚠️ Error de micrófono",
+      "⚠️ Error de microfono",
       "#ff8800"
     );
   };
@@ -1700,7 +1700,7 @@ function finalizarDictado(){
   }
 
   actualizarEstadoDictado(
-    "✅ Generando Word...",
+    "Generando Word...",
     "#00aa00"
   );
 
@@ -1780,7 +1780,7 @@ function descargarWordDictado(texto){
     window.URL.revokeObjectURL(url);
 
     agregar(
-      "✅ Dictado exportado a Word correctamente.",
+      "Dictado exportado correctamente.",
       "ai"
     );
 
