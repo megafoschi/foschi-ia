@@ -342,82 +342,31 @@ def learn_from_message(usuario, mensaje, respuesta):
 # ---------------- DICTADO A WORD ----------------
 @app.route("/dictado_word", methods=["POST"])
 def dictado_word():
+    data = request.json
+    texto = data.get("texto", "").strip()
 
-    try:
-        data = request.get_json(force=True)
+    if not texto:
+        return jsonify({"ok": False, "error": "Texto vacío"})
 
-        texto = data.get("texto", "").strip()
+    nombre = f"dictado_{uuid.uuid4().hex}.docx"
+    ruta = os.path.join(TEMP_DIR, nombre)
 
-        if not texto:
-            return jsonify({
-                "ok": False,
-                "error": "Texto vacío"
-            }), 400
+    doc = DocxDocument()
+    doc.add_heading("Dictado Foschi IA", 0)
+    doc.add_paragraph(texto)
 
-        # 🔥 limpiar texto
-        texto = re.sub(r'\s+', ' ', texto)
+    doc.save(ruta)
 
-        # 🔥 capitalizar inicio
-        texto = texto[0].upper() + texto[1:]
+    @after_this_request
+    def remove_file(response):
+        try:
+            os.remove(ruta)
+        except:
+            pass
+        return response
 
-        nombre = f"dictado_{uuid.uuid4().hex}.docx"
-        ruta = os.path.join(TEMP_DIR, nombre)
+    return send_file(ruta, as_attachment=True)
 
-        doc = DocxDocument()
-
-        # TÍTULO
-        titulo = doc.add_heading("Dictado Foschi IA", level=0)
-
-        # FECHA
-        fecha = datetime.now(
-            pytz.timezone("America/Argentina/Buenos_Aires")
-        ).strftime("%d/%m/%Y %H:%M")
-
-        doc.add_paragraph(f"Fecha: {fecha}")
-
-        # SEPARAR PÁRRAFOS
-        bloques = texto.split("\n")
-
-        for bloque in bloques:
-
-            bloque = bloque.strip()
-
-            if not bloque:
-                continue
-
-            p = doc.add_paragraph(bloque)
-
-            # 🔥 formato pro
-            p.style.font.name = "Calibri"
-
-        doc.save(ruta)
-
-        @after_this_request
-        def remove_file(response):
-            try:
-                if os.path.exists(ruta):
-                    os.remove(ruta)
-            except Exception as e:
-                print("Error borrando DOCX:", e)
-
-            return response
-
-        return send_file(
-            ruta,
-            as_attachment=True,
-            download_name="dictado_foschi.docx",
-            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
-
-    except Exception as e:
-
-        print("ERROR dictado_word:", e)
-
-        return jsonify({
-            "ok": False,
-            "error": str(e)
-        }), 500
-        
 # ---------------- RESPUESTA IA ----------------
 
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
@@ -1016,33 +965,7 @@ body.day .user a{
 0%,100%{height:10px;}
 50%{height:40px;}
 }
-/* ===================== */
-/* 🎤 BOTÓN DICTADO PRO */
-/* ===================== */
 
-#dictadoBtn{
-  position:relative;
-  overflow:hidden;
-}
-
-#dictadoBtn.activo{
-  animation:pulseDictado 1s infinite;
-}
-
-@keyframes pulseDictado{
-
-  0%{
-    transform:scale(1);
-  }
-
-  50%{
-    transform:scale(1.08);
-  }
-
-  100%{
-    transform:scale(1);
-  }
-}
 </style>
 </head>
 
@@ -1124,9 +1047,7 @@ z-index:999;
   <button onclick="toggleModoConversacion()">🧠 Modo conversación</button>
   <button onclick="checkPremium('audio')">🎵 Audio (mp3/wav) a Texto</button>
   <button onclick="checkPremium('doc')">📄 Resumir PDF / WORD</button>
-  <button id="dictadoBtn" onclick="toggleDictado()">
-🎤 Dictado PRO
-</button>
+  <button onclick="toggleDictado()">🎤 Dictado por voz</button>
 </div>
   </div>
   <input id="audioInput" class="hidden_file_input" type="file" accept=".mp3,audio/*,.wav" />
@@ -1500,21 +1421,12 @@ function toggleDayNight(){
   }
 }
 // =====================
-// 🎤 DICTADO PREMIUM PRO
+// 🎤 DICTADO PREMIUM
 // =====================
-
 let dictadoActivo = false;
 let dictadoPausado = false;
 let reconocimiento = null;
-
 let textoDictado = "";
-let reinicioDictado = false;
-
-const estadoDictado = document.getElementById("dictadoEstado");
-
-// =====================
-// BOTÓN PRINCIPAL
-// =====================
 
 function toggleDictado(){
 
@@ -1528,274 +1440,130 @@ function toggleDictado(){
     return;
   }
 
-  finalizarDictado();
-}
-
-// =====================
-// INICIAR
-// =====================
-
-function iniciarDictado(){
-
-  const SpeechRecognition =
-    window.SpeechRecognition ||
-    window.webkitSpeechRecognition;
-
-  if(!SpeechRecognition){
-    alert("Tu navegador no soporta dictado");
+  if(dictadoActivo && !dictadoPausado){
+    pausarDictado();
     return;
   }
 
-  reconocimiento = new SpeechRecognition();
+  if(dictadoActivo && dictadoPausado){
+    continuarDictado();
+    return;
+  }
+}
 
+function iniciarDictado(){
+
+  if(!('webkitSpeechRecognition' in window)){
+    alert("Tu navegador no soporta dictado por voz");
+    return;
+  }
+
+  reconocimiento = new webkitSpeechRecognition();
   reconocimiento.lang = "es-AR";
-
   reconocimiento.continuous = true;
-
   reconocimiento.interimResults = true;
 
-  reconocimiento.maxAlternatives = 1;
-
+  textoDictado = "";
   dictadoActivo = true;
-
   dictadoPausado = false;
 
-  reinicioDictado = true;
+  document.getElementById("dictadoEstado").style.display = "block";
 
-  textoDictado = "";
-document
-.getElementById("dictadoBtn")
-.classList.add("activo");
-  actualizarEstadoDictado(
-    "🎤 Dictado activo",
-    "#ff0000"
-  );
-
-  reconocimiento.onstart = () => {
-
-    console.log("DICTADO INICIADO");
-
-  };
-
-  reconocimiento.onresult = (event) => {
+  reconocimiento.onresult = function(event){
 
     let parcial = "";
 
-    for(let i = event.resultIndex; i < event.results.length; i++){
+    for(let i=event.resultIndex;i<event.results.length;i++){
 
       let trans = event.results[i][0].transcript;
+      let txt = trans.toLowerCase();
 
-      let txt = trans.toLowerCase().trim();
-
-      // =====================
-      // COMANDOS DE VOZ
-      // =====================
-
-      if(txt.includes("finalizar dictado")){
-
-        finalizarDictado();
-
+      // 🎤 COMANDOS DE VOZ
+      if(txt.includes("pausar dictado")){
+        pausarDictado();
         return;
       }
 
-      if(txt.includes("nuevo parrafo")){
-
-        textoDictado += "\n\n";
-
-        continue;
+      if(txt.includes("continuar dictado")){
+        continuarDictado();
+        return;
       }
 
-      if(txt.includes("coma")){
-
-        textoDictado += ", ";
-
-        continue;
+      if(txt.includes("finalizar dictado")){
+        finalizarDictado();
+        return;
       }
-
-      if(txt.includes("punto")){
-
-        textoDictado += ". ";
-
-        continue;
-      }
-
-      if(txt.includes("dos puntos")){
-
-        textoDictado += ": ";
-
-        continue;
-      }
-
-      // =====================
 
       if(event.results[i].isFinal){
-
-        textoDictado += trans.trim() + " ";
-
+        textoDictado += trans + " ";
       }else{
-
         parcial += trans;
       }
     }
 
-    document.getElementById("mensaje").value =
-      textoDictado + parcial;
+    document.getElementById("mensaje").value = textoDictado + parcial;
   };
 
-  reconocimiento.onerror = (event) => {
-
-    console.log("ERROR DICTADO:", event.error);
-
-    // ignorar errores normales
-    if(
-      event.error === "no-speech" ||
-      event.error === "aborted"
-    ){
-      return;
-    }
-
-    actualizarEstadoDictado(
-      "⚠️ Error de microfono",
-      "#ff8800"
-    );
-  };
-
-  reconocimiento.onend = () => {
-
-    // 🔥 reinicio automático estilo WhatsApp
-    if(dictadoActivo && reinicioDictado){
-
-      try{
-        reconocimiento.start();
-      }catch(e){}
-    }
-  };
-
-  try{
-    reconocimiento.start();
-  }catch(e){
-    console.log(e);
-  }
+  reconocimiento.start();
 }
 
-// =====================
-// FINALIZAR
-// =====================
+function pausarDictado(){
+
+  if(reconocimiento){
+    reconocimiento.stop();
+  }
+
+  dictadoPausado = true;
+
+  document.getElementById("dictadoEstado").innerText = "⏸️ Dictado pausado";
+}
+
+function continuarDictado(){
+
+  if(!dictadoActivo) return;
+
+  reconocimiento.start();
+  dictadoPausado = false;
+
+  document.getElementById("dictadoEstado").innerText = "🎤 Dictado activo";
+}
 
 function finalizarDictado(){
 
-  reinicioDictado = false;
-
   dictadoActivo = false;
-
   dictadoPausado = false;
 
   if(reconocimiento){
-
-    try{
-      reconocimiento.stop();
-    }catch(e){}
-
+    reconocimiento.stop();
     reconocimiento = null;
   }
 
-  actualizarEstadoDictado(
-    "Generando Word...",
-    "#00aa00"
-  );
+  document.getElementById("dictadoEstado").style.display = "none";
 
-  setTimeout(() => {
-
-    estadoDictado.style.display = "none";
-
-  }, 2000);
-
-  let textoFinal = textoDictado.trim();
-
-  if(textoFinal.length > 0){
-
-    descargarWordDictado(textoFinal);
+  if(textoDictado.trim().length > 0){
+    descargarWordDictado(textoDictado);
   }
-
-  textoDictado = "";
-  document
-.getElementById("dictadoBtn")
-.classList.remove("activo");
 }
 
-// =====================
-// UI ESTADO
-// =====================
-
-function actualizarEstadoDictado(texto,color){
-
-  estadoDictado.style.display = "block";
-
-  estadoDictado.innerText = texto;
-
-  estadoDictado.style.background = color;
+function detenerDictado(){
+  finalizarDictado();
 }
-
-// =====================
-// DESCARGAR WORD
-// =====================
 
 function descargarWordDictado(texto){
-
   fetch("/dictado_word",{
     method:"POST",
-    headers:{
-      "Content-Type":"application/json"
-    },
-    body:JSON.stringify({
-      texto:texto
-    })
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({texto: texto})
   })
-  .then(async r => {
-
-    if(!r.ok){
-
-      throw new Error("Error generando Word");
-    }
-
-    return r.blob();
-
-  })
-  .then(blob => {
-
+  .then(r=>r.blob())
+  .then(blob=>{
     let url = window.URL.createObjectURL(blob);
-
     let a = document.createElement("a");
-
     a.href = url;
-
     a.download = "dictado_foschi.docx";
-
-    document.body.appendChild(a);
-
     a.click();
-
-    a.remove();
-
-    window.URL.revokeObjectURL(url);
-
-    agregar(
-      "Dictado exportado correctamente.",
-      "ai"
-    );
-
-  })
-  .catch(err => {
-
-    console.error(err);
-
-    agregar(
-      "❌ Error generando el Word del dictado.",
-      "ai"
-    );
   });
 }
- 
 </script>
 
 <div id="authModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:9999;">
