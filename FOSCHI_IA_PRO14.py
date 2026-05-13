@@ -1694,17 +1694,14 @@ function mejorarTextoDictado(texto){
 
   texto = texto.trim();
 
-  // Primera letra mayúscula
   texto =
     texto.charAt(0).toUpperCase() +
     texto.slice(1);
 
-  // comandos hablados
   texto = texto.replace(/ punto /gi, ". ");
   texto = texto.replace(/ coma /gi, ", ");
   texto = texto.replace(/ dos puntos /gi, ": ");
   texto = texto.replace(/ punto y coma /gi, "; ");
-  texto = texto.replace(/ nueva línea /gi, "\n");
 
   return texto;
 }
