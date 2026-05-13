@@ -1478,7 +1478,6 @@ let reconocimiento = null;
 let textoDictado = "";
 let ultimoTexto = "";
 let reinicioDictado = false;
-let dictadoFinalizado = false;
 
 function toggleDictado(){
 
@@ -1524,12 +1523,8 @@ function iniciarDictado(){
   dictadoPausado = false;
   reinicioDictado = true;
 
-  if(!dictadoPausado){
   textoDictado = "";
-}
-
-ultimoTexto = "";
-dictadoFinalizado = false;
+  ultimoTexto = "";
 
   document.getElementById("dictadoEstado").style.display = "block";
   document.getElementById("dictadoEstado").innerText =
@@ -1567,16 +1562,6 @@ dictadoFinalizado = false;
         continuarDictado();
         return;
       }
-
-      if(
-   txt.includes("cancelar dictado") ||
-   txt.includes("borrar dictado") ||
-   txt.includes("descartar dictado") ||
-   txt.includes("eliminar dictado")
-){
-    cancelarDictado();
-    return;
-}
 
       if(
    txt.includes("finalizar dictado") ||
@@ -1631,21 +1616,17 @@ dictadoFinalizado = false;
 
   reconocimiento.onend = function(){
 
-  if(dictadoFinalizado){
-    return;
-  }
-
-  if(
-    dictadoActivo &&
-    !dictadoPausado &&
-    reinicioDictado
-  ){
-
-    try{
+    if(
+      dictadoActivo &&
+      !dictadoPausado &&
+      reinicioDictado
+    ){
       reconocimiento.start();
-    }catch(e){}
-  }
-};
+    }
+  };
+
+  reconocimiento.start();
+}
 
 function pausarDictado(){
 
@@ -1670,13 +1651,13 @@ function continuarDictado(){
   dictadoPausado = false;
   reinicioDictado = true;
 
+  reconocimiento.start();
+
   document.getElementById("dictadoEstado").innerText =
     "🎤 Dictado activo";
 
   document.getElementById("dictadoBtn").innerText =
     "⏸️ Pausar";
-
-  reconocimiento.start();
 }
 
 function finalizarDictado(){
@@ -1684,7 +1665,6 @@ function finalizarDictado(){
   dictadoActivo = false;
   dictadoPausado = false;
   reinicioDictado = false;
-  dictadoFinalizado = true;
 
   if(reconocimiento){
     reconocimiento.stop();
@@ -1713,35 +1693,6 @@ function finalizarDictado(){
 
 function detenerDictado(){
   finalizarDictado();
-}
-
-function cancelarDictado(){
-
-  dictadoActivo = false;
-  dictadoPausado = false;
-  reinicioDictado = false;
-
-  if(reconocimiento){
-    reconocimiento.stop();
-    reconocimiento = null;
-  }
-
-  textoDictado = "";
-  ultimoTexto = "";
-
-  document.getElementById("mensaje").value = "";
-
-  document.getElementById("dictadoEstado").style.display =
-    "none";
-
-  document
-    .getElementById("dictadoBtn")
-    .classList.remove("activo");
-
-  document.getElementById("dictadoBtn").innerText =
-    "🎤 Dictado";
-
-  agregar("❌ Dictado cancelado","ai");
 }
 
 // =====================
