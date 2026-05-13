@@ -1478,7 +1478,6 @@ let reconocimiento = null;
 let textoDictado = "";
 let ultimoTexto = "";
 let reinicioDictado = false;
-let cancelarGuardadoDictado = false;
 
 function toggleDictado(){
 
@@ -1564,40 +1563,10 @@ function iniciarDictado(){
         return;
       }
 
-      // =====================
-// FINALIZAR Y GUARDAR
-// =====================
-
-if(
-   txt.includes("finalizar dictado") ||
-   txt.includes("terminar dictado") ||
-   txt.includes("fin de dictado") ||
-   txt.includes("cerrar dictado") ||
-   txt.includes("detener dictado") ||
-   txt.includes("guardar dictado") ||
-   txt.includes("terminar el dictado") ||
-   txt.includes("finalizar el dictado")
-){
-    cancelarGuardadoDictado = false;
-    finalizarDictado();
-    return;
-}
-
-// =====================
-// CANCELAR Y BORRAR TODO
-// =====================
-
-if(
-   txt.includes("cancelar dictado") ||
-   txt.includes("cancelar el dictado") ||
-   txt.includes("borrar todo") ||
-   txt.includes("eliminar dictado") ||
-   txt.includes("descartar dictado")
-){
-    cancelarGuardadoDictado = true;
-    cancelarDictado();
-    return;
-}
+      if(txt.includes("finalizar dictado")){
+        finalizarDictado();
+        return;
+      }
 
       // =====================
       // EVITAR DUPLICADOS
@@ -1705,54 +1674,16 @@ function finalizarDictado(){
 
   textoDictado = textoDictado.trim();
 
-  if(
-   textoDictado.length > 0 &&
-   !cancelarGuardadoDictado
-){
+  if(textoDictado.length > 0){
     descargarWordDictado(textoDictado);
-}
+  }
 
   textoDictado = "";
-ultimoTexto = "";
-cancelarGuardadoDictado = false;
+  ultimoTexto = "";
 }
 
 function detenerDictado(){
   finalizarDictado();
-}
-
-// =====================
-// CANCELAR DICTADO
-// =====================
-
-function cancelarDictado(){
-
-  dictadoActivo = false;
-  dictadoPausado = false;
-  reinicioDictado = false;
-
-  if(reconocimiento){
-    reconocimiento.stop();
-    reconocimiento = null;
-  }
-
-  // limpiar TODO
-  textoDictado = "";
-  ultimoTexto = "";
-
-  document.getElementById("mensaje").value = "";
-
-  document.getElementById("dictadoEstado").style.display =
-    "none";
-
-  document
-    .getElementById("dictadoBtn")
-    .classList.remove("activo");
-
-  document.getElementById("dictadoBtn").innerText =
-    "🎤 Dictado";
-
-  agregar("🗑️ Dictado cancelado","ai");
 }
 
 // =====================
