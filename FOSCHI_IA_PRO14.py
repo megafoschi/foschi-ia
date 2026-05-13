@@ -1478,6 +1478,7 @@ let reconocimiento = null;
 let textoDictado = "";
 let ultimoTexto = "";
 let reinicioDictado = false;
+let dictadoFinalizado = false;
 
 function toggleDictado(){
 
@@ -1523,8 +1524,12 @@ function iniciarDictado(){
   dictadoPausado = false;
   reinicioDictado = true;
 
+  if(!dictadoPausado){
   textoDictado = "";
-  ultimoTexto = "";
+}
+
+ultimoTexto = "";
+dictadoFinalizado = false;
 
   document.getElementById("dictadoEstado").style.display = "block";
   document.getElementById("dictadoEstado").innerText =
@@ -1626,17 +1631,21 @@ function iniciarDictado(){
 
   reconocimiento.onend = function(){
 
-    if(
-      dictadoActivo &&
-      !dictadoPausado &&
-      reinicioDictado
-    ){
-      reconocimiento.start();
-    }
-  };
+  if(dictadoFinalizado){
+    return;
+  }
 
-  reconocimiento.start();
-}
+  if(
+    dictadoActivo &&
+    !dictadoPausado &&
+    reinicioDictado
+  ){
+
+    try{
+      reconocimiento.start();
+    }catch(e){}
+  }
+};
 
 function pausarDictado(){
 
@@ -1661,13 +1670,13 @@ function continuarDictado(){
   dictadoPausado = false;
   reinicioDictado = true;
 
-  reconocimiento.start();
-
   document.getElementById("dictadoEstado").innerText =
     "🎤 Dictado activo";
 
   document.getElementById("dictadoBtn").innerText =
     "⏸️ Pausar";
+
+  reconocimiento.start();
 }
 
 function finalizarDictado(){
@@ -1675,6 +1684,7 @@ function finalizarDictado(){
   dictadoActivo = false;
   dictadoPausado = false;
   reinicioDictado = false;
+  dictadoFinalizado = true;
 
   if(reconocimiento){
     reconocimiento.stop();
