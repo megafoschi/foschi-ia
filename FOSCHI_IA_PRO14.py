@@ -342,31 +342,51 @@ def learn_from_message(usuario, mensaje, respuesta):
 # ---------------- DICTADO A WORD ----------------
 @app.route("/dictado_word", methods=["POST"])
 def dictado_word():
-    data = request.json
+
+    data = request.get_json(silent=True) or {}
+
     texto = data.get("texto", "").strip()
 
     if not texto:
-        return jsonify({"ok": False, "error": "Texto vacío"})
+        return jsonify({
+            "ok": False,
+            "error": "Texto vacío"
+        })
 
     nombre = f"dictado_{uuid.uuid4().hex}.docx"
+
     ruta = os.path.join(TEMP_DIR, nombre)
 
     doc = DocxDocument()
+
     doc.add_heading("Dictado Foschi IA", 0)
-    doc.add_paragraph(texto)
+
+    for linea in texto.split("\n"):
+
+        linea = linea.strip()
+
+        if linea:
+            doc.add_paragraph(linea)
 
     doc.save(ruta)
 
     @after_this_request
     def remove_file(response):
+
         try:
-            os.remove(ruta)
-        except:
-            pass
+            if os.path.exists(ruta):
+                os.remove(ruta)
+        except Exception as e:
+            print("Error eliminando temporal:", e)
+
         return response
 
-    return send_file(ruta, as_attachment=True)
-
+    return send_file(
+        ruta,
+        as_attachment=True,
+        download_name="dictado_foschi.docx"
+    )
+    
 # ---------------- RESPUESTA IA ----------------
 
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
@@ -960,6 +980,34 @@ body.day .user a{
 .wave:nth-child(3){animation-delay:0.2s;}
 .wave:nth-child(4){animation-delay:0.3s;}
 .wave:nth-child(5){animation-delay:0.4s;}
+/* ========================= */
+/* 🎤 DICTADO PRO */
+/* ========================= */
+
+#dictadoBtn.activo{
+  background:#ff0033 !important;
+  color:#fff !important;
+  border:1px solid #ff3355 !important;
+  box-shadow:0 0 20px #ff0033 !important;
+  animation:pulseDictado 1s infinite;
+}
+
+@keyframes pulseDictado{
+  0%{transform:scale(1);}
+  50%{transform:scale(1.06);}
+  100%{transform:scale(1);}
+}
+
+#dictadoEstado{
+  box-shadow:0 0 20px #ff0033;
+  animation:pulseEstado 1s infinite;
+}
+
+@keyframes pulseEstado{
+  0%{opacity:1;}
+  50%{opacity:0.6;}
+  100%{opacity:1;}
+}
 
 @keyframes wave{
 0%,100%{height:10px;}
@@ -1047,7 +1095,7 @@ z-index:999;
   <button onclick="toggleModoConversacion()">🧠 Modo conversación</button>
   <button onclick="checkPremium('audio')">🎵 Audio (mp3/wav) a Texto</button>
   <button onclick="checkPremium('doc')">📄 Resumir PDF / WORD</button>
-  <button onclick="toggleDictado()">🎤 Dictado por voz</button>
+  <button id="dictadoBtn" onclick="toggleDictado()">🎤 Dictado</button>
 </div>
   </div>
   <input id="audioInput" class="hidden_file_input" type="file" accept=".mp3,audio/*,.wav" />
@@ -1421,12 +1469,15 @@ function toggleDayNight(){
   }
 }
 // =====================
-// 🎤 DICTADO PREMIUM
+// 🎤 DICTADO PRO
 // =====================
+
 let dictadoActivo = false;
 let dictadoPausado = false;
 let reconocimiento = null;
 let textoDictado = "";
+let ultimoTexto = "";
+let reinicioDictado = false;
 
 function toggleDictado(){
 
@@ -1447,27 +1498,44 @@ function toggleDictado(){
 
   if(dictadoActivo && dictadoPausado){
     continuarDictado();
-    return;
   }
 }
 
 function iniciarDictado(){
 
-  if(!('webkitSpeechRecognition' in window)){
-    alert("Tu navegador no soporta dictado por voz");
+  const SpeechRecognition =
+    window.SpeechRecognition ||
+    window.webkitSpeechRecognition;
+
+  if(!SpeechRecognition){
+    alert("Tu navegador no soporta dictado");
     return;
   }
 
-  reconocimiento = new webkitSpeechRecognition();
+  reconocimiento = new SpeechRecognition();
+
   reconocimiento.lang = "es-AR";
   reconocimiento.continuous = true;
   reconocimiento.interimResults = true;
+  reconocimiento.maxAlternatives = 1;
 
-  textoDictado = "";
   dictadoActivo = true;
   dictadoPausado = false;
+  reinicioDictado = true;
+
+  textoDictado = "";
+  ultimoTexto = "";
 
   document.getElementById("dictadoEstado").style.display = "block";
+  document.getElementById("dictadoEstado").innerText =
+    "🎤 Dictado activo";
+
+  document
+    .getElementById("dictadoBtn")
+    .classList.add("activo");
+
+  document.getElementById("dictadoBtn").innerText =
+    "⏸️ Pausar";
 
   reconocimiento.onresult = function(event){
 
@@ -1475,10 +1543,16 @@ function iniciarDictado(){
 
     for(let i=event.resultIndex;i<event.results.length;i++){
 
-      let trans = event.results[i][0].transcript;
+      let trans = event.results[i][0].transcript.trim();
+
+      if(!trans) continue;
+
       let txt = trans.toLowerCase();
 
-      // 🎤 COMANDOS DE VOZ
+      // =====================
+      // COMANDOS DE VOZ
+      // =====================
+
       if(txt.includes("pausar dictado")){
         pausarDictado();
         return;
@@ -1494,14 +1568,52 @@ function iniciarDictado(){
         return;
       }
 
+      // =====================
+      // EVITAR DUPLICADOS
+      // =====================
+
+      if(trans === ultimoTexto){
+        continue;
+      }
+
+      ultimoTexto = trans;
+
+      // =====================
+      // PUNTUACIÓN INTELIGENTE
+      // =====================
+
+      trans = mejorarTextoDictado(trans);
+
       if(event.results[i].isFinal){
         textoDictado += trans + " ";
       }else{
-        parcial += trans;
+        parcial += trans + " ";
       }
     }
 
-    document.getElementById("mensaje").value = textoDictado + parcial;
+    document.getElementById("mensaje").value =
+      textoDictado + parcial;
+  };
+
+  reconocimiento.onerror = function(e){
+
+    console.log("Error dictado:", e.error);
+
+    if(e.error === "not-allowed"){
+      alert("Micrófono bloqueado");
+      finalizarDictado();
+    }
+  };
+
+  reconocimiento.onend = function(){
+
+    if(
+      dictadoActivo &&
+      !dictadoPausado &&
+      reinicioDictado
+    ){
+      reconocimiento.start();
+    }
   };
 
   reconocimiento.start();
@@ -1509,59 +1621,127 @@ function iniciarDictado(){
 
 function pausarDictado(){
 
+  dictadoPausado = true;
+
   if(reconocimiento){
+    reinicioDictado = false;
     reconocimiento.stop();
   }
 
-  dictadoPausado = true;
+  document.getElementById("dictadoEstado").innerText =
+    "⏸️ Dictado pausado";
 
-  document.getElementById("dictadoEstado").innerText = "⏸️ Dictado pausado";
+  document.getElementById("dictadoBtn").innerText =
+    "▶️ Continuar";
 }
 
 function continuarDictado(){
 
   if(!dictadoActivo) return;
 
-  reconocimiento.start();
   dictadoPausado = false;
+  reinicioDictado = true;
 
-  document.getElementById("dictadoEstado").innerText = "🎤 Dictado activo";
+  reconocimiento.start();
+
+  document.getElementById("dictadoEstado").innerText =
+    "🎤 Dictado activo";
+
+  document.getElementById("dictadoBtn").innerText =
+    "⏸️ Pausar";
 }
 
 function finalizarDictado(){
 
   dictadoActivo = false;
   dictadoPausado = false;
+  reinicioDictado = false;
 
   if(reconocimiento){
     reconocimiento.stop();
     reconocimiento = null;
   }
 
-  document.getElementById("dictadoEstado").style.display = "none";
+  document.getElementById("dictadoEstado").style.display =
+    "none";
 
-  if(textoDictado.trim().length > 0){
+  document
+    .getElementById("dictadoBtn")
+    .classList.remove("activo");
+
+  document.getElementById("dictadoBtn").innerText =
+    "🎤 Dictado";
+
+  textoDictado = textoDictado.trim();
+
+  if(textoDictado.length > 0){
     descargarWordDictado(textoDictado);
   }
+
+  textoDictado = "";
+  ultimoTexto = "";
 }
 
 function detenerDictado(){
   finalizarDictado();
 }
 
+// =====================
+// MEJORADOR DE TEXTO
+// =====================
+
+function mejorarTextoDictado(texto){
+
+  texto = texto.trim();
+
+  // Primera letra mayúscula
+  texto =
+    texto.charAt(0).toUpperCase() +
+    texto.slice(1);
+
+  // comandos hablados
+  texto = texto.replace(/ punto /gi, ". ");
+  texto = texto.replace(/ coma /gi, ", ");
+  texto = texto.replace(/ dos puntos /gi, ": ");
+  texto = texto.replace(/ punto y coma /gi, "; ");
+  texto = texto.replace(/ nueva línea /gi, "\n");
+
+  return texto;
+}
+
 function descargarWordDictado(texto){
+
   fetch("/dictado_word",{
     method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({texto: texto})
+    headers:{
+      "Content-Type":"application/json"
+    },
+    body:JSON.stringify({
+      texto:texto
+    })
   })
   .then(r=>r.blob())
   .then(blob=>{
+
     let url = window.URL.createObjectURL(blob);
+
     let a = document.createElement("a");
+
     a.href = url;
     a.download = "dictado_foschi.docx";
+
+    document.body.appendChild(a);
+
     a.click();
+
+    a.remove();
+
+    window.URL.revokeObjectURL(url);
+
+  })
+  .catch(err=>{
+    console.log(err);
+    alert("Error generando Word");
   });
 }
 </script>
