@@ -1478,6 +1478,7 @@ let reconocimiento = null;
 let textoDictado = "";
 let ultimoTexto = "";
 let reinicioDictado = false;
+let cancelarGuardadoDictado = false;
 
 function toggleDictado(){
 
@@ -1563,7 +1564,11 @@ function iniciarDictado(){
         return;
       }
 
-      if(
+      // =====================
+// FINALIZAR Y GUARDAR
+// =====================
+
+if(
    txt.includes("finalizar dictado") ||
    txt.includes("terminar dictado") ||
    txt.includes("fin de dictado") ||
@@ -1573,7 +1578,24 @@ function iniciarDictado(){
    txt.includes("terminar el dictado") ||
    txt.includes("finalizar el dictado")
 ){
+    cancelarGuardadoDictado = false;
     finalizarDictado();
+    return;
+}
+
+// =====================
+// CANCELAR Y BORRAR TODO
+// =====================
+
+if(
+   txt.includes("cancelar dictado") ||
+   txt.includes("cancelar el dictado") ||
+   txt.includes("borrar todo") ||
+   txt.includes("eliminar dictado") ||
+   txt.includes("descartar dictado")
+){
+    cancelarGuardadoDictado = true;
+    cancelarDictado();
     return;
 }
 
@@ -1683,16 +1705,54 @@ function finalizarDictado(){
 
   textoDictado = textoDictado.trim();
 
-  if(textoDictado.length > 0){
+  if(
+   textoDictado.length > 0 &&
+   !cancelarGuardadoDictado
+){
     descargarWordDictado(textoDictado);
-  }
+}
 
   textoDictado = "";
-  ultimoTexto = "";
+ultimoTexto = "";
+cancelarGuardadoDictado = false;
 }
 
 function detenerDictado(){
   finalizarDictado();
+}
+
+// =====================
+// CANCELAR DICTADO
+// =====================
+
+function cancelarDictado(){
+
+  dictadoActivo = false;
+  dictadoPausado = false;
+  reinicioDictado = false;
+
+  if(reconocimiento){
+    reconocimiento.stop();
+    reconocimiento = null;
+  }
+
+  // limpiar TODO
+  textoDictado = "";
+  ultimoTexto = "";
+
+  document.getElementById("mensaje").value = "";
+
+  document.getElementById("dictadoEstado").style.display =
+    "none";
+
+  document
+    .getElementById("dictadoBtn")
+    .classList.remove("activo");
+
+  document.getElementById("dictadoBtn").innerText =
+    "🎤 Dictado";
+
+  agregar("🗑️ Dictado cancelado","ai");
 }
 
 // =====================
