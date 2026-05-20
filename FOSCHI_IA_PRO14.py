@@ -1098,16 +1098,39 @@ z-index:999;
   <button id="dictadoBtn" onclick="toggleDictado()">🎤 Dictado</button>
 </div>
   </div>
-  <input id="audioInput" class="hidden_file_input" type="file" accept=".mp3,audio/*,.wav" />
-  <input id="archivo_pdf_word" class="hidden_file_input" type="file" accept=".pdf,.docx" />
-  <input type="text" id="mensaje" placeholder="Escribí tu mensaje o hablá" />
-  <button onclick="checkDailyLimit()">Enviar</button>
-  <button onclick="hablar()">🎤 Hablar</button>
+
+<input id="audioInput"
+class="hidden_file_input"
+type="file"
+accept=".mp3,audio/*,.wav" />
+
+<input
+  id="archivo_pdf_word"
+  class="hidden_file_input"
+  type="file"
+  accept=".pdf,.docx"
+/>
+
+<input
+type="text"
+id="mensaje"
+placeholder="Escribí tu mensaje o hablá" />
+
+<button onclick="checkDailyLimit()">
+Enviar
+</button>
+
+<button onclick="hablar()">
+🎤 Hablar
+</button>
+
 </div>
 
 <script>
 // --- Variables y funciones generales ---
 let usuario_id="{{usuario_id}}";
+let documentoActual = null;
+let textoDocumento = "";
 let vozActiva=true,audioActual=null,mensajeActual=null;
 let modoConversacion = false;
 let escuchandoContinuo = false;
@@ -1245,11 +1268,45 @@ function checkDailyLimit(){
 }
 
 function enviar(){
-  let msg=document.getElementById("mensaje").value.trim(); if(!msg) return;
-  agregar(msg,"user"); document.getElementById("mensaje").value="";
-  fetch("/preguntar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mensaje: msg, usuario_id: usuario_id})})
-  .then(r=>r.json()).then(data=>{ agregar(data.texto,"ai",data.imagenes); if(data.borrar_historial){document.getElementById("chat").innerHTML="";} })
-  .catch(e=>{ agregar("Error al comunicarse con el servidor.","ai"); console.error(e); });
+  let msg=document.getElementById("mensaje").value.trim(); 
+  if(!msg) return;
+
+  agregar(msg,"user"); 
+
+  document.getElementById("mensaje").value="";
+
+  fetch("/preguntar",{
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json"
+    },
+    body:JSON.stringify({
+      mensaje: msg,
+      usuario_id: usuario_id,
+      doc_id: documentoActual,
+      preguntar_doc: modoPreguntasDocumento
+    })
+  })
+
+  .then(r=>r.json())
+
+  .then(data=>{
+
+    agregar(data.texto,"ai",data.imagenes);
+
+    if(data.borrar_historial){
+      document.getElementById("chat").innerHTML="";
+    }
+
+  })
+
+  .catch(e=>{
+
+    agregar("Error al comunicarse con el servidor.","ai");
+
+    console.error(e);
+
+  });
 }
 
 document.getElementById("mensaje").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); checkDailyLimit(); } });
@@ -1741,6 +1798,145 @@ function descargarWordDictado(texto){
     alert("Error generando Word");
   });
 }
+
+// ===============================
+// 📄 SUBIR PDF / WORD
+// ===============================
+
+document.getElementById("archivo_pdf_word")
+.addEventListener("change", async function(e){
+
+  const file = e.target.files[0];
+
+  if(!file) return;
+
+  agregar("📄 Subiendo documento...","ai");
+
+  let formData = new FormData();
+
+  formData.append("archivo", file);
+  formData.append("usuario_id", usuario_id);
+
+  try{
+
+    const r = await fetch("/upload_doc",{
+      method:"POST",
+      body:formData
+    });
+
+    if(!r.ok){
+      let txt = await r.text();
+      agregar("❌ Error: " + txt,"ai");
+      return;
+    }
+
+    const data = await r.json();
+
+    documentoActual = data.doc_id;
+    textoDocumento = data.snippet || "";
+
+    agregar(
+      `✅ Documento cargado: ${data.name}
+      <br><br>
+      📌 Elegí una opción:
+      <br><br>
+      <button onclick="resumirDocumento('breve')">📄 Resumen breve</button>
+      <button onclick="resumirDocumento('normal')">📘 Resumen normal</button>
+      <button onclick="resumirDocumento('profundo')">📚 Resumen profundo</button>
+      <button onclick="activarPreguntasDocumento()">❓ Preguntar al documento</button>
+      `,
+      "ai"
+    );
+
+  }catch(err){
+
+    console.log(err);
+
+    agregar(
+      "❌ Error subiendo documento",
+      "ai"
+    );
+  }
+
+});
+
+// ===============================
+// 📘 RESUMIR DOCUMENTO
+// ===============================
+
+async function resumirDocumento(tipo){
+
+  if(!documentoActual){
+    agregar("❌ No hay documento cargado","ai");
+    return;
+  }
+
+  agregar("🧠 Generando resumen...","ai");
+
+  try{
+
+    const r = await fetch("/resumir_doc",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json"
+      },
+      body:JSON.stringify({
+        doc_id: documentoActual,
+        modo: tipo,
+        usuario_id: usuario_id
+      })
+    });
+
+    if(!r.ok){
+
+      let txt = await r.text();
+
+      agregar("❌ Error: " + txt,"ai");
+
+      return;
+    }
+
+    const blob = await r.blob();
+
+    const url = window.URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+
+    a.href = url;
+
+    a.download = "resumen_foschi.docx";
+
+    document.body.appendChild(a);
+
+    a.click();
+
+    a.remove();
+
+    agregar("✅ Resumen generado","ai");
+
+  }catch(err){
+
+    console.log(err);
+
+    agregar("❌ Error generando resumen","ai");
+  }
+}
+
+// ===============================
+// ❓ PREGUNTAS SOBRE DOCUMENTO
+// ===============================
+
+let modoPreguntasDocumento = false;
+
+function activarPreguntasDocumento(){
+
+  modoPreguntasDocumento = true;
+
+  agregar(
+    "📄 Ahora podés hacer preguntas sobre el documento.",
+    "ai"
+  );
+}
 </script>
 
 <div id="authModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:9999;">
@@ -1916,10 +2112,15 @@ def index():
 
 @app.route("/preguntar", methods=["POST"])
 def preguntar():
+
     data = request.get_json()
 
     mensaje = data.get("mensaje", "")
 
+    doc_id = data.get("doc_id")
+
+    preguntar_doc = data.get("preguntar_doc", False)
+    
     # 1️⃣ Asegurar UUID en sesión (NO se borra nunca)
     if "usuario_id" not in session:
         session["usuario_id"] = str(uuid.uuid4())
@@ -1932,6 +2133,63 @@ def preguntar():
     lat = data.get("lat")
     lon = data.get("lon")
     tz  = data.get("timeZone") or data.get("time_zone") or None
+
+     # ============================
+    # 📄 PREGUNTAS SOBRE DOCUMENTO
+    # ============================
+
+    if preguntar_doc and doc_id:
+
+        txt_path = os.path.join(TEMP_DIR, f"{doc_id}.txt")
+
+        if os.path.exists(txt_path):
+
+            with open(txt_path, "r", encoding="utf-8") as f:
+                contenido_doc = f.read()
+
+            try:
+
+                client = OpenAI(api_key=OPENAI_API_KEY)
+
+                prompt = f"""
+Sos Foschi IA.
+
+Respondé usando SOLAMENTE el contenido del documento.
+
+DOCUMENTO:
+{contenido_doc[:12000]}
+
+PREGUNTA:
+{mensaje}
+"""
+
+                resp = client.chat.completions.create(
+                    model="gpt-4-turbo",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    temperature=0.2,
+                    max_tokens=700
+                )
+
+                texto = resp.choices[0].message.content.strip()
+
+                return jsonify({
+                    "texto": texto,
+                    "imagenes": [],
+                    "borrar_historial": False
+                })
+
+            except Exception as e:
+
+                return jsonify({
+                    "texto": f"Error analizando documento: {e}",
+                    "imagenes": [],
+                    "borrar_historial": False
+                })
 
     # 3️⃣ Generar respuesta con identidad correcta
     respuesta = generar_respuesta(
@@ -2200,108 +2458,117 @@ def upload_doc():
 
 @app.route("/resumir_doc", methods=["POST"])
 def resumir_doc():
-    """
-    Recibe JSON { doc_id, modo, usuario_id }.
-    modo: 'breve', 'normal', 'profundo'
-    Devuelve un .docx con el resumen (send_file).
-    """
-    data = request.get_json() or {}
+
+    data = request.get_json()
+
     doc_id = data.get("doc_id")
+
     modo = data.get("modo", "normal")
-    usuario_id = data.get("usuario_id", "anon")
 
-    if not doc_id:
-        return "Falta doc_id", 400
     txt_path = os.path.join(TEMP_DIR, f"{doc_id}.txt")
-    # local file original (para eliminar)
-    # any temp saved doc name begins with doc_id_
-    try:
-        if not os.path.exists(txt_path):
-            return "Documento temporal no encontrado (subilo nuevamente).", 404
-        with open(txt_path, "r", encoding="utf-8") as f:
-            texto = f.read()
-    except Exception as e:
-        return f"Error leyendo texto temporal: {e}", 500
 
-    # construir prompt según modo
+    if not os.path.exists(txt_path):
+        return "Documento no encontrado", 404
+
+    with open(txt_path, "r", encoding="utf-8") as f:
+        texto = f.read()
+
+    # ============================
+    # TIPOS DE RESUMEN
+    # ============================
+
     if modo == "breve":
-        instrucciones = "Resumí el siguiente texto en 4-6 líneas muy concisas, en español claro y directo, con puntos numerados si aplica."
-    elif modo == "profundo":
-        instrucciones = "Hacé un resumen detallado del siguiente texto: explicá los puntos clave, sub-puntos, y posibles conclusiones. Usá viñetas y subtítulos cuando corresponda. Mantené un estilo formal y completo."
-    else:  # normal
-        instrucciones = "Resumí el siguiente texto en puntos claros y ordenados, abarcando las ideas importantes y destacando conclusiones."
 
-    # acotar texto si es muy largo (mejor enviar en trozos o truncar — aquí hacemos truncamiento prudente)
-    max_chars = 120000  # límite prudente para no mandar textos enormes (ajustable)
-    if len(texto) > max_chars:
-        texto_envio = texto[:max_chars] + "\n\n[El documento original fue truncado por tamaño.]\n"
-    else:
-        texto_envio = texto
-
-    prompt = f"{instrucciones}\n\n--- TEXTO A RESUMIR ---\n\n{texto_envio}"
-
-    # Llamada a OpenAI
-    try:
-        client_local = OpenAI(api_key=OPENAI_API_KEY)
-        resp = client_local.chat.completions.create(
-            model="gpt-4-turbo",
-            messages=[{"role":"user","content": prompt}],
-            temperature=0.3,
-            max_tokens=1000
+        instrucciones = (
+            "Hacé un resumen breve y directo "
+            "del siguiente documento."
         )
-        resumen = resp.choices[0].message.content.strip()
-    except Exception as e:
-        return f"No pude generar el resumen: {e}", 500
 
-    # Crear DOCX con el resumen
-    fecha = datetime.now().strftime("%Y-%m-%d")
-    resumen_filename = f"Resumen_{fecha}.docx"
-    resumen_path = os.path.join(TEMP_DIR, f"{doc_id}_resumen_{fecha}.docx")
+    elif modo == "profundo":
+
+        instrucciones = (
+            "Hacé un resumen MUY detallado "
+            "del siguiente documento. "
+            "Separá por temas y explicá bien."
+        )
+
+    else:
+
+        instrucciones = (
+            "Resumí el siguiente texto "
+            "de forma clara, ordenada y completa. "
+            "Usá títulos y viñetas si hace falta."
+        )
+
+    # ============================
+    # GENERAR RESUMEN IA
+    # ============================
+
     try:
-        doc = DocxDocument()
-        doc.add_heading("Resumen del Documento", level=1)
-        # agregar texto manteniendo saltos
-        for linea in resumen.split("\n"):
-            if linea.strip() == "":
-                doc.add_paragraph("")  # separador
-            else:
-                doc.add_paragraph(linea)
-        doc.save(resumen_path)
-    except Exception as e:
-        return f"Error creando archivo Word: {e}", 500
 
-    # programar limpieza después de la respuesta (resumen, txt y originales)
+        client = OpenAI(api_key=OPENAI_API_KEY)
+
+        prompt = f"""
+{instrucciones}
+
+TEXTO:
+{texto[:15000]}
+"""
+
+        resp = client.chat.completions.create(
+            model="gpt-4-turbo",
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0.4,
+            max_tokens=1500
+        )
+
+        resumen = resp.choices[0].message.content.strip()
+
+    except Exception as e:
+
+        return f"Error generando resumen: {e}", 500
+
+    # ============================
+    # CREAR WORD
+    # ============================
+
+    nombre_doc = f"resumen_{doc_id}.docx"
+
+    ruta_doc = os.path.join(TEMP_DIR, nombre_doc)
+
+    doc = DocxDocument()
+
+    doc.add_heading(
+        "Resumen generado por Foschi IA",
+        level=1
+    )
+
+    doc.add_paragraph(resumen)
+
+    doc.save(ruta_doc)
+
     @after_this_request
-    def _cleanup(response):
+    def cleanup(response):
+
         try:
-            if os.path.exists(resumen_path):
-                os.remove(resumen_path)
-        except Exception:
+
+            if os.path.exists(ruta_doc):
+                os.remove(ruta_doc)
+
+        except:
             pass
-        # eliminar txt temporal
-        try:
-            if os.path.exists(txt_path):
-                os.remove(txt_path)
-        except Exception:
-            pass
-        # eliminar cualquier archivo original que empiece con doc_id_
-        try:
-            for f in os.listdir(TEMP_DIR):
-                if f.startswith(doc_id + "_"):
-                    try:
-                        os.remove(os.path.join(TEMP_DIR, f))
-                    except Exception:
-                        pass
-        except Exception:
-            pass
+
         return response
 
-    # Enviar el archivo .docx generado
     return send_file(
-        resumen_path,
+        ruta_doc,
         as_attachment=True,
-        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        download_name=resumen_filename
+        download_name="resumen_foschi.docx"
     )
 
 # ---------------- RUN ----------------
