@@ -1274,6 +1274,20 @@ function enviar(){
   agregar(msg,"user"); 
 
   document.getElementById("mensaje").value="";
+    // ============================
+  // ❌ SALIR DEL MODO DOCUMENTO
+  // ============================
+
+  if(
+    msg.toLowerCase().includes("salir del documento") ||
+    msg.toLowerCase().includes("cerrar archivo") ||
+    msg.toLowerCase().includes("modo normal")
+  ){
+
+    salirModoDocumento();
+
+    return;
+  }
 
   fetch("/preguntar",{
     method:"POST",
@@ -1933,7 +1947,29 @@ function activarPreguntasDocumento(){
   modoPreguntasDocumento = true;
 
   agregar(
-    "📄 Ahora podés hacer preguntas sobre el documento.",
+    `
+    📄 Modo documento ACTIVADO.
+    <br><br>
+    Ahora podés hacer preguntas sobre el archivo.
+    <br><br>
+
+    <button onclick="salirModoDocumento()">
+      ❌ Salir del documento
+    </button>
+    `,
+    "ai"
+  );
+}
+function salirModoDocumento(){
+
+  modoPreguntasDocumento = false;
+
+  documentoActual = null;
+
+  textoDocumento = "";
+
+  agregar(
+    "✅ Saliste del modo documento. Foschi IA volvió al modo normal.",
     "ai"
   );
 }
