@@ -1094,7 +1094,7 @@ z-index:999;
     <div id="adjuntos_menu" aria-hidden="true">
   <button onclick="toggleModoConversacion()">🧠 Modo conversación</button>
   <button onclick="checkPremium('audio')">🎵 Audio (mp3/wav) a Texto</button>
-  <button onclick="checkPremium('doc')">📄 Resumir PDF / WORD</button>
+  <button onclick="checkPremium('doc')">📄 Analizar Documento</button>
   <button id="dictadoBtn" onclick="toggleDictado()">🎤 Dictado</button>
 </div>
   </div>
@@ -1947,19 +1947,52 @@ function activarPreguntasDocumento(){
   modoPreguntasDocumento = true;
 
   agregar(
-    `
-    📄 Modo documento ACTIVADO.
-    <br><br>
-    Ahora podés hacer preguntas sobre el archivo.
-    <br><br>
-
-    <button onclick="salirModoDocumento()">
-      ❌ Salir del documento
-    </button>
-    `,
+    "📄 Modo documento ACTIVADO. Ahora podés hacer preguntas sobre el archivo.",
     "ai"
   );
+
+  // ============================
+  // CREAR BOTÓN FLOTANTE
+  // ============================
+
+  if(!document.getElementById("btnSalirDocumento")){
+
+    let btn = document.createElement("button");
+
+    btn.id = "btnSalirDocumento";
+
+    btn.innerHTML = "❌ Salir del documento";
+
+    btn.onclick = salirModoDocumento;
+
+    btn.style.position = "fixed";
+
+    btn.style.bottom = "90px";
+
+    btn.style.right = "20px";
+
+    btn.style.zIndex = "9999";
+
+    btn.style.padding = "12px 18px";
+
+    btn.style.borderRadius = "14px";
+
+    btn.style.border = "none";
+
+    btn.style.cursor = "pointer";
+
+    btn.style.fontWeight = "bold";
+
+    btn.style.background = "#ff0033";
+
+    btn.style.color = "white";
+
+    btn.style.boxShadow = "0 0 15px rgba(255,0,0,0.5)";
+
+    document.body.appendChild(btn);
+  }
 }
+
 function salirModoDocumento(){
 
   modoPreguntasDocumento = false;
@@ -1967,6 +2000,12 @@ function salirModoDocumento(){
   documentoActual = null;
 
   textoDocumento = "";
+
+  let btn = document.getElementById("btnSalirDocumento");
+
+  if(btn){
+    btn.remove();
+  }
 
   agregar(
     "✅ Saliste del modo documento. Foschi IA volvió al modo normal.",
