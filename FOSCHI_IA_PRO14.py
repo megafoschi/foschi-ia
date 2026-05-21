@@ -359,7 +359,10 @@ def dictado_word():
 
     doc = DocxDocument()
 
-    doc.add_heading("Dictado Foschi IA", 0)
+    doc.add_heading("FOSCHI IA - Dictado Profesional", 0)
+    doc.add_paragraph(
+    f"Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+)
 
     for linea in texto.split("\n"):
 
@@ -1074,19 +1077,6 @@ z-index:999;
 <div class="wave"></div>
 </div>
 
-<div id="dictadoEstado" style="
- position:fixed;
- bottom:70px;
- right:10px;
- background:#ff0000;
- color:white;
- padding:6px 10px;
- border-radius:6px;
- display:none;
- font-weight:bold;
- z-index:999;">
-🎤 Dictado activo
-</div>
 <!-- BARRA DE ENTRADA -->
 <div id="inputBar">
   <div style="position:relative;">
@@ -1095,7 +1085,9 @@ z-index:999;
   <button onclick="toggleModoConversacion()">🧠 Modo conversación</button>
   <button onclick="checkPremium('audio')">🎵 Audio (mp3/wav) a Texto</button>
   <button onclick="checkPremium('doc')">📄 Analizar Documento</button>
-  <button id="dictadoBtn" onclick="toggleDictado()">🎤 Dictado</button>
+  <button id="dictadoBtn" onclick="toggleDictado()">
+🎤 Dictado Pro
+</button>
 </div>
   </div>
 
@@ -1539,40 +1531,129 @@ function toggleDayNight(){
     btn.textContent = body.classList.contains("day") ? "☀️" : "🌙";
   }
 }
-// =====================
-// 🎤 DICTADO PRO
-// =====================
+// ===============================
+// 🎤 FOSCHI DICTADO PRO MAX
+// ===============================
 
 let dictadoActivo = false;
 let dictadoPausado = false;
 let reconocimiento = null;
-let textoDictado = "";
-let ultimoTexto = "";
-let reinicioDictado = false;
+
+let textoDictado = localStorage.getItem("foschi_dictado") || "";
+let parcialActual = "";
+
+let paginaActual = parseInt(
+  localStorage.getItem("foschi_pagina") || "1"
+);
+
+let autoGuardado = null;
+
+// ===============================
+// PANEL VISUAL
+// ===============================
+
+crearPanelDictado();
+
+function crearPanelDictado(){
+
+  if(document.getElementById("panelDictado")) return;
+
+  let panel = document.createElement("div");
+
+  panel.id = "panelDictado";
+
+  panel.innerHTML = `
+    <div style="font-weight:bold;font-size:16px;margin-bottom:10px;">
+      🎤 Dictado Profesional
+    </div>
+
+    <div id="estadoDictadoPro"
+         style="margin-bottom:10px;color:#00ffaa;">
+      Listo para iniciar
+    </div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+
+      <button onclick="iniciarDictadoPro()">🎤 Iniciar</button>
+
+      <button onclick="pausarDictadoPro()">⏸️ Pausar</button>
+
+      <button onclick="continuarDictadoPro()">▶️ Continuar</button>
+
+      <button onclick="guardarDictadoPro()">💾 Guardar</button>
+
+      <button onclick="nuevaPaginaDictado()">📄 Nueva página</button>
+
+      <button onclick="finalizarDictadoPro()">
+        ✅ Finalizar
+      </button>
+
+      <button onclick="cancelarDictadoPro()">
+        ❌ Cancelar
+      </button>
+
+    </div>
+
+    <textarea id="editorDictado"
+      style="
+      width:100%;
+      height:220px;
+      margin-top:12px;
+      background:#00111a;
+      color:#00eaff;
+      border:1px solid #00eaff55;
+      border-radius:10px;
+      padding:10px;
+      resize:vertical;
+      font-size:15px;
+      "
+    ></textarea>
+  `;
+
+  panel.style.position = "fixed";
+  panel.style.left = "10px";
+  panel.style.right = "10px";
+  panel.style.bottom = "70px";
+  panel.style.background = "#000814";
+  panel.style.border = "1px solid #00eaff55";
+  panel.style.borderRadius = "14px";
+  panel.style.padding = "14px";
+  panel.style.zIndex = "99999";
+  panel.style.display = "none";
+  panel.style.boxShadow = "0 0 20px rgba(0,255,255,0.2)";
+
+  document.body.appendChild(panel);
+
+  document.getElementById("editorDictado").value =
+    textoDictado;
+}
+
+// ===============================
+// ABRIR PANEL
+// ===============================
 
 function toggleDictado(){
 
   if(!isPremium && !isSuper){
-    alert("🔒 Esta función es solo Premium");
+    alert("🔒 Función Premium");
     return;
   }
 
-  if(!dictadoActivo){
-    iniciarDictado();
-    return;
-  }
+  const panel = document.getElementById("panelDictado");
 
-  if(dictadoActivo && !dictadoPausado){
-    pausarDictado();
-    return;
-  }
-
-  if(dictadoActivo && dictadoPausado){
-    continuarDictado();
-  }
+  panel.style.display =
+    panel.style.display === "block"
+      ? "none"
+      : "block";
 }
 
-function iniciarDictado(){
+// ===============================
+// INICIAR
+// ===============================
+
+function iniciarDictadoPro(){
+
+  if(dictadoActivo) return;
 
   const SpeechRecognition =
     window.SpeechRecognition ||
@@ -1588,91 +1669,80 @@ function iniciarDictado(){
   reconocimiento.lang = "es-AR";
   reconocimiento.continuous = true;
   reconocimiento.interimResults = true;
-  reconocimiento.maxAlternatives = 1;
 
   dictadoActivo = true;
   dictadoPausado = false;
-  reinicioDictado = true;
 
-  textoDictado = "";
-  ultimoTexto = "";
-
-  document.getElementById("dictadoEstado").style.display = "block";
-  document.getElementById("dictadoEstado").innerText =
-    "🎤 Dictado activo";
-
-  document
-    .getElementById("dictadoBtn")
-    .classList.add("activo");
-
-  document.getElementById("dictadoBtn").innerText =
-    "⏸️ Pausar";
+  actualizarEstado("🎤 Escuchando...");
 
   reconocimiento.onresult = function(event){
 
-    let parcial = "";
+    parcialActual = "";
 
-    for(let i=event.resultIndex;i<event.results.length;i++){
+    for(let i = event.resultIndex;
+        i < event.results.length;
+        i++){
 
-      let trans = event.results[i][0].transcript.trim();
-
-      if(!trans) continue;
-
-      let txt = trans.toLowerCase();
-
-      // =====================
-      // COMANDOS DE VOZ
-      // =====================
-
-      if(txt.includes("pausar dictado")){
-        pausarDictado();
-        return;
-      }
-
-      if(txt.includes("continuar dictado")){
-        continuarDictado();
-        return;
-      }
-
-      if(txt.includes("finalizar dictado")){
-        finalizarDictado();
-        return;
-      }
-
-      // =====================
-      // EVITAR DUPLICADOS
-      // =====================
-
-      if(trans === ultimoTexto){
-        continue;
-      }
-
-      ultimoTexto = trans;
-
-      // =====================
-      // PUNTUACIÓN INTELIGENTE
-      // =====================
+      let trans =
+        event.results[i][0].transcript;
 
       trans = mejorarTextoDictado(trans);
 
+      // =====================
+      // COMANDOS
+      // =====================
+
+      let lower = trans.toLowerCase();
+
+      if(lower.includes("pausar dictado")){
+        pausarDictadoPro();
+        return;
+      }
+
+      if(lower.includes("continuar dictado")){
+        continuarDictadoPro();
+        return;
+      }
+
+      if(
+        lower.includes("finalizar dictado") ||
+        lower.includes("fin de dictado")
+      ){
+        finalizarDictadoPro();
+        return;
+      }
+
+      if(
+        lower.includes("cancelar dictado") ||
+        lower.includes("borrar todo")
+      ){
+        cancelarDictadoPro();
+        return;
+      }
+
+      // =====================
+      // TEXTO
+      // =====================
+
       if(event.results[i].isFinal){
+
         textoDictado += trans + " ";
+
       }else{
-        parcial += trans + " ";
+
+        parcialActual += trans + " ";
       }
     }
 
-    document.getElementById("mensaje").value =
-      textoDictado + parcial;
+    actualizarEditor();
   };
 
   reconocimiento.onerror = function(e){
 
-    console.log("Error dictado:", e.error);
+    console.log(e);
 
-    if(e.error === "not-allowed"){
-      alert("Micrófono bloqueado");
-      finalizarDictado();
+    if(e.error !== "aborted"){
+      actualizarEstado("⚠️ Error micrófono");
     }
   };
 
@@ -1680,123 +1750,139 @@ function iniciarDictado(){
 
     if(
       dictadoActivo &&
-      !dictadoPausado &&
-      reinicioDictado
+      !dictadoPausado
     ){
       reconocimiento.start();
     }
   };
 
   reconocimiento.start();
+
+  // =====================
+  // AUTOGUARDADO
+  // =====================
+
+  autoGuardado = setInterval(()=>{
+
+    guardarDictadoPro();
+
+  },5000);
 }
 
-function pausarDictado(){
+// ===============================
+// PAUSAR
+// ===============================
+
+function pausarDictadoPro(){
+
+  if(!dictadoActivo) return;
 
   dictadoPausado = true;
 
-  if(reconocimiento){
-    reinicioDictado = false;
-    reconocimiento.stop();
-  }
+  reconocimiento.stop();
 
-  document.getElementById("dictadoEstado").innerText =
-    "⏸️ Dictado pausado";
-
-  document.getElementById("dictadoBtn").innerText =
-    "▶️ Continuar";
+  actualizarEstado("⏸️ Pausado");
 }
 
-function continuarDictado(){
+// ===============================
+// CONTINUAR
+// ===============================
+
+function continuarDictadoPro(){
 
   if(!dictadoActivo) return;
 
   dictadoPausado = false;
-  reinicioDictado = true;
 
   reconocimiento.start();
 
-  document.getElementById("dictadoEstado").innerText =
-    "🎤 Dictado activo";
-
-  document.getElementById("dictadoBtn").innerText =
-    "⏸️ Pausar";
+  actualizarEstado("🎤 Escuchando...");
 }
 
-function finalizarDictado(){
+// ===============================
+// GUARDAR
+// ===============================
+
+function guardarDictadoPro(){
+
+  localStorage.setItem(
+    "foschi_dictado",
+    textoDictado
+  );
+
+  localStorage.setItem(
+    "foschi_pagina",
+    paginaActual
+  );
+
+  actualizarEstado(
+    "💾 Guardado automáticamente"
+  );
+}
+
+// ===============================
+// NUEVA PÁGINA
+// ===============================
+
+function nuevaPaginaDictado(){
+
+  paginaActual++;
+
+  textoDictado +=
+    `\n\n========== PÁGINA ${paginaActual} ==========\n\n`;
+
+  actualizarEditor();
+
+  guardarDictadoPro();
+}
+
+// ===============================
+// FINALIZAR
+// ===============================
+
+async function finalizarDictadoPro(){
 
   dictadoActivo = false;
   dictadoPausado = false;
-  reinicioDictado = false;
 
   if(reconocimiento){
     reconocimiento.stop();
-    reconocimiento = null;
   }
 
-  document.getElementById("dictadoEstado").style.display =
-    "none";
+  clearInterval(autoGuardado);
 
-  document
-    .getElementById("dictadoBtn")
-    .classList.remove("activo");
+  guardarDictadoPro();
 
-  document.getElementById("dictadoBtn").innerText =
-    "🎤 Dictado";
+  actualizarEstado("📄 Generando Word...");
 
-  textoDictado = textoDictado.trim();
+  const textoFinal =
+    document.getElementById(
+      "editorDictado"
+    ).value;
 
-  if(textoDictado.length > 0){
-    descargarWordDictado(textoDictado);
-  }
+  try{
 
-  textoDictado = "";
-  ultimoTexto = "";
-}
+    const r = await fetch("/dictado_word",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json"
+      },
+      body:JSON.stringify({
+        texto:textoFinal
+      })
+    });
 
-function detenerDictado(){
-  finalizarDictado();
-}
+    const blob = await r.blob();
 
-// =====================
-// MEJORADOR DE TEXTO
-// =====================
+    const url =
+      window.URL.createObjectURL(blob);
 
-function mejorarTextoDictado(texto){
-
-  texto = texto.trim();
-
-  texto =
-    texto.charAt(0).toUpperCase() +
-    texto.slice(1);
-
-  texto = texto.replace(/ punto /gi, ". ");
-  texto = texto.replace(/ coma /gi, ", ");
-  texto = texto.replace(/ dos puntos /gi, ": ");
-  texto = texto.replace(/ punto y coma /gi, "; ");
-
-  return texto;
-}
-
-function descargarWordDictado(texto){
-
-  fetch("/dictado_word",{
-    method:"POST",
-    headers:{
-      "Content-Type":"application/json"
-    },
-    body:JSON.stringify({
-      texto:texto
-    })
-  })
-  .then(r=>r.blob())
-  .then(blob=>{
-
-    let url = window.URL.createObjectURL(blob);
-
-    let a = document.createElement("a");
+    const a = document.createElement("a");
 
     a.href = url;
-    a.download = "dictado_foschi.docx";
+
+    a.download =
+      "dictado_foschi.docx";
 
     document.body.appendChild(a);
 
@@ -1806,11 +1892,97 @@ function descargarWordDictado(texto){
 
     window.URL.revokeObjectURL(url);
 
-  })
-  .catch(err=>{
+    actualizarEstado(
+      "✅ Documento descargado"
+    );
+
+  }catch(err){
+
     console.log(err);
-    alert("Error generando Word");
-  });
+
+    actualizarEstado(
+      "❌ Error generando Word"
+    );
+  }
+}
+
+// ===============================
+// CANCELAR
+// ===============================
+
+function cancelarDictadoPro(){
+
+  if(reconocimiento){
+    reconocimiento.stop();
+  }
+
+  clearInterval(autoGuardado);
+
+  dictadoActivo = false;
+  dictadoPausado = false;
+
+  textoDictado = "";
+  parcialActual = "";
+
+  localStorage.removeItem("foschi_dictado");
+
+  actualizarEditor();
+
+  actualizarEstado("❌ Dictado cancelado");
+}
+
+// ===============================
+// EDITOR
+// ===============================
+
+function actualizarEditor(){
+
+  document.getElementById(
+    "editorDictado"
+  ).value =
+    textoDictado + parcialActual;
+}
+
+// ===============================
+// ESTADO
+// ===============================
+
+function actualizarEstado(txt){
+
+  document.getElementById(
+    "estadoDictadoPro"
+  ).innerText = txt;
+}
+
+// ===============================
+// TEXTO INTELIGENTE
+// ===============================
+
+function mejorarTextoDictado(texto){
+
+  texto = texto.trim();
+
+  texto = texto.replace(
+    / punto /gi,
+    ". "
+  );
+
+  texto = texto.replace(
+    / coma /gi,
+    ", "
+  );
+
+  texto = texto.replace(
+    / nueva línea /gi,
+    "\n"
+  );
+
+  texto = texto.replace(
+    / nuevo párrafo /gi,
+    "\n\n"
+  );
+
+  return texto;
 }
 
 // ===============================
