@@ -1130,6 +1130,15 @@ let escuchandoContinuo = false;
 let recognitionConversacion = null;
 let silencioTimer=null;
 
+let MAX_NO_PREMIUM = 5;
+let isPremium = {{ 'true' if premium else 'false' }};
+let isSuper = {{ 'true' if is_super else 'false' }};
+let rolUsuario = "{{ rol or '' }}";
+let nivelUsuario = {{ nivel or 0 }};
+const hoy = new Date().toISOString().slice(0,10);
+let preguntasHoy = 0;
+try { preguntasHoy = parseInt(localStorage.getItem("preguntasHoy_" + hoy) || "0"); } catch(e){}
+
 function toggleModoConversacion(){
 
   if(!isPremium && !isSuper){
@@ -1220,16 +1229,7 @@ function detenerConversacion(){
 
 }
 
-let MAX_NO_PREMIUM = 5;
-let isPremium = {{ 'true' if premium else 'false' }};
-const hoy = new Date().toISOString().slice(0,10); // YYYY-MM-DD
-let preguntasHoy = parseInt(
-  localStorage.getItem("preguntasHoy_" + hoy) || "0"
-);
 
-let isSuper = {{ 'true' if is_super else 'false' }};
-let rolUsuario = "{{ rol or '' }}";
-let nivelUsuario = {{ nivel or 0 }};
 
 function logoClick(){ alert("FOSCHI NUNCA MUERE, TRASCIENDE..."); }
 function toggleVoz(estado=null){ vozActiva=estado!==null?estado:!vozActiva; document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada"; }
