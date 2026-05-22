@@ -1544,12 +1544,13 @@ let dictadoActivo = false;
 let dictadoPausado = false;
 let reconocimiento = null;
 
-let textoDictado = localStorage.getItem("foschi_dictado") || "";
+let textoDictado = "";
+try { textoDictado = localStorage.getItem("foschi_dictado") || ""; } catch(e){}
+
 let parcialActual = "";
 
-let paginaActual = parseInt(
-  localStorage.getItem("foschi_pagina") || "1"
-);
+let paginaActual = 1;
+try { paginaActual = parseInt(localStorage.getItem("foschi_pagina") || "1"); } catch(e){}
 
 let autoGuardado = null;
 
@@ -1557,7 +1558,7 @@ let autoGuardado = null;
 // PANEL VISUAL
 // ===============================
 
-crearPanelDictado();
+document.addEventListener("DOMContentLoaded", crearPanelDictado);
 
 function crearPanelDictado(){
 
@@ -1942,10 +1943,9 @@ function cancelarDictadoPro(){
 
 function actualizarEditor(){
 
-  document.getElementById(
-    "editorDictado"
-  ).value =
-    textoDictado + parcialActual;
+  const el = document.getElementById("editorDictado");
+  if(!el) return;
+  el.value = textoDictado + parcialActual;
 }
 
 // ===============================
@@ -1954,9 +1954,9 @@ function actualizarEditor(){
 
 function actualizarEstado(txt){
 
-  document.getElementById(
-    "estadoDictadoPro"
-  ).innerText = txt;
+  const el = document.getElementById("estadoDictadoPro");
+  if(!el) return;
+  el.innerText = txt;
 }
 
 // ===============================
