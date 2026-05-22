@@ -620,6 +620,7 @@ HTML_TEMPLATE = """
 <!doctype html>
 <html>
 <head>
+<meta charset="UTF-8">
 <title>{{APP_NAME}}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
@@ -1475,24 +1476,28 @@ function hablar(){
 
     recognition.onresult = function(event){
 
-      let textoReconocido = event.results[0][0].transcript;
-      let txt = textoReconocido.toLowerCase();
+  let textoReconocido = event.results[0][0].transcript;
+  let txt = textoReconocido.toLowerCase();
 
-      // 👉 COMANDOS DE VOZ PARA DICTADO PREMIUM
-      if(txt.includes("activar dictado")){
-        iniciarDictado();
-        return;
-      }
+  // COMANDOS DE VOZ PARA DICTADO PREMIUM
 
-      if(txt.includes("desactivar dictado")){
-        detenerDictado();
-        return;
-      }
+  if(txt.includes("activar dictado")){
+      iniciarDictadoPro();
+      return;
+  }
 
-      // 👉 comportamiento normal
-      document.getElementById("mensaje").value = txt;
-      checkDailyLimit();
-    };
+  if(
+     txt.includes("desactivar dictado") ||
+     txt.includes("cancelar dictado")
+  ){
+      cancelarDictadoPro();
+      return;
+  }
+
+  // comportamiento normal
+  document.getElementById("mensaje").value = txt;
+  checkDailyLimit();
+};
 
     recognition.onerror = function(e){
       console.log(e);
@@ -1532,7 +1537,7 @@ function toggleDayNight(){
   }
 }
 // ===============================
-// 🎤 FOSCHI DICTADO PRO MAX
+//  FOSCHI DICTADO PRO MAX
 // ===============================
 
 let dictadoActivo = false;
