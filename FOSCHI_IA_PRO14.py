@@ -1978,12 +1978,12 @@ function mejorarTextoDictado(texto){
   );
 
   texto = texto.replace(
-    / nueva línea /gi,
+    / nueva linea /gi,
     "\n"
   );
 
   texto = texto.replace(
-    / nuevo párrafo /gi,
+    / nuevo parrafo /gi,
     "\n\n"
   );
 
