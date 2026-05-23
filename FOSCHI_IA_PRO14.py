@@ -987,9 +987,9 @@ body.day .user a{
 /* Panel de texto acumulado durante dictado */
 #dictadoPanel{
   position:fixed;
-  bottom:56px;
+  bottom:62px;
   left:0; right:0;
-  max-height:200px;
+  max-height:180px;
   overflow-y:auto;
   background:#00060d;
   border-top:2px solid #ff003366;
@@ -997,7 +997,7 @@ body.day .user a{
   font-size:15px;
   color:#ffffff;
   line-height:1.7;
-  z-index:20;
+  z-index:25;
   display:none;
   white-space:pre-wrap;
   word-break:break-word;
@@ -1103,9 +1103,6 @@ z-index:999;
 <div class="wave"></div>
 </div>
 
-<!-- PANEL DE DICTADO — muestra el texto mientras dictás -->
-<div id="dictadoPanel"></div>
-
 <div id="dictadoEstado" style="
  position:fixed;
  bottom:70px;
@@ -1116,7 +1113,7 @@ z-index:999;
  border-radius:6px;
  display:none;
  font-weight:bold;
- z-index:50;">
+ z-index:999;">
 🎤 Dictado activo
 </div>
 <!-- MENÚ ADJUNTOS (overlay fuera de la barra) -->
@@ -1591,9 +1588,15 @@ let textoDictado = localStorage.getItem("dictado_guardado") || "";
 let ultimoTexto = "";
 let reinicioDictado = false;
 
-// Panel ya está en el HTML, solo lo obtenemos
+// Crea el panel de previsualización una sola vez
 function getPanelDictado(){
-  return document.getElementById("dictadoPanel");
+  let p = document.getElementById("dictadoPanel");
+  if(!p){
+    p = document.createElement("div");
+    p.id = "dictadoPanel";
+    document.body.appendChild(p);
+  }
+  return p;
 }
 
 // Refresca lo que se ve en el panel:
