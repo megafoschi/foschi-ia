@@ -877,11 +877,11 @@ body.day #clipBtn:hover{
   background:#f0f0f0;
 }
 
-/* --- MENÚ DE ADJUNTOS --- */
+/* --- MENÚ DE ADJUNTOS (overlay fijo sobre la barra) --- */
 #adjuntos_menu{
- position:absolute;
- left:0;
- bottom:50px;   /* se abre hacia arriba del clip */
+ position:fixed;
+ left:10px;
+ bottom:62px;
  display:none;
  background:#001f2e;
  border:1px solid #003547;
@@ -889,9 +889,9 @@ body.day #clipBtn:hover{
  border-radius:8px;
  box-shadow:0 6px 16px rgba(0,0,0,0.6);
  z-index:999;
- max-width:90vw;   /* evita que se corte en móviles */
+ max-width:90vw;
 }
-#adjuntos_menu button{ display:block; width:160px; margin:6px; text-align:left; }
+#adjuntos_menu button{ display:block; width:200px; margin:4px 0; text-align:left; }
 .hidden_file_input{ display:none; }
 
 /* --- MENÚ PREMIUM --- */
@@ -1087,57 +1087,42 @@ z-index:999;
  z-index:999;">
 🎤 Dictado activo
 </div>
-<!-- BARRA DE ENTRADA -->
-<div id="inputBar">
-  <div style="position:relative;">
-    <div id="clipBtn" title="Adjuntar" onclick="toggleAdjuntosMenu()">📎</div>
-    <div id="adjuntos_menu" aria-hidden="true">
+<!-- MENÚ ADJUNTOS (overlay fuera de la barra) -->
+<div id="adjuntos_menu" aria-hidden="true">
   <button onclick="toggleModoConversacion()">🧠 Modo conversación</button>
   <button onclick="checkPremium('audio')">🎵 Audio (mp3/wav) a Texto</button>
   <button onclick="checkPremium('doc')">📄 Analizar Documento</button>
-  <div style="display:flex; gap:6px; flex-wrap:wrap;">
-
-<button id="dictadoBtn"
-onclick="toggleDictado()">
-🎤 Dictado
-</button>
-
-<button id="finalizarDictadoBtn"
-onclick="finalizarDictadoManual()"
-style="
-background:#ff0033;
-color:white;
-display:none;
-">
-✅ Finalizar
-</button>
+  <button onclick="abrirDictadoDesdeMenu()">🎤 Dictado</button>
 </div>
+
+<!-- INPUTS OCULTOS -->
+<input id="audioInput" class="hidden_file_input" type="file" accept=".mp3,audio/*,.wav" />
+<input id="archivo_pdf_word" class="hidden_file_input" type="file" accept=".pdf,.docx" />
+
+<!-- BARRA DE ENTRADA -->
+<div id="inputBar">
+
+  <!-- Clip — visible cuando NO está dictando -->
+  <div id="clipBtn" title="Adjuntar" onclick="toggleAdjuntosMenu()">📎</div>
+
+  <!-- Input de texto -->
+  <input type="text" id="mensaje" placeholder="Escribí tu mensaje o hablá" />
+
+  <!-- Botones normales — se ocultan durante dictado -->
+  <div id="botonesNormales" style="display:flex;gap:6px;align-items:center;">
+    <button onclick="checkDailyLimit()">Enviar</button>
+    <button onclick="hablar()">🎤 Hablar</button>
   </div>
 
-<input id="audioInput"
-class="hidden_file_input"
-type="file"
-accept=".mp3,audio/*,.wav" />
-
-<input
-  id="archivo_pdf_word"
-  class="hidden_file_input"
-  type="file"
-  accept=".pdf,.docx"
-/>
-
-<input
-type="text"
-id="mensaje"
-placeholder="Escribí tu mensaje o hablá" />
-
-<button onclick="checkDailyLimit()">
-Enviar
-</button>
-
-<button onclick="hablar()">
-🎤 Hablar
-</button>
+  <!-- Botones dictado — solo visibles durante dictado -->
+  <div id="botonesDictado" style="display:none;gap:6px;align-items:center;">
+    <button id="dictadoBtn" onclick="toggleDictado()">⏸️ Pausar</button>
+    <button id="finalizarDictadoBtn"
+      onclick="finalizarDictadoManual()"
+      style="background:#ff0033;color:white;border:1px solid #ff5577;">
+      ✅ Finalizar
+    </button>
+  </div>
 
 </div>
 
@@ -1434,6 +1419,11 @@ function closeMenuOnClickOutside(e){
   const clip = document.getElementById("clipBtn");
   if(!menu.contains(e.target) && !clip.contains(e.target)){ menu.style.display="none"; window.removeEventListener('click', closeMenuOnClickOutside); }
 }
+function abrirDictadoDesdeMenu(){
+  document.getElementById("adjuntos_menu").style.display = "none";
+  window.removeEventListener('click', closeMenuOnClickOutside);
+  toggleDictado();
+}
 
 function verHistorial(){
   fetch("/historial/"+usuario_id).then(r=>r.json()).then(data=>{
@@ -1614,20 +1604,21 @@ function iniciarDictado(){
   textoDictado = dictadoGuardado || "";
   ultimoTexto = "";
 
+  // Mostrar estado
   document.getElementById("dictadoEstado").style.display = "block";
-  document.getElementById("dictadoEstado").innerText =
-    "🎤 Dictado activo";
+  document.getElementById("dictadoEstado").innerText = "🎤 Dictado activo";
 
-  document
-    .getElementById("dictadoBtn")
-    .classList.add("activo");
+  // Ocultar botones normales y clip, mostrar botones dictado
+  document.getElementById("clipBtn").style.display = "none";
+  document.getElementById("botonesNormales").style.display = "none";
+  document.getElementById("botonesDictado").style.display = "flex";
+  document.getElementById("adjuntos_menu").style.display = "none";
 
-  document.getElementById("dictadoBtn").innerText =
-    "⏸️ Pausar";
+  // Actualizar placeholder del input
+  document.getElementById("mensaje").placeholder = "🎤 Dictando...";
 
-document.getElementById(
-  "finalizarDictadoBtn"
-).style.display = "inline-block";
+  document.getElementById("dictadoBtn").classList.add("activo");
+  document.getElementById("dictadoBtn").innerText = "⏸️ Pausar";
 
 reconocimiento.onresult = function(event){
 
@@ -1761,10 +1752,6 @@ function continuarDictado(){
 
   document.getElementById("dictadoBtn").innerText =
     "⏸️ Pausar";
-
-  document.getElementById(
-    "finalizarDictadoBtn"
-  ).style.display = "inline-block";
 }
 
 function finalizarDictado(){
@@ -1778,28 +1765,24 @@ function finalizarDictado(){
     reconocimiento = null;
   }
 
-  document.getElementById("dictadoEstado").style.display =
-    "none";
+  // Restaurar UI normal
+  document.getElementById("dictadoEstado").style.display = "none";
+  document.getElementById("clipBtn").style.display = "flex";
+  document.getElementById("botonesNormales").style.display = "flex";
+  document.getElementById("botonesDictado").style.display = "none";
+  document.getElementById("mensaje").placeholder = "Escribí tu mensaje o hablá";
 
-  document
-    .getElementById("dictadoBtn")
-    .classList.remove("activo");
+  document.getElementById("dictadoBtn").classList.remove("activo");
+  document.getElementById("dictadoBtn").innerText = "⏸️ Pausar";
 
-  document.getElementById("dictadoBtn").innerText =
-    "🎤 Dictado";
-
-document.getElementById(
-  "finalizarDictadoBtn"
-).style.display = "none";
-
-textoDictado = textoDictado.trim();
-
-  if(textoDictado.length > 0){
-    descargarWordDictado(textoDictado);
-  }
+  const textoFinal = textoDictado.trim();
 
   textoDictado = "";
   ultimoTexto = "";
+
+  if(textoFinal.length > 0){
+    descargarWordDictado(textoFinal);
+  }
 }
 function finalizarDictadoManual(){
 
@@ -1829,34 +1812,19 @@ function cancelarDictado(){
   textoDictado = "";
   ultimoTexto = "";
 
-  localStorage.removeItem(
-    "dictado_guardado"
-  );
+  localStorage.removeItem("dictado_guardado");
 
-  document.getElementById(
-    "mensaje"
-  ).value = "";
+  document.getElementById("mensaje").value = "";
+  document.getElementById("mensaje").placeholder = "Escribí tu mensaje o hablá";
+  document.getElementById("dictadoEstado").style.display = "none";
+  document.getElementById("clipBtn").style.display = "flex";
+  document.getElementById("botonesNormales").style.display = "flex";
+  document.getElementById("botonesDictado").style.display = "none";
 
-  document.getElementById(
-    "dictadoEstado"
-  ).style.display = "none";
+  document.getElementById("dictadoBtn").classList.remove("activo");
+  document.getElementById("dictadoBtn").innerText = "⏸️ Pausar";
 
-  document.getElementById(
-    "finalizarDictadoBtn"
-  ).style.display = "none";
-
-  document
-    .getElementById("dictadoBtn")
-    .classList.remove("activo");
-
-  document.getElementById(
-    "dictadoBtn"
-  ).innerText = "🎤 Dictado";
-
-  agregar(
-    "🗑️ Dictado cancelado",
-    "ai"
-  );
+  agregar("🗑️ Dictado cancelado", "ai");
 }
 
 // =====================
