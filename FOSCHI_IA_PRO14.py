@@ -1095,7 +1095,22 @@ z-index:999;
   <button onclick="toggleModoConversacion()">🧠 Modo conversación</button>
   <button onclick="checkPremium('audio')">🎵 Audio (mp3/wav) a Texto</button>
   <button onclick="checkPremium('doc')">📄 Analizar Documento</button>
-  <button id="dictadoBtn" onclick="toggleDictado()">🎤 Dictado</button>
+  <div style="display:flex; gap:6px; flex-wrap:wrap;">
+
+<button id="dictadoBtn"
+onclick="toggleDictado()">
+🎤 Dictado
+</button>
+
+<button id="finalizarDictadoBtn"
+onclick="finalizarDictadoManual()"
+style="
+background:#ff0033;
+color:white;
+display:none;
+">
+✅ Finalizar
+</button>
 </div>
   </div>
 
@@ -1547,6 +1562,8 @@ let dictadoActivo = false;
 let dictadoPausado = false;
 let reconocimiento = null;
 let textoDictado = "";
+let dictadoGuardado =
+localStorage.getItem("dictado_guardado") || "";
 let ultimoTexto = "";
 let reinicioDictado = false;
 
@@ -1594,7 +1611,7 @@ function iniciarDictado(){
   dictadoPausado = false;
   reinicioDictado = true;
 
-  textoDictado = "";
+  textoDictado = dictadoGuardado || "";
   ultimoTexto = "";
 
   document.getElementById("dictadoEstado").style.display = "block";
@@ -1608,7 +1625,11 @@ function iniciarDictado(){
   document.getElementById("dictadoBtn").innerText =
     "⏸️ Pausar";
 
-  reconocimiento.onresult = function(event){
+document.getElementById(
+  "finalizarDictadoBtn"
+).style.display = "inline-block";
+
+reconocimiento.onresult = function(event){
 
     let parcial = "";
 
@@ -1635,9 +1656,18 @@ function iniciarDictado(){
       }
 
       if(txt.includes("finalizar dictado")){
-        finalizarDictado();
-        return;
-      }
+    finalizarDictado();
+    return;
+}
+
+if(
+  txt.includes("cancelar dictado") ||
+  txt.includes("borrar dictado") ||
+  txt.includes("borrar todo")
+){
+  cancelarDictado();
+  return;
+}
 
       // =====================
       // EVITAR DUPLICADOS
@@ -1656,14 +1686,25 @@ function iniciarDictado(){
       trans = mejorarTextoDictado(trans);
 
       if(event.results[i].isFinal){
-        textoDictado += trans + " ";
-      }else{
-        parcial += trans + " ";
-      }
-    }
 
-    document.getElementById("mensaje").value =
-      textoDictado + parcial;
+    textoDictado += trans + " ";
+
+    // 💾 GUARDADO AUTOMÁTICO
+    localStorage.setItem(
+      "dictado_guardado",
+      textoDictado
+    );
+
+}else{
+
+    parcial += trans + " ";
+
+}
+
+}
+
+document.getElementById("mensaje").value =
+  textoDictado + parcial;
   };
 
   reconocimiento.onerror = function(e){
@@ -1720,6 +1761,10 @@ function continuarDictado(){
 
   document.getElementById("dictadoBtn").innerText =
     "⏸️ Pausar";
+
+  document.getElementById(
+    "finalizarDictadoBtn"
+  ).style.display = "inline-block";
 }
 
 function finalizarDictado(){
@@ -1743,7 +1788,11 @@ function finalizarDictado(){
   document.getElementById("dictadoBtn").innerText =
     "🎤 Dictado";
 
-  textoDictado = textoDictado.trim();
+document.getElementById(
+  "finalizarDictadoBtn"
+).style.display = "none";
+
+textoDictado = textoDictado.trim();
 
   if(textoDictado.length > 0){
     descargarWordDictado(textoDictado);
@@ -1752,9 +1801,62 @@ function finalizarDictado(){
   textoDictado = "";
   ultimoTexto = "";
 }
+function finalizarDictadoManual(){
+
+  if(!textoDictado.trim()){
+    alert("No hay texto para guardar");
+    return;
+  }
+
+  finalizarDictado();
+
+}
 
 function detenerDictado(){
   finalizarDictado();
+}
+
+function cancelarDictado(){
+
+  if(reconocimiento){
+    reconocimiento.stop();
+  }
+
+  dictadoActivo = false;
+  dictadoPausado = false;
+  reinicioDictado = false;
+
+  textoDictado = "";
+  ultimoTexto = "";
+
+  localStorage.removeItem(
+    "dictado_guardado"
+  );
+
+  document.getElementById(
+    "mensaje"
+  ).value = "";
+
+  document.getElementById(
+    "dictadoEstado"
+  ).style.display = "none";
+
+  document.getElementById(
+    "finalizarDictadoBtn"
+  ).style.display = "none";
+
+  document
+    .getElementById("dictadoBtn")
+    .classList.remove("activo");
+
+  document.getElementById(
+    "dictadoBtn"
+  ).innerText = "🎤 Dictado";
+
+  agregar(
+    "🗑️ Dictado cancelado",
+    "ai"
+  );
 }
 
 // =====================
@@ -1777,26 +1879,42 @@ function mejorarTextoDictado(texto){
   return texto;
 }
 
-function descargarWordDictado(texto){
+async function descargarWordDictado(texto){
 
-  fetch("/dictado_word",{
-    method:"POST",
-    headers:{
-      "Content-Type":"application/json"
-    },
-    body:JSON.stringify({
-      texto:texto
-    })
-  })
-  .then(r=>r.blob())
-  .then(blob=>{
+  try{
 
-    let url = window.URL.createObjectURL(blob);
+    const r = await fetch("/dictado_word",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json"
+      },
+      body:JSON.stringify({
+        texto:texto
+      })
+    });
 
-    let a = document.createElement("a");
+    if(!r.ok){
+
+      let errorTexto = await r.text();
+
+      console.log(errorTexto);
+
+      alert("Error generando Word");
+
+      return;
+    }
+
+    const blob = await r.blob();
+
+    const url =
+      window.URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
 
     a.href = url;
-    a.download = "dictado_foschi.docx";
+
+    a.download =
+      "dictado_foschi.docx";
 
     document.body.appendChild(a);
 
@@ -1806,11 +1924,17 @@ function descargarWordDictado(texto){
 
     window.URL.revokeObjectURL(url);
 
-  })
-  .catch(err=>{
+    // ✅ LIMPIAR SOLO DESPUÉS
+    localStorage.removeItem(
+      "dictado_guardado"
+    );
+
+  }catch(err){
+
     console.log(err);
-    alert("Error generando Word");
-  });
+
+    alert("Error descargando Word");
+  }
 }
 
 // ===============================
