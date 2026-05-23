@@ -1864,6 +1864,57 @@ async function descargarWordDictado(texto){
 }
 
 // ===============================
+// 🎵 AUDIO A TEXTO (WORD)
+// ===============================
+
+document.getElementById("audioInput")
+.addEventListener("change", async function(e){
+
+  const file = e.target.files[0];
+  if(!file) return;
+
+  agregar("🎵 Transcribiendo audio, esperá un momento...","ai");
+
+  let formData = new FormData();
+  formData.append("audio", file);
+  formData.append("usuario_id", usuario_id);
+
+  try{
+
+    const r = await fetch("/upload_audio",{
+      method:"POST",
+      body:formData
+    });
+
+    if(!r.ok){
+      let txt = await r.text();
+      agregar("❌ Error en transcripción: " + txt, "ai");
+      e.target.value = "";
+      return;
+    }
+
+    const blob = await r.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = file.name.replace(/\.[^.]+$/, "") + "_transcripcion.docx";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+
+    agregar("✅ Transcripción lista. Se descargó el Word con el texto.", "ai");
+
+  }catch(err){
+    console.log(err);
+    agregar("❌ Error procesando el audio.", "ai");
+  }
+
+  e.target.value = ""; // reset para poder subir el mismo archivo de nuevo
+
+});
+
+// ===============================
 // 📄 SUBIR PDF / WORD
 // ===============================
 
