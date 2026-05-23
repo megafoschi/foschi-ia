@@ -386,6 +386,45 @@ def dictado_word():
         as_attachment=True,
         download_name="dictado_foschi.docx"
     )
+
+@app.route("/corregir_dictado", methods=["POST"])
+def corregir_dictado():
+    """Recibe texto dictado en bruto y devuelve versión corregida gramaticalmente por GPT."""
+    data = request.get_json(silent=True) or {}
+    texto = data.get("texto", "").strip()
+
+    if not texto:
+        return jsonify({"ok": False, "error": "Texto vacío"}), 400
+
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4-turbo",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Sos un corrector de textos en español argentino. "
+                        "Recibís texto transcripto por dictado de voz que puede tener errores gramaticales, "
+                        "falta de puntuación, mayúsculas incorrectas o palabras repetidas. "
+                        "Tu tarea es corregir y mejorar el texto manteniendo exactamente el mismo significado y estilo del autor. "
+                        "No agregues ni quites ideas. No cambies el vocabulario a menos que sea un error claro. "
+                        "Responde ÚNICAMENTE con el texto corregido, sin explicaciones ni comentarios."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": texto
+                }
+            ],
+            temperature=0.2,
+            max_tokens=4000
+        )
+        texto_corregido = resp.choices[0].message.content.strip()
+        return jsonify({"ok": True, "texto": texto_corregido})
+
+    except Exception as e:
+        print("Error corrigiendo dictado:", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
     
 # ---------------- RESPUESTA IA ----------------
 
@@ -1788,73 +1827,103 @@ function cancelarDictado(){
 function mejorarTextoDictado(texto){
 
   texto = texto.trim();
+  if(!texto) return texto;
 
-  texto =
-    texto.charAt(0).toUpperCase() +
-    texto.slice(1);
+  // ── 1. SIGNOS DE PUNTUACIÓN HABLADOS ──────────────────────────
+  texto = texto.replace(/\bpunto y coma\b/gi,    ";");
+  texto = texto.replace(/\bpunto aparte\b/gi,    ".\n");
+  texto = texto.replace(/\bnuevo párrafo\b/gi,   ".\n\n");
+  texto = texto.replace(/\bnueva línea\b/gi,     "\n");
+  texto = texto.replace(/\bpunto seguido\b/gi,   ". ");
+  texto = texto.replace(/\bpunto final\b/gi,     ".");
+  texto = texto.replace(/\bpunto\b/gi,           ". ");
+  texto = texto.replace(/\bcoma\b/gi,            ", ");
+  texto = texto.replace(/\bdos puntos\b/gi,      ": ");
+  texto = texto.replace(/\bsigno de pregunta\b/gi,    "?");
+  texto = texto.replace(/\bsigno de exclamación\b/gi, "!");
+  texto = texto.replace(/\babre paréntesis\b/gi,  "(");
+  texto = texto.replace(/\bcierra paréntesis\b/gi, ")");
+  texto = texto.replace(/\bguión\b/gi,            " - ");
+  texto = texto.replace(/\bcomillas\b/gi,         '"');
 
-  texto = texto.replace(/ punto /gi, ". ");
-  texto = texto.replace(/ coma /gi, ", ");
-  texto = texto.replace(/ dos puntos /gi, ": ");
-  texto = texto.replace(/ punto y coma /gi, "; ");
+  // ── 2. ELIMINAR PALABRAS DUPLICADAS SEGUIDAS ──────────────────
+  // "el el perro" → "el perro"
+  texto = texto.replace(/\b(\w+)\s+\1\b/gi, "$1");
+
+  // ── 3. MAYÚSCULA DESPUÉS DE PUNTO, ?, ! Y SALTO DE LÍNEA ──────
+  texto = texto.replace(
+    /([.?!]\s+)([a-záéíóúüñ])/g,
+    (_, sep, letra) => sep + letra.toUpperCase()
+  );
+  texto = texto.replace(
+    /(\n\s*)([a-záéíóúüñ])/g,
+    (_, sep, letra) => sep + letra.toUpperCase()
+  );
+
+  // ── 4. ESPACIOS MÚLTIPLES / ANTES DE SIGNOS ───────────────────
+  texto = texto.replace(/ {2,}/g, " ");
+  texto = texto.replace(/ ([,;:.?!])/g, "$1");
+
+  // ── 5. MAYÚSCULA AL INICIO ────────────────────────────────────
+  texto = texto.charAt(0).toUpperCase() + texto.slice(1);
 
   return texto;
 }
 
 async function descargarWordDictado(texto){
 
+  // Mostrar aviso mientras la IA corrige
+  agregar("✍️ Corrigiendo gramática con IA...", "ai");
+
   try{
 
-    const r = await fetch("/dictado_word",{
-      method:"POST",
-      headers:{
-        "Content-Type":"application/json"
-      },
-      body:JSON.stringify({
-        texto:texto
-      })
+    // ── 1. CORRECCIÓN IA ─────────────────────────────────────────
+    let textoCorregido = texto;
+
+    try{
+      const rc = await fetch("/corregir_dictado", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ texto: texto })
+      });
+
+      if(rc.ok){
+        const dc = await rc.json();
+        if(dc.texto) textoCorregido = dc.texto;
+      }
+    }catch(errIA){
+      console.log("Corrección IA falló, usando texto original:", errIA);
+      // Si falla la IA, continúa con el texto sin corregir
+    }
+
+    // ── 2. GENERAR Y BAJAR EL WORD ───────────────────────────────
+    const r = await fetch("/dictado_word", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ texto: textoCorregido })
     });
 
     if(!r.ok){
-
-      let errorTexto = await r.text();
-
-      console.log(errorTexto);
-
+      console.log(await r.text());
       alert("Error generando Word");
-
       return;
     }
 
     const blob = await r.blob();
-
-    const url =
-      window.URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-
-    a.href = url;
-
-    a.download =
-      "dictado_foschi.docx";
-
+    const url  = window.URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = "dictado_foschi.docx";
     document.body.appendChild(a);
-
     a.click();
-
     a.remove();
-
     window.URL.revokeObjectURL(url);
 
-    // ✅ LIMPIAR SOLO DESPUÉS
-    localStorage.removeItem(
-      "dictado_guardado"
-    );
+    localStorage.removeItem("dictado_guardado");
+    agregar("✅ Word descargado con texto corregido.", "ai");
 
   }catch(err){
-
     console.log(err);
-
     alert("Error descargando Word");
   }
 }
