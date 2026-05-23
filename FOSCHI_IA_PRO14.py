@@ -1151,6 +1151,10 @@ z-index:999;
       style="background:#ff0033;color:white;border:1px solid #ff5577;">
       ✅ Finalizar
     </button>
+    <button onclick="cancelarDictado()"
+      style="background:#333;color:#ccc;border:1px solid #555;">
+      ❌ Cancelar
+    </button>
   </div>
 
 </div>
