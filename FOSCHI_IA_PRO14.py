@@ -1791,99 +1791,16 @@ function cancelarDictado(){
 
 function mejorarTextoDictado(texto){
 
-  if(!texto) return texto;
   texto = texto.trim();
 
-  // ══════════════════════════════════════════════
-  // 1. SIGNOS COMPUESTOS PRIMERO (orden importa)
-  // ══════════════════════════════════════════════
+  texto =
+    texto.charAt(0).toUpperCase() +
+    texto.slice(1);
 
-  // Párrafos y saltos
-  const nuevoPar  = /\b(nuevo p[aá]rrafo|p[aá]rrafo nuevo|punto y aparte|punto aparte)\b/gi;
-  const ptoSeg    = /\b(punto seguido|punto y seguido)\b/gi;
-  const ptoFinal  = /\bpunto final\b/gi;
-  const nuevaLin  = /\b(nueva l[ií]nea|salto de l[ií]nea)\b/gi;
-
-  texto = texto.replace(nuevoPar,  "\n\n");
-  texto = texto.replace(ptoSeg,   ". ");
-  texto = texto.replace(ptoFinal, ".");
-  texto = texto.replace(nuevaLin, "\n");
-
-  // Signos dobles (pregunta / exclamación)
-  texto = texto.replace(/\babre (signo de )?pregunta\b/gi,     "¿");
-  texto = texto.replace(/\bcierra (signo de )?pregunta\b/gi,   "?");
-  texto = texto.replace(/\bsigno de pregunta\b/gi,             "?");
-  texto = texto.replace(/\bpregunta\b/gi,                      "?");
-
-  texto = texto.replace(/\babre (signo de )?exclamaci[oó]n\b/gi,   "¡");
-  texto = texto.replace(/\bcierra (signo de )?exclamaci[oó]n\b/gi,  "!");
-  texto = texto.replace(/\bsigno de exclamaci[oó]n\b/gi,           "!");
-  texto = texto.replace(/\bexclamaci[oó]n\b/gi,                    "!");
-
-  // Comillas
-  texto = texto.replace(/\babre comillas\b/gi,   "\u201C");
-  texto = texto.replace(/\bcierra comillas\b/gi, "\u201D");
-  texto = texto.replace(/\bcomillas\b/gi,        '"');
-
-  // Paréntesis / corchetes
-  texto = texto.replace(/\babre par[eé]ntesis\b/gi,   "(");
-  texto = texto.replace(/\bcierra par[eé]ntesis\b/gi, ")");
-  texto = texto.replace(/\babre corchete\b/gi,         "[");
-  texto = texto.replace(/\bcierra corchete\b/gi,       "]");
-
-  // ══════════════════════════════════════════════
-  // 2. SIGNOS SIMPLES
-  // ══════════════════════════════════════════════
-
-  texto = texto.replace(/\bpunto y coma\b/gi,  ";");
-  texto = texto.replace(/\bdos puntos\b/gi,    ":");
-  texto = texto.replace(/\bcoma\b/gi,          ",");
-  texto = texto.replace(/\bpunto\b/gi,         ".");
-  texto = texto.replace(/\bgu[ií][oó]n largo\b/gi,  " — ");
-  texto = texto.replace(/\bgu[ií][oó]n\b/gi,        " - ");
-  texto = texto.replace(/\bpuntos suspensivos\b/gi,  "...");
-  texto = texto.replace(/\barroba\b/gi,        "@");
-  texto = texto.replace(/\bnúmero\b/gi,        "#");
-  texto = texto.replace(/\bporcentaje\b/gi,    "%");
-  texto = texto.replace(/\bm[aá]s\b/gi,        "+");   // solo en contexto dictado
-  texto = texto.replace(/\bmenos\b/gi,         "-");
-  texto = texto.replace(/\bigual\b/gi,         "=");
-  texto = texto.replace(/\bbarra\b/gi,         "/");
-
-  // ══════════════════════════════════════════════
-  // 3. MAYÚSCULA DESPUÉS DE SIGNOS DE CIERRE
-  // ══════════════════════════════════════════════
-
-  texto = texto.replace(
-    /([.?!]\s+)([a-záéíóúüñ])/g,
-    (_, sep, letra) => sep + letra.toUpperCase()
-  );
-  texto = texto.replace(
-    /(\n+\s*)([a-záéíóúüñ])/g,
-    (_, sep, letra) => sep + letra.toUpperCase()
-  );
-
-  // ══════════════════════════════════════════════
-  // 4. LIMPIEZA GENERAL
-  // ══════════════════════════════════════════════
-
-  // Quitar espacio antes de signos de puntuación
-  texto = texto.replace(/ ([,;:.?!)\]»\u201D])/g, "$1");
-
-  // Quitar espacio después de apertura
-  texto = texto.replace(/([\u00AB\u201C(\[])\s/g, "$1");
-
-  // Colapsar espacios múltiples (pero no saltos de línea)
-  texto = texto.replace(/[ \t]{2,}/g, " ");
-
-  // Quitar espacios al inicio de cada línea
-  texto = texto.replace(/\n /g, "\n");
-
-  // ══════════════════════════════════════════════
-  // 5. MAYÚSCULA AL INICIO DEL FRAGMENTO
-  // ══════════════════════════════════════════════
-
-  texto = texto.charAt(0).toUpperCase() + texto.slice(1);
+  texto = texto.replace(/ punto /gi, ". ");
+  texto = texto.replace(/ coma /gi, ", ");
+  texto = texto.replace(/ dos puntos /gi, ": ");
+  texto = texto.replace(/ punto y coma /gi, "; ");
 
   return texto;
 }
