@@ -1671,33 +1671,114 @@ function iniciarDictado(){
   document.getElementById("mensaje").value = "";
   document.getElementById("mensaje").placeholder = "🎤 Dictando...";
 
-  reconocimiento.onresult = function(event){
+ reconocimiento.onresult = function(event){
+
     let parcial = "";
 
     for(let i = event.resultIndex; i < event.results.length; i++){
+
       let trans = event.results[i][0].transcript.trim();
+
       if(!trans) continue;
 
       let txt = trans.toLowerCase();
 
-      // Comandos de voz
-      if(txt.includes("pausar dictado"))   { pausarDictado();    return; }
-      if(txt.includes("continuar dictado")){ continuarDictado(); return; }
-      if(txt.includes("finalizar dictado")){ finalizarDictado(); return; }
-      if(txt.includes("cancelar dictado") ||
-         txt.includes("borrar dictado")   ||
-         txt.includes("borrar todo"))      { cancelarDictado();  return; }
+      // ============================
+      // 🗑️ BORRAR PALABRAS
+      // ============================
+
+      // borrar eso
+      if(
+        txt.includes("borrar eso") ||
+        txt.includes("borrar esa palabra")
+      ){
+
+        let palabras = textoDictado.trim().split(" ");
+
+        palabras.pop();
+
+        textoDictado = palabras.join(" ");
+
+        document.getElementById("mensaje").value = textoDictado;
+
+        return;
+      }
+
+      // borrar últimas 3 palabras
+      if(txt.includes("borrar últimas 3 palabras")){
+
+        let palabras = textoDictado.trim().split(" ");
+
+        palabras.splice(-3);
+
+        textoDictado = palabras.join(" ");
+
+        document.getElementById("mensaje").value = textoDictado;
+
+        return;
+      }
+
+      // borrar últimas 5 palabras
+      if(txt.includes("borrar últimas 5 palabras")){
+
+        let palabras = textoDictado.trim().split(" ");
+
+        palabras.splice(-5);
+
+        textoDictado = palabras.join(" ");
+
+        document.getElementById("mensaje").value = textoDictado;
+
+        return;
+      }
+
+      // ============================
+      // 🎤 COMANDOS DE VOZ
+      // ============================
+
+      if(txt.includes("pausar dictado"))   {
+        pausarDictado();
+        return;
+      }
+
+      if(txt.includes("continuar dictado")){
+        continuarDictado();
+        return;
+      }
+
+      if(txt.includes("finalizar dictado")){
+        finalizarDictado();
+        return;
+      }
+
+      if(
+        txt.includes("cancelar dictado") ||
+        txt.includes("borrar dictado") ||
+        txt.includes("borrar todo")
+      ){
+        cancelarDictado();
+        return;
+      }
 
       trans = mejorarTextoDictado(trans);
 
       if(event.results[i].isFinal){
+
         // Evitar duplicado del último fragmento final
         if(trans !== ultimoTexto){
+
           ultimoTexto = trans;
+
           textoDictado += trans + " ";
-          localStorage.setItem("dictado_guardado", textoDictado);
+
+          localStorage.setItem(
+            "dictado_guardado",
+            textoDictado
+          );
         }
+
       } else {
+
         parcial += trans + " ";
       }
     }
