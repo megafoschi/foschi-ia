@@ -1688,23 +1688,30 @@ function iniciarDictado(){
       // ============================
 
       // borrar eso
-      if(
-        txt.includes("borrar eso") ||
-        txt.includes("borrar esa palabra")
-      ){
+if(
+  txt.includes("borrar eso") ||
+  txt.includes("borrar esa palabra")
+){
 
-        let palabras = textoDictado.trim().split(" ");
+  let palabras = textoDictado.trim().split(" ");
 
-        palabras.pop();
+  palabras.pop();
 
-        textoDictado = palabras.join(" ");
+  textoDictado =
+    palabras.join(" ").trim() + " ";
 
-        document.getElementById("mensaje").value = textoDictado;
+  localStorage.setItem(
+    "dictado_guardado",
+    textoDictado
+  );
 
-        return;
-      }
+  document.getElementById("mensaje").value =
+    textoDictado.trim();
 
-      // ============================
+  return;
+}
+
+// ============================
 // 🗑️ BORRAR X PALABRAS
 // ============================
 
@@ -1735,14 +1742,20 @@ if(
 
   let palabras = textoDictado.trim().split(/\s+/);
 
-  palabras.splice(-numero);
+palabras.splice(-numero);
 
-  textoDictado = palabras.join(" ");
+textoDictado =
+  palabras.join(" ").trim() + " ";
 
-  document.getElementById("mensaje").value = textoDictado;
+localStorage.setItem(
+  "dictado_guardado",
+  textoDictado
+);
 
-  return;
-}
+document.getElementById("mensaje").value =
+  textoDictado.trim();
+
+return;
 
       // ============================
       // 🎤 COMANDOS DE VOZ
