@@ -1793,14 +1793,67 @@ function mejorarTextoDictado(texto){
 
   texto = texto.trim();
 
+  // =========================
+  // PUNTUACIÓN
+  // =========================
+
+  texto = texto.replace(/\scoma\s/gi, ", ");
+  texto = texto.replace(/\spunto y coma\s/gi, "; ");
+  texto = texto.replace(/\sdos puntos\s/gi, ": ");
+  texto = texto.replace(/\spunto aparte\s/gi, ".\n\n");
+  texto = texto.replace(/\spunto seguido\s/gi, ". ");
+  texto = texto.replace(/\spunto\s/gi, ". ");
+
+  // =========================
+  // PREGUNTAS
+  // =========================
+
+  texto = texto.replace(/\sabrir pregunta\s/gi, " ¿");
+  texto = texto.replace(/\scerrar pregunta\s/gi, "? ");
+
+  // =========================
+  // ADMIRACIÓN
+  // =========================
+
+  texto = texto.replace(/\sabrir admiración\s/gi, " ¡");
+  texto = texto.replace(/\scerrar admiración\s/gi, "! ");
+
+  // =========================
+  // PARÉNTESIS
+  // =========================
+
+  texto = texto.replace(/\sabrir paréntesis\s/gi, " (");
+  texto = texto.replace(/\scerrar paréntesis\s/gi, ") ");
+
+  // =========================
+  // NUEVO PÁRRAFO
+  // =========================
+
+  texto = texto.replace(/\snuevo párrafo\s/gi, "\n\n");
+
+  // =========================
+  // ELIMINAR ESPACIOS DOBLES
+  // =========================
+
+  texto = texto.replace(/\s{2,}/g, " ");
+
+  // =========================
+  // MAYÚSCULA AL INICIO
+  // =========================
+
   texto =
     texto.charAt(0).toUpperCase() +
     texto.slice(1);
 
-  texto = texto.replace(/ punto /gi, ". ");
-  texto = texto.replace(/ coma /gi, ", ");
-  texto = texto.replace(/ dos puntos /gi, ": ");
-  texto = texto.replace(/ punto y coma /gi, "; ");
+  // =========================
+  // MAYÚSCULA DESPUÉS DE PUNTO
+  // =========================
+
+  texto = texto.replace(/([.!?]\s*)([a-záéíóúñ])/g,
+    function(match, p1, p2){
+      return p1 + p2.toUpperCase();
+    }
+  );
 
   return texto;
 }
