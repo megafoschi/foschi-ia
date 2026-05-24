@@ -1704,33 +1704,45 @@ function iniciarDictado(){
         return;
       }
 
-      // borrar últimas 3 palabras
-      if(txt.includes("borrar últimas 3 palabras")){
+      // ============================
+// 🗑️ BORRAR X PALABRAS
+// ============================
 
-        let palabras = textoDictado.trim().split(" ");
+if(
+  txt.includes("borrar") &&
+  txt.includes("palabras")
+){
 
-        palabras.splice(-3);
+  let numero = 1;
 
-        textoDictado = palabras.join(" ");
+  // números escritos
+  if(txt.includes("dos")) numero = 2;
+  else if(txt.includes("tres")) numero = 3;
+  else if(txt.includes("cuatro")) numero = 4;
+  else if(txt.includes("cinco")) numero = 5;
+  else if(txt.includes("seis")) numero = 6;
+  else if(txt.includes("siete")) numero = 7;
+  else if(txt.includes("ocho")) numero = 8;
+  else if(txt.includes("nueve")) numero = 9;
+  else if(txt.includes("diez")) numero = 10;
 
-        document.getElementById("mensaje").value = textoDictado;
+  // números normales
+  let match = txt.match(/\d+/);
 
-        return;
-      }
+  if(match){
+    numero = parseInt(match[0]);
+  }
 
-      // borrar últimas 5 palabras
-      if(txt.includes("borrar últimas 5 palabras")){
+  let palabras = textoDictado.trim().split(/\s+/);
 
-        let palabras = textoDictado.trim().split(" ");
+  palabras.splice(-numero);
 
-        palabras.splice(-5);
+  textoDictado = palabras.join(" ");
 
-        textoDictado = palabras.join(" ");
+  document.getElementById("mensaje").value = textoDictado;
 
-        document.getElementById("mensaje").value = textoDictado;
-
-        return;
-      }
+  return;
+}
 
       // ============================
       // 🎤 COMANDOS DE VOZ
@@ -1918,13 +1930,25 @@ function mejorarTextoDictado(texto){
 
   texto = texto.replace(/\s{2,}/g, " ");
 
-  // =========================
-  // MAYÚSCULA AL INICIO
-  // =========================
+// =========================
+// MAYÚSCULAS INTELIGENTES
+// =========================
+
+// Solo usar mayúscula:
+// 1. al inicio real
+// 2. después de punto
+// 3. después de ? o !
+
+if(
+  textoDictado.trim() === "" ||
+  /[.!?]\s*$/.test(textoDictado)
+){
 
   texto =
     texto.charAt(0).toUpperCase() +
     texto.slice(1);
+
+}
 
   // =========================
   // MAYÚSCULA DESPUÉS DE PUNTO
