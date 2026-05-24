@@ -1800,7 +1800,7 @@ function mejorarTextoDictado(texto){
   texto = texto.replace(/\scoma\s/gi, ", ");
   texto = texto.replace(/\spunto y coma\s/gi, "; ");
   texto = texto.replace(/\sdos puntos\s/gi, ": ");
-  texto = texto.replace(/\spunto aparte\s/gi, ".\n\n");
+  texto = texto.replace(/\spunto aparte\s/gi, ". <br><br> ");
   texto = texto.replace(/\spunto seguido\s/gi, ". ");
   texto = texto.replace(/\spunto\s/gi, ". ");
 
@@ -1829,7 +1829,7 @@ function mejorarTextoDictado(texto){
   // NUEVO PÁRRAFO
   // =========================
 
-  texto = texto.replace(/\snuevo párrafo\s/gi, "\n\n");
+  texto = texto.replace(/\snuevo párrafo\s/gi, " <br><br> ");
 
   // =========================
   // ELIMINAR ESPACIOS DOBLES
@@ -1849,7 +1849,7 @@ function mejorarTextoDictado(texto){
   // MAYÚSCULA DESPUÉS DE PUNTO
   // =========================
 
-  texto = texto.replace(/([.!?]\s*)([a-záéíóúñ])/g,
+  texto = texto.replace(/([.!?]\s*)([a-z])/gi,
     function(match, p1, p2){
       return p1 + p2.toUpperCase();
     }
