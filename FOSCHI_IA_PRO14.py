@@ -1941,7 +1941,7 @@ function mejorarTextoDictado(texto){
 
 if(
   textoDictado.trim() === "" ||
-  /[.!?]\s*$/.test(textoDictado)
+  /[.!?]\s*$/.test(textoDictado.trim())
 ){
 
   texto =
