@@ -1547,16 +1547,20 @@ if(borrarMatch){
   let desde = borrarMatch[1].trim();
   let hasta = borrarMatch[2].trim();
 
+  // escapar caracteres especiales para evitar errores de regex
+  let escDesde = desde.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  let escHasta = hasta.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
   let regex = new RegExp(
-    desde + "[\\s\\S]*?" + hasta,
-    "i"
+    escDesde + "[\\s\\S]*?" + escHasta,
+    "gi"
   );
 
   let caja = document.getElementById("mensaje");
-
+  let anterior = caja.value;
   caja.value = caja.value.replace(regex, "");
 
-  alert("Texto eliminado");
+  alert(caja.value !== anterior ? "Texto eliminado" : "No encontré ese fragmento");
 
   return;
 }
@@ -1822,6 +1826,48 @@ if(
         txt.includes("borrar todo")
       ){
         cancelarDictado();
+        return;
+      }
+
+      // ============================
+      // ✏️ CORREGIR PALABRA (dictado)
+      // ============================
+
+      let corregirMatchD = txt.match(/corregir (.+?) por (.+)/i);
+
+      if(corregirMatchD){
+        let original = corregirMatchD[1].trim();
+        let nuevo    = corregirMatchD[2].trim();
+        // escapar caracteres especiales de regex
+        let escapado = original.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        textoDictado = textoDictado.replace(new RegExp(escapado, "gi"), nuevo);
+        localStorage.setItem("dictado_guardado", textoDictado);
+        actualizarPanel("");
+        document.getElementById("mensaje").placeholder =
+          "✏️ Corregido: "" + original + "" → "" + nuevo + """;
+        return;
+      }
+
+      // ============================
+      // 🗑️ BORRAR DESDE / HASTA (dictado)
+      // ============================
+
+      let borrarMatchD = txt.match(/borrar desde (.+?) hasta (.+)/i);
+
+      if(borrarMatchD){
+        let desde   = borrarMatchD[1].trim();
+        let hasta   = borrarMatchD[2].trim();
+        let escDesde = desde.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        let escHasta = hasta.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        let regexBD = new RegExp(escDesde + "[\\s\\S]*?" + escHasta, "gi");
+        let anterior = textoDictado;
+        textoDictado = textoDictado.replace(regexBD, "");
+        localStorage.setItem("dictado_guardado", textoDictado);
+        actualizarPanel("");
+        document.getElementById("mensaje").placeholder =
+          textoDictado !== anterior
+            ? "🗑️ Texto eliminado"
+            : "⚠️ No encontré ese fragmento";
         return;
       }
 
