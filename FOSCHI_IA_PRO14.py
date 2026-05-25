@@ -1890,13 +1890,13 @@ function mejorarTextoDictado(texto){
   // PUNTUACIÓN PROFESIONAL
   // =========================
 
-  texto = texto.replace(/\bcoma\b/gi, ",");
+  texto = texto.replace(/coma/gi, ",");
   texto = texto.replace(/\bpunto y coma\b/gi, ";");
   texto = texto.replace(/\bdos puntos\b/gi, ":");
 
   texto = texto.replace(/\bpunto aparte\b/gi, ".");
   texto = texto.replace(/\bpunto seguido\b/gi, ".");
-  texto = texto.replace(/\bpunto\b/gi, ".");
+  texto = texto.replace(/punto/gi, ".");
 
   // preguntas
   texto = texto.replace(/\babrir pregunta\b/gi, "¿");
@@ -1911,7 +1911,7 @@ function mejorarTextoDictado(texto){
   texto = texto.replace(/\bcerrar paréntesis\b/gi, ")");
 
   // nuevo párrafo
-  texto = texto.replace(/\bnuevo párrafo\b/gi, "\n\n");
+  texto = texto.replace(/nuevo párrafo/gi, " ");
 
   // =========================
   // ESPACIOS
