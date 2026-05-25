@@ -1903,7 +1903,7 @@ texto = texto.replace(/\bdos puntos\b/gi, ":");
 texto = texto.replace(/\bpunto seguido\b/gi, ".");
 
 // punto
-texto = texto.replace(/\bpunto\b/gi, ".");
+texto = texto.replace(/\bpunto\b/gi, ". ");
 
 // preguntas
 texto = texto.replace(/\babrir pregunta\b/gi, "¿");
@@ -1921,7 +1921,7 @@ texto = texto.replace(/\bcerrar paréntesis\b/gi, ")");
 texto = texto.replace(/\bpunto aparte\b/gi, ". ");
 
 // nuevo párrafo
-texto = texto.replace(/\bnuevo párrafo\b/gi, "\n\n");
+texto = texto.replace(/\bnuevo párrafo\b/gi, " ");
 
   // =========================
   // PREGUNTAS
