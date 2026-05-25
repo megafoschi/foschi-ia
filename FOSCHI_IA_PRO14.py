@@ -1886,16 +1886,42 @@ function mejorarTextoDictado(texto){
 
   texto = texto.trim();
 
-  // =========================
-  // PUNTUACIÓN
-  // =========================
+// =========================
+// PUNTUACIÓN PROFESIONAL
+// =========================
 
-  texto = texto.replace(/\scoma\s/gi, ", ");
-  texto = texto.replace(/\spunto y coma\s/gi, "; ");
-  texto = texto.replace(/\sdos puntos\s/gi, ": ");
-  texto = texto.replace(/\spunto aparte\s/gi, ". <br><br> ");
-  texto = texto.replace(/\spunto seguido\s/gi, ". ");
-  texto = texto.replace(/\spunto\s/gi, ". ");
+// coma
+texto = texto.replace(/\bcoma\b/gi, ",");
+
+// punto y coma
+texto = texto.replace(/\bpunto y coma\b/gi, ";");
+
+// dos puntos
+texto = texto.replace(/\bdos puntos\b/gi, ":");
+
+// punto seguido
+texto = texto.replace(/\bpunto seguido\b/gi, ".");
+
+// punto
+texto = texto.replace(/\bpunto\b/gi, ".");
+
+// preguntas
+texto = texto.replace(/\babrir pregunta\b/gi, "¿");
+texto = texto.replace(/\bcerrar pregunta\b/gi, "?");
+
+// admiración
+texto = texto.replace(/\babrir admiración\b/gi, "¡");
+texto = texto.replace(/\bcerrar admiración\b/gi, "!");
+
+// paréntesis
+texto = texto.replace(/\babrir paréntesis\b/gi, "(");
+texto = texto.replace(/\bcerrar paréntesis\b/gi, ")");
+
+// punto aparte
+texto = texto.replace(/\bpunto aparte\b/gi, ". ");
+
+// nuevo párrafo
+texto = texto.replace(/\bnuevo párrafo\b/gi, "\n\n");
 
   // =========================
   // PREGUNTAS
@@ -1929,6 +1955,12 @@ function mejorarTextoDictado(texto){
   // =========================
 
   texto = texto.replace(/\s{2,}/g, " ");
+  
+  // arreglar espacios antes de signos
+texto = texto.replace(/\s+([.,;:!?])/g, "$1");
+
+// agregar espacio después de signos
+texto = texto.replace(/([.,;:!?])([A-Za-zÁÉÍÓÚáéíóúÑñ])/g, "$1 $2");
 
 // =========================
 // MAYÚSCULAS INTELIGENTES
