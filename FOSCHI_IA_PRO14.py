@@ -1522,22 +1522,49 @@ function hablar(){
     recognition.onresult = function(event){
 
       let textoReconocido = event.results[0][0].transcript;
-      let txt = textoReconocido.toLowerCase();
+let txt = textoReconocido.toLowerCase();
 
-      // 👉 COMANDOS DE VOZ PARA DICTADO PREMIUM
-      if(txt.includes("activar dictado")){
-        iniciarDictado();
-        return;
-      }
+// 👉 ACTIVAR DICTADO
+if(txt.includes("activar dictado")){
+  iniciarDictado();
+  return;
+}
 
-      if(txt.includes("desactivar dictado")){
-        detenerDictado();
-        return;
-      }
+// 👉 DESACTIVAR DICTADO
+if(txt.includes("desactivar dictado")){
+  detenerDictado();
+  return;
+}
 
-      // 👉 comportamiento normal
-      document.getElementById("mensaje").value = txt;
-      checkDailyLimit();
+// ============================
+// BORRAR DESDE / HASTA
+// ============================
+
+let borrarMatch = txt.match(/borrar desde (.+) hasta (.+)/i);
+
+if(borrarMatch){
+
+  let desde = borrarMatch[1].trim();
+  let hasta = borrarMatch[2].trim();
+
+  let regex = new RegExp(
+    desde + "[\\s\\S]*?" + hasta,
+    "i"
+  );
+
+  let caja = document.getElementById("mensaje");
+
+  caja.value = caja.value.replace(regex, "");
+
+  alert("Texto eliminado");
+
+  return;
+}
+
+// 👉 comportamiento normal
+document.getElementById("mensaje").value = txt;
+
+checkDailyLimit();
     };
 
     recognition.onerror = function(e){
