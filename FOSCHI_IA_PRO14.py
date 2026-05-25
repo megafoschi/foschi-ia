@@ -1886,107 +1886,62 @@ function mejorarTextoDictado(texto){
 
   texto = texto.trim();
 
-// =========================
-// PUNTUACIÓN PROFESIONAL
-// =========================
-
-// coma
-texto = texto.replace(/\bcoma\b/gi, ",");
-
-// punto y coma
-texto = texto.replace(/\bpunto y coma\b/gi, ";");
-
-// dos puntos
-texto = texto.replace(/\bdos puntos\b/gi, ":");
-
-// punto seguido
-texto = texto.replace(/\bpunto seguido\b/gi, ".");
-
-// punto
-texto = texto.replace(/\bpunto\b/gi, ". ");
-
-// preguntas
-texto = texto.replace(/\babrir pregunta\b/gi, "¿");
-texto = texto.replace(/\bcerrar pregunta\b/gi, "?");
-
-// admiración
-texto = texto.replace(/\babrir admiración\b/gi, "¡");
-texto = texto.replace(/\bcerrar admiración\b/gi, "!");
-
-// paréntesis
-texto = texto.replace(/\babrir paréntesis\b/gi, "(");
-texto = texto.replace(/\bcerrar paréntesis\b/gi, ")");
-
-// punto aparte
-texto = texto.replace(/\bpunto aparte\b/gi, ". ");
-
-// nuevo párrafo
-texto = texto.replace(/\bnuevo párrafo\b/gi, " ");
-
   // =========================
-  // PREGUNTAS
+  // PUNTUACIÓN PROFESIONAL
   // =========================
 
-  texto = texto.replace(/\sabrir pregunta\s/gi, " ¿");
-  texto = texto.replace(/\scerrar pregunta\s/gi, "? ");
+  texto = texto.replace(/\bcoma\b/gi, ",");
+  texto = texto.replace(/\bpunto y coma\b/gi, ";");
+  texto = texto.replace(/\bdos puntos\b/gi, ":");
+
+  texto = texto.replace(/\bpunto aparte\b/gi, ".");
+  texto = texto.replace(/\bpunto seguido\b/gi, ".");
+  texto = texto.replace(/\bpunto\b/gi, ".");
+
+  // preguntas
+  texto = texto.replace(/\babrir pregunta\b/gi, "¿");
+  texto = texto.replace(/\bcerrar pregunta\b/gi, "?");
+
+  // admiración
+  texto = texto.replace(/\babrir admiración\b/gi, "¡");
+  texto = texto.replace(/\bcerrar admiración\b/gi, "!");
+
+  // paréntesis
+  texto = texto.replace(/\babrir paréntesis\b/gi, "(");
+  texto = texto.replace(/\bcerrar paréntesis\b/gi, ")");
+
+  // nuevo párrafo
+  texto = texto.replace(/\bnuevo párrafo\b/gi, "\n\n");
 
   // =========================
-  // ADMIRACIÓN
+  // ESPACIOS
   // =========================
 
-  texto = texto.replace(/\sabrir admiración\s/gi, " ¡");
-  texto = texto.replace(/\scerrar admiración\s/gi, "! ");
+  // quitar espacios antes de signos
+  texto = texto.replace(/\s+([.,;:!?])/g, "$1");
 
-  // =========================
-  // PARÉNTESIS
-  // =========================
+  // agregar espacio después de signos
+  texto = texto.replace(/([.,;:!?])([A-Za-zÁÉÍÓÚáéíóúÑñ])/g, "$1 $2");
 
-  texto = texto.replace(/\sabrir paréntesis\s/gi, " (");
-  texto = texto.replace(/\scerrar paréntesis\s/gi, ") ");
-
-  // =========================
-  // NUEVO PÁRRAFO
-  // =========================
-
-  texto = texto.replace(/\snuevo párrafo\s/gi, " <br><br> ");
-
-  // =========================
-  // ELIMINAR ESPACIOS DOBLES
-  // =========================
-
+  // eliminar espacios dobles
   texto = texto.replace(/\s{2,}/g, " ");
-  
-  // arreglar espacios antes de signos
-texto = texto.replace(/\s+([.,;:!?])/g, "$1");
-
-// agregar espacio después de signos
-texto = texto.replace(/([.,;:!?])([A-Za-zÁÉÍÓÚáéíóúÑñ])/g, "$1 $2");
-
-// =========================
-// MAYÚSCULAS INTELIGENTES
-// =========================
-
-// Solo usar mayúscula:
-// 1. al inicio real
-// 2. después de punto
-// 3. después de ? o !
-
-if(
-  textoDictado.trim() === "" ||
-  /[.!?]\s*$/.test(textoDictado.trim())
-){
-
-  texto =
-    texto.charAt(0).toUpperCase() +
-    texto.slice(1);
-
-}
 
   // =========================
-  // MAYÚSCULA DESPUÉS DE PUNTO
+  // MAYÚSCULAS
   // =========================
 
-  texto = texto.replace(/([.!?]\s*)([a-z])/gi,
+  if(
+    textoDictado.trim() === "" ||
+    /[.!?]\s*$/.test(textoDictado.trim())
+  ){
+    texto =
+      texto.charAt(0).toUpperCase() +
+      texto.slice(1);
+  }
+
+  // mayúscula después de punto
+  texto = texto.replace(
+    /([.!?]\s*)([a-záéíóúñ])/g,
     function(match, p1, p2){
       return p1 + p2.toUpperCase();
     }
