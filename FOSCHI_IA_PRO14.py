@@ -1561,8 +1561,34 @@ if(borrarMatch){
   return;
 }
 
+// ============================
+// CORREGIR PALABRA
+// ============================
+
+let corregirMatch = txt.match(
+  /corregir (.+) por (.+)/i
+);
+
+if(corregirMatch){
+
+  let original = corregirMatch[1].trim();
+  let nuevo = corregirMatch[2].trim();
+
+  let caja = document.getElementById("mensaje");
+
+  let regex = new RegExp(original, "gi");
+
+  caja.value = caja.value.replace(regex, nuevo);
+
+  alert("Texto corregido");
+
+  return;
+}
+
 // 👉 comportamiento normal
-document.getElementById("mensaje").value = txt;
+let caja = document.getElementById("mensaje");
+
+caja.value += " " + txt;
 
 checkDailyLimit();
     };
