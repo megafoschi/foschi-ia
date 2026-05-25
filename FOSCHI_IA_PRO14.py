@@ -1891,11 +1891,11 @@ function mejorarTextoDictado(texto){
   // =========================
 
   texto = texto.replace(/coma/gi, ",");
-  texto = texto.replace(/\bpunto y coma\b/gi, ";");
   texto = texto.replace(/\bdos puntos\b/gi, ":");
 
-  texto = texto.replace(/\bpunto aparte\b/gi, ".");
-  texto = texto.replace(/\bpunto seguido\b/gi, ".");
+  texto = texto.replace(/punto y coma/gi, ";");
+  texto = texto.replace(/punto aparte/gi, ".");
+  texto = texto.replace(/punto seguido/gi, ".");
   texto = texto.replace(/punto/gi, ".");
 
   // preguntas
