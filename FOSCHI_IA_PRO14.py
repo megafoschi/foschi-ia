@@ -40,9 +40,6 @@ from suscripciones import usuario_premium, aviso_vencimiento
 from suscripciones import activar_premium
 
 from openai import OpenAI
-from google_auth_oauthlib.flow import Flow
-from googleapiclient.discovery import build
-from google.oauth2.credentials import Credentials
 
 client = OpenAI()
 
@@ -66,21 +63,13 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID")
 OWM_API_KEY = os.getenv("OWM_API_KEY")
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+
 # ---------------- APP ----------------
 app = Flask(__name__)
 app.secret_key = "FoschiWebKey"
 app.config["SESSION_TYPE"] = "filesystem"
 Session(app)
-GOOGLE_CLIENT_CONFIG = {
-    "web": {
-        "client_id": GOOGLE_CLIENT_ID,
-        "client_secret": GOOGLE_CLIENT_SECRET,
-        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-        "token_uri": "https://oauth2.googleapis.com/token"
-    }
-}
+
 # ---------------- UTIL / CACHE / HTTP ----------------
 HTTPS = requests.Session()
 URL_REGEX = re.compile(r'(https?://[^\s]+)', re.UNICODE)
@@ -170,68 +159,6 @@ def cargar_historial(usuario):
     except:
         return []
 
-def obtener_eventos_hoy(email):
-
-    if not os.path.exists("data/google_tokens.json"):
-        return []
-
-    with open(
-        "data/google_tokens.json",
-        "r",
-        encoding="utf-8"
-    ) as f:
-
-        tokens = json.load(f)
-
-    if email not in tokens:
-        return []
-
-    t = tokens[email]
-
-    creds = Credentials(
-        token=t["token"],
-        refresh_token=t["refresh_token"],
-        token_uri=t["token_uri"],
-        client_id=t["client_id"],
-        client_secret=t["client_secret"]
-    )
-
-    service = build(
-        "calendar",
-        "v3",
-        credentials=creds
-    )
-
-    ahora = datetime.utcnow().isoformat() + "Z"
-
-    eventos = service.events().list(
-        calendarId="primary",
-        timeMin=ahora,
-        maxResults=20,
-        singleEvents=True,
-        orderBy="startTime"
-    ).execute()
-
-    return eventos.get("items", [])
-
-    service = build(
-        "calendar",
-        "v3",
-        credentials=creds
-    )
-
-    ahora = datetime.utcnow().isoformat() + "Z"
-
-    eventos = service.events().list(
-        calendarId="primary",
-        timeMin=ahora,
-        maxResults=20,
-        singleEvents=True,
-        orderBy="startTime"
-    ).execute()
-
-    return eventos.get("items", [])
-  
 # ---------------- CLIMA ----------------
 def obtener_clima(ciudad=None, lat=None, lon=None):
     if not OWM_API_KEY:
@@ -1195,9 +1122,6 @@ z-index:999;
   <button onclick="checkPremium('audio')">🎵 Audio (mp3/wav) a Texto</button>
   <button onclick="checkPremium('doc')">📄 Analizar Documento</button>
   <button onclick="abrirDictadoDesdeMenu()">🎤 Dictado</button>
-  <button onclick="window.location='/google/connect'">
-📅 Conectar Google Calendar
-</button>
 </div>
 
 <!-- INPUTS OCULTOS -->
@@ -2438,94 +2362,24 @@ def register():
     session["user_email"] = email
     return jsonify({"ok": True})
 
-@app.route("/google/connect")
-def google_connect():
+@app.route("/auth/login", methods=["POST"])
+def login():
+    data = request.get_json()
 
-    usuario = session.get("user_email")
+    email = data.get("email", "").lower().strip()
+    password = data.get("password", "")
 
-    if not usuario:
-        return "No logueado", 401
+    if not autenticar_usuario(email, password):
+        return jsonify({"ok": False, "msg": "Credenciales incorrectas"})
 
-    flow = Flow.from_client_config(
-        GOOGLE_CLIENT_CONFIG,
-        scopes=[
-            "https://www.googleapis.com/auth/calendar.readonly"
-        ],
-        redirect_uri="https://foschi-ia.onrender.com/google/callback"
-    )
+    session["user_email"] = email
+    return jsonify({"ok": True})
 
-    auth_url, state = flow.authorization_url(
-        access_type="offline",
-        include_granted_scopes="true"
-    )
-
-    session["google_state"] = state
-
-    return redirect(auth_url)
-
-
-@app.route("/google/callback")
-def google_callback():
-
-    usuario = session.get("user_email")
-
-    if not usuario:
-        return "No logueado", 401
-
-    flow = Flow.from_client_config(
-        GOOGLE_CLIENT_CONFIG,
-        scopes=[
-            "https://www.googleapis.com/auth/calendar.readonly"
-        ],
-        state=session["google_state"],
-        redirect_uri="https://foschi-ia.onrender.com/google/callback"
-    )
-
-    flow.fetch_token(
-        authorization_response=request.url
-    )
-
-    creds = flow.credentials
-
-    os.makedirs("data", exist_ok=True)
-
-    if os.path.exists("data/google_tokens.json"):
-
-        with open(
-            "data/google_tokens.json",
-            "r",
-            encoding="utf-8"
-        ) as f:
-
-            data = json.load(f)
-
-    else:
-
-        data = {}
-
-    data[usuario] = {
-        "token": creds.token,
-        "refresh_token": creds.refresh_token,
-        "client_id": creds.client_id,
-        "client_secret": creds.client_secret,
-        "token_uri": creds.token_uri
-    }
-
-    with open(
-        "data/google_tokens.json",
-        "w",
-        encoding="utf-8"
-    ) as f:
-
-        json.dump(
-            data,
-            f,
-            ensure_ascii=False,
-            indent=2
-        )
-
+@app.route("/auth/logout")
+def logout():
+    session.pop("user_email", None)
     return redirect("/")
-  
+
 @app.route("/premium")
 def premium():
 
@@ -2640,7 +2494,7 @@ def preguntar():
     doc_id = data.get("doc_id")
 
     preguntar_doc = data.get("preguntar_doc", False)
-
+    
     # 1️⃣ Asegurar UUID en sesión (NO se borra nunca)
     if "usuario_id" not in session:
         session["usuario_id"] = str(uuid.uuid4())
@@ -2654,41 +2508,6 @@ def preguntar():
     lon = data.get("lon")
     tz  = data.get("timeZone") or data.get("time_zone") or None
 
-    # =====================================
-    # GOOGLE CALENDAR
-    # =====================================
-
-    if "qué tengo hoy" in mensaje.lower():
-
-        eventos = obtener_eventos_hoy(usuario)
-
-        if not eventos:
-            return jsonify({
-                "texto": "No tenés eventos hoy.",
-                "imagenes": [],
-                "borrar_historial": False
-            })
-
-        texto = "📅 Tu agenda:\n\n"
-
-        for e in eventos:
-
-            texto += (
-                "- " +
-                e.get("summary", "Sin título")
-                + "\n"
-            )
-
-        return jsonify({
-            "texto": texto,
-            "imagenes": [],
-            "borrar_historial": False
-        })
-
-    # ACÁ SIGUE TU CÓDIGO NORMAL
-    # if preguntar_doc and doc_id:
-    # ...
-    
      # ============================
     # 📄 PREGUNTAS SOBRE DOCUMENTO
     # ============================
