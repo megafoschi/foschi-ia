@@ -2566,8 +2566,7 @@ async function generarImagenIA(){
       {
         method:"POST",
         headers:{
-          "Content-Type":
-          "application/json"
+          "Content-Type":"application/json"
         },
         body:JSON.stringify({
           prompt
@@ -2575,8 +2574,25 @@ async function generarImagenIA(){
       }
     );
 
+    const txt = await r.text();
+
+    console.log(
+      "RESPUESTA IMAGEN:",
+      txt
+    );
+
     const data =
-      await r.json();
+      JSON.parse(txt);
+
+    if(data.error){
+
+      agregar(
+        "❌ " + data.error,
+        "ai"
+      );
+
+      return;
+    }
 
     agregar(
       `<img src="${data.imagen}" style="max-width:100%;">`,
@@ -2819,30 +2835,37 @@ def index():
 )
 def generar_imagen():
 
-    data = request.get_json()
+    try:
 
-    prompt = data.get(
-        "prompt",
-        ""
-    )
+        data = request.get_json()
 
-    resultado = client.images.generate(
-        model="gpt-image-1",
-        prompt=prompt,
-        size="1024x1024"
-    )
+        prompt = data.get(
+            "prompt",
+            ""
+        )
 
-    imagen_base64 = (
-        resultado.data[0]
-        .b64_json
-    )
+        resultado = client.images.generate(
+            model="gpt-image-1",
+            prompt=prompt,
+            size="1024x1024"
+        )
 
-    return jsonify({
-        "imagen":
-        "data:image/png;base64," +
-        imagen_base64
-    })
-    
+        imagen_base64 = resultado.data[0].b64_json
+
+        return jsonify({
+            "imagen":
+            "data:image/png;base64," +
+            imagen_base64
+        })
+
+    except Exception as e:
+
+        print("ERROR GENERAR IMAGEN:")
+        print(str(e))
+
+        return jsonify({
+            "error": str(e)
+        }),500    
 @app.route("/preguntar", methods=["POST"])
 def preguntar():
 
