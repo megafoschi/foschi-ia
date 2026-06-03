@@ -1236,10 +1236,10 @@ z-index:999;
   <button onclick="checkPremium('ocr')">
 📷 Imagen a Word
 </button>
-
-<button onclick="checkPremium('editar_imagen')">
-🖼️ Editar Imagen
+<button onclick="abrirGeneradorImagen()">
+🎨 Generar Imagen IA
 </button>
+
 
 <button onclick="abrirGeneradorImagen()">
 🎨 Generar Imagen
@@ -2533,6 +2533,68 @@ function salirModoDocumento(){
     "ai"
   );
 }
+
+function abrirGeneradorImagen(){
+
+  document.getElementById(
+    "modalImagen"
+  ).style.display = "block";
+
+}
+
+async function generarImagenIA(){
+
+  const prompt =
+    document.getElementById(
+      "promptImagen"
+    ).value.trim();
+
+  if(!prompt){
+    alert("Describí la imagen.");
+    return;
+  }
+
+  agregar(
+    "🎨 Generando imagen...",
+    "ai"
+  );
+
+  try{
+
+    const r = await fetch(
+      "/generar_imagen",
+      {
+        method:"POST",
+        headers:{
+          "Content-Type":
+          "application/json"
+        },
+        body:JSON.stringify({
+          prompt
+        })
+      }
+    );
+
+    const data =
+      await r.json();
+
+    agregar(
+      `<img src="${data.imagen}" style="max-width:100%;">`,
+      "ai"
+    );
+
+  }catch(err){
+
+    console.log(err);
+
+    agregar(
+      "❌ Error generando imagen",
+      "ai"
+    );
+
+  }
+
+}
 </script>
 
 <div id="authModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:9999;">
@@ -2558,7 +2620,53 @@ function salirModoDocumento(){
 
   </div>
 </div>
-   
+<div id="modalImagen"
+style="
+display:none;
+position:fixed;
+top:0;
+left:0;
+width:100%;
+height:100%;
+background:rgba(0,0,0,.8);
+z-index:99999;
+">
+
+<div style="
+background:#fff;
+padding:20px;
+width:500px;
+max-width:90%;
+margin:100px auto;
+border-radius:10px;
+">
+
+<h3>🎨 Generar Imagen</h3>
+
+<textarea
+id="promptImagen"
+placeholder="Describí la imagen..."
+style="
+width:100%;
+height:120px;
+"></textarea>
+
+<br><br>
+
+<button onclick="generarImagenIA()">
+Generar
+</button>
+
+<button
+onclick="
+document.getElementById('modalImagen').style.display='none';
+">
+Cerrar
+</button>
+
+</div>
+
+</div>   
 </body>
 </html>
 
@@ -2705,7 +2813,36 @@ def index():
         rol=rol,
         nivel=nivel
     )
+@app.route(
+    "/generar_imagen",
+    methods=["POST"]
+)
+def generar_imagen():
 
+    data = request.get_json()
+
+    prompt = data.get(
+        "prompt",
+        ""
+    )
+
+    resultado = client.images.generate(
+        model="gpt-image-1",
+        prompt=prompt,
+        size="1024x1024"
+    )
+
+    imagen_base64 = (
+        resultado.data[0]
+        .b64_json
+    )
+
+    return jsonify({
+        "imagen":
+        "data:image/png;base64," +
+        imagen_base64
+    })
+    
 @app.route("/preguntar", methods=["POST"])
 def preguntar():
 
