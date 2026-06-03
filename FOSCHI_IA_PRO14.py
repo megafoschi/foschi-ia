@@ -40,6 +40,9 @@ from suscripciones import usuario_premium, aviso_vencimiento
 from suscripciones import activar_premium
 
 from openai import OpenAI
+from PIL import Image
+from docx.shared import Inches
+import base64
 
 client = OpenAI()
 
@@ -54,6 +57,9 @@ CREADOR = "Gustavo Enrique Foschi"
 DATA_DIR = "data"
 STATIC_DIR = "static"
 TEMP_DIR = os.path.join(DATA_DIR, "temp_docs")
+IMAGES_DIR = os.path.join(DATA_DIR, "temp_images")
+
+os.makedirs(IMAGES_DIR, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(STATIC_DIR, exist_ok=True)
 os.makedirs(TEMP_DIR, exist_ok=True)
@@ -386,7 +392,112 @@ def dictado_word():
         as_attachment=True,
         download_name="dictado_foschi.docx"
     )
-    
+@app.route(
+    "/imagen_a_word",
+    methods=["POST"]
+)
+def imagen_a_word():
+
+    if "imagen" not in request.files:
+        return "No se recibió imagen",400
+
+    archivo = request.files["imagen"]
+
+    nombre = (
+        uuid.uuid4().hex +
+        ".png"
+    )
+
+    ruta_imagen = os.path.join(
+        IMAGES_DIR,
+        nombre
+    )
+
+    archivo.save(ruta_imagen)
+
+    try:
+
+        with open(
+            ruta_imagen,
+            "rb"
+        ) as f:
+
+            imagen_base64 = base64.b64encode(
+                f.read()
+            ).decode()
+
+        respuesta = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role":"user",
+                    "content":[
+                        {
+                            "type":"text",
+                            "text":"Extraé TODO el texto visible."
+                        },
+                        {
+                            "type":"image_url",
+                            "image_url":{
+                                "url":"data:image/png;base64," + imagen_base64
+                            }
+                        }
+                    ]
+                }
+            ],
+            max_tokens=4000
+        )
+
+        texto = respuesta.choices[0].message.content
+
+        doc = DocxDocument()
+
+        doc.add_heading(
+            "Documento extraído",
+            0
+        )
+
+        doc.add_picture(
+            ruta_imagen,
+            width=Inches(4)
+        )
+
+        doc.add_paragraph(texto)
+
+        salida = os.path.join(
+            TEMP_DIR,
+            "ocr_" +
+            uuid.uuid4().hex +
+            ".docx"
+        )
+
+        doc.save(salida)
+
+        @after_this_request
+        def remove_file(response):
+
+            try:
+
+                if os.path.exists(salida):
+                    os.remove(salida)
+
+                if os.path.exists(ruta_imagen):
+                    os.remove(ruta_imagen)
+
+            except Exception as e:
+                print("Error eliminando temporales:", e)
+
+            return response
+
+        return send_file(
+            salida,
+            as_attachment=True,
+            download_name="imagen_extraida.docx"
+        )
+
+    except Exception as e:
+
+        return str(e),500    
 # ---------------- RESPUESTA IA ----------------
 
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
@@ -1122,10 +1233,27 @@ z-index:999;
   <button onclick="checkPremium('audio')">🎵 Audio (mp3/wav) a Texto</button>
   <button onclick="checkPremium('doc')">📄 Analizar Documento</button>
   <button onclick="abrirDictadoDesdeMenu()">🎤 Dictado</button>
+  <button onclick="checkPremium('ocr')">
+📷 Imagen a Word
+</button>
+
+<button onclick="checkPremium('editar_imagen')">
+🖼️ Editar Imagen
+</button>
+
+<button onclick="abrirGeneradorImagen()">
+🎨 Generar Imagen
+</button>
 </div>
 
 <!-- INPUTS OCULTOS -->
 <input id="audioInput" class="hidden_file_input" type="file" accept=".mp3,audio/*,.wav" />
+<input
+  id="imagenInput"
+  class="hidden_file_input"
+  type="file"
+  accept="image/*"
+/>
 <input id="archivo_pdf_word" class="hidden_file_input" type="file" accept=".pdf,.docx" />
 
 <!-- BARRA DE ENTRADA -->
@@ -1169,6 +1297,7 @@ let modoConversacion = false;
 let escuchandoContinuo = false;
 let recognitionConversacion = null;
 let silencioTimer=null;
+let modoImagen = "";
 
 function toggleModoConversacion(){
 
@@ -1434,12 +1563,34 @@ function irPremium(tipo){
 }
 
 function checkPremium(tipo){
+
   if(!isPremium){
     alert("⚠️ Esta función requiere Premium. Pasá a Premium para usarla.");
     return;
   }
-  if(tipo==='audio') document.getElementById('audioInput').click();
-  if(tipo==='doc') document.getElementById('archivo_pdf_word').click();
+
+  if(tipo === "ocr"){
+    modoImagen = "ocr";
+    document.getElementById("imagenInput").click();
+    return;
+  }
+
+  if(tipo === "editar_imagen"){
+    modoImagen = "editar";
+    document.getElementById("imagenInput").click();
+    return;
+  }
+
+  if(tipo === "audio"){
+    document.getElementById("audioInput").click();
+    return;
+  }
+
+  if(tipo === "doc"){
+    document.getElementById("archivo_pdf_word").click();
+    return;
+  }
+
 }
 
 function toggleAdjuntosMenu(){
@@ -2109,6 +2260,77 @@ document.getElementById("audioInput")
   }
 
   e.target.value = ""; // reset para poder subir el mismo archivo de nuevo
+
+});
+
+// ===============================
+// 📷 IMAGEN A WORD
+// ===============================
+
+document.getElementById("imagenInput")
+.addEventListener("change", async function(e){
+
+  const file = e.target.files[0];
+
+  if(!file) return;
+
+  let formData = new FormData();
+
+  formData.append("imagen", file);
+
+  agregar("📷 Procesando imagen...", "ai");
+
+  try{
+
+    const r = await fetch(
+      "/imagen_a_word",
+      {
+        method:"POST",
+        body:formData
+      }
+    );
+
+    if(!r.ok){
+      let txt = await r.text();
+      agregar("❌ Error: " + txt, "ai");
+      e.target.value = "";
+      return;
+    }
+
+    const blob = await r.blob();
+
+    const url = window.URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+
+    a.href = url;
+    a.download = "imagen_extraida.docx";
+
+    document.body.appendChild(a);
+
+    a.click();
+
+    a.remove();
+
+    window.URL.revokeObjectURL(url);
+
+    agregar(
+      "✅ Word generado correctamente.",
+      "ai"
+    );
+
+  }catch(err){
+
+    console.log(err);
+
+    agregar(
+      "❌ Error procesando la imagen.",
+      "ai"
+    );
+
+  }
+
+  e.target.value = "";
 
 });
 
