@@ -497,7 +497,47 @@ def imagen_a_word():
 
     except Exception as e:
 
-        return str(e),500    
+        return str(e),500
+      
+@app.route(
+    "/editar_imagen",
+    methods=["POST"]
+)
+def editar_imagen():
+
+    if "imagen" not in request.files:
+        return "No se recibió imagen", 400
+
+    imagen = request.files["imagen"]
+
+    instruccion = request.form.get(
+        "prompt",
+        ""
+    )
+
+    try:
+
+        resultado = client.images.edit(
+            model="gpt-image-1",
+            image=imagen,
+            prompt=instruccion,
+            size="1024x1024"
+        )
+
+        imagen_base64 = resultado.data[0].b64_json
+
+        return jsonify({
+            "ok": True,
+            "imagen": imagen_base64
+        })
+
+    except Exception as e:
+
+        return jsonify({
+            "ok": False,
+            "error": str(e)
+        }), 500
+                  
 # ---------------- RESPUESTA IA ----------------
 
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
@@ -1576,10 +1616,23 @@ function checkPremium(tipo){
   }
 
   if(tipo === "editar_imagen"){
-    modoImagen = "editar";
-    document.getElementById("imagenInput").click();
-    return;
-  }
+
+  modoImagen = "editar";
+
+  let cambio = prompt(
+    "¿Qué querés modificar en la imagen?"
+  );
+
+  if(!cambio) return;
+
+  window.promptEdicionImagen = cambio;
+
+  document.getElementById(
+    "imagenInput"
+  ).click();
+
+  return;
+}
 
   if(tipo === "audio"){
     document.getElementById("audioInput").click();
@@ -2273,6 +2326,79 @@ document.getElementById("imagenInput")
   const file = e.target.files[0];
 
   if(!file) return;
+  
+  if(
+  modoImagen === "editar"
+){
+
+  let formData = new FormData();
+
+  formData.append(
+    "imagen",
+    file
+  );
+
+  formData.append(
+    "prompt",
+    window.promptEdicionImagen
+  );
+
+  agregar(
+    "🖼️ Editando imagen...",
+    "ai"
+  );
+
+  try{
+
+    const r = await fetch(
+      "/editar_imagen",
+      {
+        method:"POST",
+        body:formData
+      }
+    );
+
+    const data = await r.json();
+
+    if(!data.ok){
+
+      agregar(
+        "❌ " + data.error,
+        "ai"
+      );
+
+      return;
+    }
+
+    let img = document.createElement("img");
+
+    img.src =
+      "data:image/png;base64," +
+      data.imagen;
+
+    document
+      .getElementById("chat")
+      .appendChild(img);
+
+    agregar(
+      "✅ Imagen editada.",
+      "ai"
+    );
+
+  }catch(err){
+
+    console.log(err);
+
+    agregar(
+      "❌ Error editando imagen",
+      "ai"
+    );
+  }
+
+  e.target.value = "";
+
+  return;
+}
 
   let formData = new FormData();
 
