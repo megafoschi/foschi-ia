@@ -506,38 +506,40 @@ def imagen_a_word():
 def editar_imagen():
 
     if "imagen" not in request.files:
-        return "No se recibió imagen", 400
-
-    imagen = request.files["imagen"]
-
-    instruccion = request.form.get(
-        "prompt",
-        ""
-    )
+        return jsonify({
+            "ok": False,
+            "error": "No se recibió imagen"
+        }), 400
 
     try:
 
+        imagen = request.files["imagen"]
+
         resultado = client.images.edit(
             model="gpt-image-1",
-            image=imagen,
-            prompt=instruccion,
+            image=imagen.stream,
+            prompt=request.form.get(
+                "prompt",
+                ""
+            ),
             size="1024x1024"
         )
 
-        imagen_base64 = resultado.data[0].b64_json
-
         return jsonify({
             "ok": True,
-            "imagen": imagen_base64
+            "imagen": resultado.data[0].b64_json
         })
 
     except Exception as e:
+
+        print("ERROR EDITAR IMAGEN:")
+        print(str(e))
 
         return jsonify({
             "ok": False,
             "error": str(e)
         }), 500
-                  
+                          
 # ---------------- RESPUESTA IA ----------------
 
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
@@ -1238,6 +1240,32 @@ body.day #dictadoPanel{
 
 <!-- CHAT -->
 <div id="chat" role="log" aria-live="polite"></div>
+<div id="editorImagen" style="display:none;">
+
+    <img
+        id="previewImagen"
+        style="
+            max-width:100%;
+            border-radius:10px;
+            margin-top:10px;
+        "
+    >
+
+    <textarea
+        id="promptImagen"
+        placeholder="Describí la modificación..."
+        style="
+            width:100%;
+            height:90px;
+            margin-top:10px;
+        "
+    ></textarea>
+
+    <button onclick="editarImagenActual()">
+        🖼️ Editar Imagen
+    </button>
+
+</div>
 <div id="voiceWave" style="
 position:fixed;
 bottom:110px;
@@ -1338,6 +1366,8 @@ let escuchandoContinuo = false;
 let recognitionConversacion = null;
 let silencioTimer=null;
 let modoImagen = "";
+let imagenActualArchivo = null;
+let imagenActualBase64 = null;
 
 function toggleModoConversacion(){
 
@@ -2326,10 +2356,28 @@ document.getElementById("imagenInput")
   const file = e.target.files[0];
 
   if(!file) return;
-  
-  if(
-  modoImagen === "editar"
-){
+
+  if(modoImagen === "editar"){
+
+    imagenActualArchivo = file;
+
+    let lector = new FileReader();
+
+    lector.onload = function(ev){
+
+      document.getElementById(
+        "previewImagen"
+      ).src = ev.target.result;
+
+      document.getElementById(
+        "editorImagen"
+      ).style.display = "block";
+    };
+
+    lector.readAsDataURL(file);
+
+    return;
+  }
 
   let formData = new FormData();
 
@@ -2658,6 +2706,80 @@ function salirModoDocumento(){
     "✅ Saliste del modo documento. Foschi IA volvió al modo normal.",
     "ai"
   );
+}
+
+async function editarImagenActual(){
+
+    let prompt = document
+        .getElementById("promptImagen")
+        .value
+        .trim();
+
+    if(!prompt){
+
+        alert("Escribí una modificación");
+
+        return;
+    }
+
+    let formData = new FormData();
+
+    formData.append(
+        "imagen",
+        imagenActualArchivo
+    );
+
+    formData.append(
+        "prompt",
+        prompt
+    );
+
+    try{
+
+        agregar(
+          "🖼️ Editando imagen...",
+          "ai"
+        );
+
+        const r = await fetch(
+          "/editar_imagen",
+          {
+            method:"POST",
+            body:formData
+          }
+        );
+
+        const data = await r.json();
+
+        if(!data.ok){
+
+            alert(data.error);
+
+            return;
+        }
+
+        let nuevaImagen =
+          "data:image/png;base64," +
+          data.imagen;
+
+        document.getElementById(
+          "previewImagen"
+        ).src = nuevaImagen;
+
+        agregar(
+          "✅ Imagen editada",
+          "ai"
+        );
+
+    }catch(err){
+
+        console.log(err);
+
+        agregar(
+          "❌ Error editando imagen",
+          "ai"
+        );
+    }
 }
 </script>
 
