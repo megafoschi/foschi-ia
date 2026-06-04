@@ -1264,7 +1264,6 @@ body.day #dictadoPanel{
     <button onclick="editarImagenActual()">
         🖼️ Editar Imagen
     </button>
-
 </div>
 <div id="voiceWave" style="
 position:fixed;
@@ -1648,14 +1647,6 @@ function checkPremium(tipo){
   if(tipo === "editar_imagen"){
 
   modoImagen = "editar";
-
-  let cambio = prompt(
-    "¿Qué querés modificar en la imagen?"
-  );
-
-  if(!cambio) return;
-
-  window.promptEdicionImagen = cambio;
 
   document.getElementById(
     "imagenInput"
@@ -2384,11 +2375,6 @@ document.getElementById("imagenInput")
   formData.append(
     "imagen",
     file
-  );
-
-  formData.append(
-    "prompt",
-    window.promptEdicionImagen
   );
 
   agregar(
