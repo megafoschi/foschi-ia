@@ -2353,14 +2353,6 @@ document.getElementById("imagenInput")
 
   agregar("📷 Procesando imagen...", "ai");
 
-  try{  
-
-  let formData = new FormData();
-
-  formData.append("imagen", file);
-
-  agregar("📷 Procesando imagen...", "ai");
-
   try{
 
     const r = await fetch(
