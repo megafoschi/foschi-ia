@@ -1238,12 +1238,13 @@ z-index:999;
 </button>
 
 <button onclick="checkPremium('editar_imagen')">
-🖌️ Editar Imagen IA
+🖼️ Editar Imagen
 </button>
 
 <button onclick="abrirGeneradorImagen()">
-🎨 Generar Imagen IA
+🎨 Generar Imagen
 </button>
+</div>
 
 <!-- INPUTS OCULTOS -->
 <input id="audioInput" class="hidden_file_input" type="file" accept=".mp3,audio/*,.wav" />
@@ -2272,80 +2273,6 @@ document.getElementById("imagenInput")
   const file = e.target.files[0];
 
   if(!file) return;
-// ======================
-  // EDITAR IMAGEN
-  // ======================
-
-  if(modoImagen === "editar"){
-
-      let instruccion = window.prompt(
-          "¿Qué querés modificar?"
-      );
-
-      if(!instruccion){
-          return;
-      }
-
-      let formData = new FormData();
-
-      formData.append(
-          "imagen",
-          file
-      );
-
-      formData.append(
-          "prompt",
-          instruccion
-      );
-
-      agregar(
-          "🎨 Editando imagen...",
-          "ai"
-      );
-
-      try{
-
-          const r = await fetch(
-              "/editar_imagen",
-              {
-                  method:"POST",
-                  body:formData
-              }
-          );
-
-          const data = await r.json();
-
-          if(data.error){
-
-              agregar(
-                  "❌ " + data.error,
-                  "ai"
-              );
-
-              return;
-          }
-
-          agregar(
-              `<img src="${data.imagen}" style="max-width:100%">`,
-              "ai"
-          );
-
-      }catch(err){
-
-          console.log(err);
-
-          agregar(
-              "❌ Error editando imagen",
-              "ai"
-          );
-      }
-
-      return;
-  }
-
-  // ======================
-  // OCR EXISTENTE
-  // ======================
 
   let formData = new FormData();
 
@@ -2606,84 +2533,6 @@ function salirModoDocumento(){
     "ai"
   );
 }
-
-function abrirGeneradorImagen(){
-
-  document.getElementById(
-    "modalImagen"
-  ).style.display = "block";
-
-}
-
-async function generarImagenIA(){
-
-  const prompt =
-    document.getElementById(
-      "promptImagen"
-    ).value.trim();
-
-  if(!prompt){
-    alert("Describí la imagen.");
-    return;
-  }
-
-  agregar(
-    "🎨 Generando imagen...",
-    "ai"
-  );
-
-  try{
-
-    const r = await fetch(
-      "/generar_imagen",
-      {
-        method:"POST",
-        headers:{
-          "Content-Type":"application/json"
-        },
-        body:JSON.stringify({
-          prompt
-        })
-      }
-    );
-
-    const txt = await r.text();
-
-    console.log(
-      "RESPUESTA IMAGEN:",
-      txt
-    );
-
-    const data =
-      JSON.parse(txt);
-
-    if(data.error){
-
-      agregar(
-        "❌ " + data.error,
-        "ai"
-      );
-
-      return;
-    }
-
-    agregar(
-      `<img src="${data.imagen}" style="max-width:100%;">`,
-      "ai"
-    );
-
-  }catch(err){
-
-    console.log(err);
-
-    agregar(
-      "❌ Error generando imagen",
-      "ai"
-    );
-
-  }
-
-}
 </script>
 
 <div id="authModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:9999;">
@@ -2709,53 +2558,7 @@ async function generarImagenIA(){
 
   </div>
 </div>
-<div id="modalImagen"
-style="
-display:none;
-position:fixed;
-top:0;
-left:0;
-width:100%;
-height:100%;
-background:rgba(0,0,0,.8);
-z-index:99999;
-">
-
-<div style="
-background:#fff;
-padding:20px;
-width:500px;
-max-width:90%;
-margin:100px auto;
-border-radius:10px;
-">
-
-<h3>🎨 Generar Imagen</h3>
-
-<textarea
-id="promptImagen"
-placeholder="Describí la imagen..."
-style="
-width:100%;
-height:120px;
-"></textarea>
-
-<br><br>
-
-<button onclick="generarImagenIA()">
-Generar
-</button>
-
-<button
-onclick="
-document.getElementById('modalImagen').style.display='none';
-">
-Cerrar
-</button>
-
-</div>
-
-</div>   
+   
 </body>
 </html>
 
@@ -2902,68 +2705,7 @@ def index():
         rol=rol,
         nivel=nivel
     )
-@app.route(
-    "/generar_imagen",
-    methods=["POST"]
-)
-def generar_imagen():
 
-    data = request.get_json()
-    prompt = data.get("prompt", "")
-
-    resultado = client.images.generate(
-        model="gpt-image-1",
-        prompt=prompt,
-        size="1024x1024"
-    )
-
-    imagen_base64 = resultado.data[0].b64_json
-
-    return jsonify({
-        "imagen":"data:image/png;base64," + imagen_base64
-    })
-
-
-@app.route(
-    "/editar_imagen",
-    methods=["POST"]
-)
-def editar_imagen():
-
-    try:
-
-        if "imagen" not in request.files:
-            return jsonify({
-                "error":"No se recibió imagen"
-            }),400
-
-        imagen = request.files["imagen"]
-
-        prompt = request.form.get(
-            "prompt",
-            ""
-        )
-
-        imagen_bytes = imagen.read()
-
-        resultado = client.images.edit(
-            model="gpt-image-1",
-            image=imagen_bytes,
-            prompt=prompt
-        )
-
-        imagen_base64 = resultado.data[0].b64_json
-
-        return jsonify({
-            "imagen":"data:image/png;base64," + imagen_base64
-        })
-
-    except Exception as e:
-
-        return jsonify({
-            "error":str(e)
-        }),500
-          
 @app.route("/preguntar", methods=["POST"])
 def preguntar():
 
