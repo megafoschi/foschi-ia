@@ -1240,14 +1240,33 @@ body.day #dictadoPanel{
 
 <!-- CHAT -->
 <div id="chat" role="log" aria-live="polite"></div>
-<div id="editorImagen" style="display:none;">
+
+<div
+    id="editorImagen"
+    style="
+        display:none;
+        width:100%;
+        max-width:900px;
+        margin:15px auto;
+        padding:15px;
+        border-radius:12px;
+        background:#111;
+        overflow:auto;
+        box-sizing:border-box;
+    "
+>
 
     <img
         id="previewImagen"
         style="
+            display:block;
             max-width:100%;
+            max-height:60vh;
+            width:auto;
+            height:auto;
+            margin:10px auto;
             border-radius:10px;
-            margin-top:10px;
+            object-fit:contain;
         "
     >
 
@@ -1258,12 +1277,15 @@ body.day #dictadoPanel{
             width:100%;
             height:90px;
             margin-top:10px;
+            box-sizing:border-box;
+            resize:vertical;
         "
     ></textarea>
 
     <button onclick="editarImagenActual()">
         🖼️ Editar Imagen
     </button>
+
 </div>
 <div id="voiceWave" style="
 position:fixed;
