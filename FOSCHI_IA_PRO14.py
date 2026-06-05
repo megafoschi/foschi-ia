@@ -1251,98 +1251,45 @@ body.day #dictadoPanel{
 <!-- CHAT -->
 <div id="chat" role="log" aria-live="polite"></div>
 
-<!-- ===== MODAL FLOTANTE EDITOR DE IMAGEN ===== -->
-<div id="editorImagen" style="
-    display:none;
-    position:fixed;
-    inset:0;
-    z-index:9998;
-    background:rgba(0,8,20,0.88);
-    align-items:center;
-    justify-content:center;
-    padding:12px;
-    box-sizing:border-box;
-">
-  <div style="
-    background:linear-gradient(135deg,#001a2e,#002a44);
-    border:1px solid #00eaff55;
-    border-radius:18px;
-    box-shadow:0 0 40px #00eaff33;
-    width:100%;
-    max-width:880px;
-    max-height:92vh;
-    overflow-y:auto;
-    padding:22px;
-    box-sizing:border-box;
-  ">
+<!-- MODAL FLOTANTE EDITOR DE IMAGEN -->
+<div id="editorImagen" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,8,20,0.88);align-items:center;justify-content:center;padding:12px;box-sizing:border-box;">
+  <div style="background:linear-gradient(135deg,#001a2e,#002a44);border:1px solid #00eaff55;border-radius:18px;box-shadow:0 0 40px #00eaff33;width:100%;max-width:900px;max-height:94vh;overflow-y:auto;padding:22px;box-sizing:border-box;">
 
-    <!-- Encabezado -->
+    <!-- Título y botón cerrar -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-      <span style="color:#00eaff;font-size:17px;font-weight:700;text-shadow:0 0 8px #00eaff;letter-spacing:1px;">
-        ✏️ Editor de Imagen IA
-      </span>
-      <button onclick="cancelarEdicionImagen()" style="
-        background:transparent;border:1px solid #ff444466;
-        color:#ff6666;border-radius:8px;padding:6px 14px;
-        font-size:15px;cursor:pointer;
-      ">✕ Cerrar</button>
+      <span style="color:#00eaff;font-size:17px;font-weight:700;text-shadow:0 0 8px #00eaff;letter-spacing:1px;">✏️ Editor de Imagen IA</span>
+      <button onclick="cancelarEdicionImagen()" style="background:transparent;border:1px solid #ff444466;color:#ff6666;border-radius:8px;padding:6px 16px;font-size:15px;cursor:pointer;">✕ Cerrar</button>
     </div>
 
-    <!-- Columnas Original | Resultado -->
+    <!-- Original | Resultado -->
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
-
       <div style="flex:1;min-width:200px;text-align:center;">
         <div style="color:#00eaff66;font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">Original</div>
         <img id="previewImagen" src="" style="display:none;width:100%;max-height:280px;object-fit:contain;border-radius:10px;border:1px solid #00eaff22;background:#001122;">
         <div id="placeholderOrig" style="display:flex;align-items:center;justify-content:center;height:160px;border-radius:10px;border:2px dashed #00eaff22;background:#001122;color:#00eaff33;font-size:13px;">Sin imagen</div>
       </div>
-
       <div style="flex:1;min-width:200px;text-align:center;">
         <div style="color:#00eaff66;font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">Resultado</div>
         <img id="resultadoImagen" src="" style="display:none;width:100%;max-height:280px;object-fit:contain;border-radius:10px;border:1px solid #00eaff22;background:#001122;">
         <div id="placeholderResult" style="display:flex;align-items:center;justify-content:center;height:160px;border-radius:10px;border:2px dashed #00eaff22;background:#001122;color:#00eaff33;font-size:13px;">Aquí aparecerá la edición</div>
       </div>
-
     </div>
 
-    <!-- Textarea prompt -->
-    <textarea id="promptImagen" placeholder="Describí qué querés cambiar... (ej: cambiá el fondo por un bosque, poné lentes al personaje)" style="
-      width:100%;height:75px;
-      background:#001122;color:#00eaff;
-      border:1px solid #006688;border-radius:10px;
-      padding:10px 12px;font-size:14px;
-      resize:vertical;box-sizing:border-box;outline:none;
-      font-family:'Segoe UI',sans-serif;
-    "></textarea>
+    <!-- Prompt -->
+    <textarea id="promptImagen" placeholder="Describí qué querés cambiar... (ej: cambiá el fondo por un bosque, poné lentes al personaje)" style="width:100%;height:75px;background:#001122;color:#00eaff;border:1px solid #006688;border-radius:10px;padding:10px 12px;font-size:14px;resize:vertical;box-sizing:border-box;outline:none;font-family:'Segoe UI',sans-serif;"></textarea>
 
     <!-- Botones -->
-    <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;align-items:center;">
-
-      <button id="btnAplicarEdicion" type="button" onclick="editarImagenActual()" style="
-        padding:10px 22px;
-        background:linear-gradient(135deg,#005577,#007799);
-        color:#fff;border:none;border-radius:10px;
-        font-size:15px;font-weight:600;cursor:pointer;
-        box-shadow:0 0 14px #00eaff44;
-      ">✨ Aplicar con IA</button>
-
-      <a id="btnDescargarEdicion" download="foschi_editada.png" style="
-        display:none;padding:10px 18px;
-        background:linear-gradient(135deg,#004400,#006600);
-        color:#00ff88;border:1px solid #00ff8844;
-        border-radius:10px;font-size:14px;font-weight:600;
-        text-decoration:none;cursor:pointer;
-      ">⬇️ Descargar</a>
-
+    <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;align-items:center;">
+      <button id="btnAplicarEdicion" type="button" onclick="editarImagenActual()" style="padding:11px 24px;background:linear-gradient(135deg,#005577,#007799);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;box-shadow:0 0 14px #00eaff44;">✨ Aplicar con IA</button>
+      <a id="btnDescargarEdicion" download="foschi_editada.png" style="display:none;padding:11px 18px;background:linear-gradient(135deg,#004400,#006600);color:#00ff88;border:1px solid #00ff8844;border-radius:10px;font-size:14px;font-weight:600;text-decoration:none;cursor:pointer;">⬇️ Descargar</a>
       <span id="editorEstado" style="display:none;align-items:center;gap:8px;color:#00eaff88;font-size:13px;">
         <span style="display:inline-block;width:15px;height:15px;border:2px solid #00eaff33;border-top-color:#00eaff;border-radius:50%;animation:spinImg 0.7s linear infinite;"></span>
-        Procesando...
+        Procesando con IA...
       </span>
-
     </div>
+
   </div>
 </div>
-
 <style>
   @keyframes spinImg { to { transform:rotate(360deg); } }
   #btnAplicarEdicion:disabled { opacity:0.5; cursor:not-allowed; }
@@ -2448,17 +2395,14 @@ document.getElementById("imagenInput")
 
       // Resetear resultado
       let res = document.getElementById("resultadoImagen");
-      if(res){ res.src = ""; res.style.display = "none"; }
+      res.src = ""; res.style.display = "none";
       let phRes = document.getElementById("placeholderResult");
       if(phRes) phRes.style.display = "flex";
 
       // Resetear controles
-      let btnDesc = document.getElementById("btnDescargarEdicion");
-      if(btnDesc) btnDesc.style.display = "none";
-      let estado = document.getElementById("editorEstado");
-      if(estado) estado.style.display = "none";
-      let btnAplicar = document.getElementById("btnAplicarEdicion");
-      if(btnAplicar) btnAplicar.disabled = false;
+      document.getElementById("btnDescargarEdicion").style.display = "none";
+      document.getElementById("editorEstado").style.display = "none";
+      document.getElementById("btnAplicarEdicion").disabled = false;
       document.getElementById("promptImagen").value = "";
 
       // Abrir modal flotante
@@ -2743,16 +2687,15 @@ function salirModoDocumento(){
 
 async function editarImagenActual(){
 
-    let prompt = document.getElementById("promptImagen").value.trim();
+    let prompt = document
+        .getElementById("promptImagen")
+        .value
+        .trim();
 
     if(!prompt){
-        document.getElementById("promptImagen").focus();
-        document.getElementById("promptImagen").style.border = "1px solid #ff4444";
-        setTimeout(()=>{ document.getElementById("promptImagen").style.border = "1px solid #006688"; }, 1500);
+        alert("Escribí una modificación");
         return;
     }
-
-    if(!imagenActualArchivo) return;
 
     // UI: cargando
     let btnAplicar = document.getElementById("btnAplicarEdicion");
@@ -2780,7 +2723,7 @@ async function editarImagenActual(){
         btnAplicar.disabled = false;
 
         if(!data.ok){
-            alert("Error: " + data.error);
+            alert(data.error);
             return;
         }
 
@@ -2795,27 +2738,30 @@ async function editarImagenActual(){
         btnDesc.href = dataUrl;
         btnDesc.style.display = "inline-block";
 
+        agregar("✅ Imagen editada con IA", "ai");
+
     }catch(err){
 
-        console.error(err);
+        console.log(err);
         estado.style.display = "none";
         btnAplicar.disabled = false;
-        alert("Error de red al editar imagen.");
+        agregar("❌ Error editando imagen", "ai");
     }
 }
-
 function cancelarEdicionImagen(){
 
     document.getElementById("editorImagen").style.display = "none";
     document.getElementById("promptImagen").value = "";
 
     let prev = document.getElementById("previewImagen");
-    if(prev){ prev.src = ""; prev.style.display = "none"; }
+    prev.src = "";
+    prev.style.display = "none";
     let phOrig = document.getElementById("placeholderOrig");
     if(phOrig) phOrig.style.display = "flex";
 
     let res = document.getElementById("resultadoImagen");
-    if(res){ res.src = ""; res.style.display = "none"; }
+    res.src = "";
+    res.style.display = "none";
     let phRes = document.getElementById("placeholderResult");
     if(phRes) phRes.style.display = "flex";
 
