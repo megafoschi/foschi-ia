@@ -1261,7 +1261,7 @@ body.day #dictadoPanel{
         style="
             display:block;
             max-width:100%;
-            max-height:60vh;
+            max-height:90vh;
             width:auto;
             height:auto;
             margin:10px auto;
@@ -1281,6 +1281,31 @@ body.day #dictadoPanel{
             resize:vertical;
         "
     ></textarea>
+    
+    <div
+    style="
+        display:flex;
+        gap:10px;
+        margin-top:10px;
+        flex-wrap:wrap;
+    "
+>
+
+    <button
+        type="button"
+        onclick="editarImagenActual()"
+    >
+        🖼️ Aplicar modificación
+    </button>
+
+    <button
+        type="button"
+        onclick="cancelarEdicionImagen()"
+    >
+        ❌ Cancelar
+    </button>
+
+</div>
 
     <button onclick="editarImagenActual()">
         🖼️ Editar Imagen
@@ -2736,6 +2761,29 @@ async function editarImagenActual(){
           "ai"
         );
     }
+}
+function cancelarEdicionImagen(){
+
+    document.getElementById(
+        "editorImagen"
+    ).style.display = "none";
+
+    document.getElementById(
+        "promptImagen"
+    ).value = "";
+
+    document.getElementById(
+        "previewImagen"
+    ).src = "";
+
+    imagenActualArchivo = null;
+
+    modoImagen = "";
+
+    agregar(
+        "❌ Edición cancelada",
+        "ai"
+    );
 }
 </script>
 
