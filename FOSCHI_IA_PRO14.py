@@ -1251,173 +1251,77 @@ body.day #dictadoPanel{
 <!-- CHAT -->
 <div id="chat" role="log" aria-live="polite"></div>
 
-<!-- MODAL EDITOR DE IMAGEN (overlay flotante) -->
-<div id="editorImagen" style="
-    display:none;
-    position:fixed;
-    inset:0;
-    z-index:9998;
-    background:rgba(0,0,0,0.82);
-    align-items:center;
-    justify-content:center;
-    padding:16px;
-    box-sizing:border-box;
-">
-  <!-- Caja interior -->
-  <div style="
-    background:linear-gradient(135deg,#001a2e,#002a44);
-    border:1px solid #00eaff55;
-    border-radius:18px;
-    box-shadow:0 0 40px #00eaff33;
-    width:100%;
-    max-width:860px;
-    max-height:92vh;
-    overflow-y:auto;
-    padding:24px;
-    box-sizing:border-box;
-    position:relative;
-  ">
-
-    <!-- Título + botón cerrar -->
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-      <span style="color:#00eaff;font-size:18px;font-weight:700;text-shadow:0 0 8px #00eaff;letter-spacing:1px;">
-        ✏️ Editor de Imagen IA
-      </span>
-      <button onclick="cancelarEdicionImagen()" style="
-        background:transparent;
-        border:1px solid #ff444466;
-        color:#ff6666;
-        border-radius:8px;
-        padding:6px 14px;
-        font-size:16px;
-        cursor:pointer;
-        transition:0.2s;
-      " onmouseover="this.style.background='#ff444422'" onmouseout="this.style.background='transparent'">
-        ✕ Cerrar
-      </button>
-    </div>
-
-    <!-- Vista previa: original | resultado -->
-    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
-
-      <!-- Original -->
-      <div style="flex:1;min-width:200px;text-align:center;">
-        <div style="color:#00eaff77;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Original</div>
-        <img id="previewImagen" src="" style="
-            display:none;
-            width:100%;
-            max-height:300px;
-            object-fit:contain;
-            border-radius:10px;
-            border:1px solid #00eaff22;
-            background:#001122;
-        ">
-        <div id="placeholderOrig" style="
-            display:flex;align-items:center;justify-content:center;
-            height:180px;border-radius:10px;
-            border:2px dashed #00eaff22;
-            background:#001122;color:#00eaff33;font-size:13px;
-        ">Sin imagen</div>
-      </div>
-
-      <!-- Resultado -->
-      <div style="flex:1;min-width:200px;text-align:center;">
-        <div style="color:#00eaff77;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Resultado</div>
-        <img id="resultadoImagen" src="" style="
-            display:none;
-            width:100%;
-            max-height:300px;
-            object-fit:contain;
-            border-radius:10px;
-            border:1px solid #00eaff22;
-            background:#001122;
-        ">
-        <div id="placeholderResult" style="
-            display:flex;align-items:center;justify-content:center;
-            height:180px;border-radius:10px;
-            border:2px dashed #00eaff22;
-            background:#001122;color:#00eaff33;font-size:13px;
-        ">Aquí aparecerá la edición</div>
-      </div>
-
-    </div>
-
-    <!-- Prompt -->
-    <textarea id="promptImagen" placeholder="Describí qué querés cambiar... (ej: cambiá el fondo por un bosque, poné lentes al personaje)" style="
+<div
+    id="editorImagen"
+    style="
+        display:none;
         width:100%;
-        height:80px;
-        background:#001122;
-        color:#00eaff;
-        border:1px solid #006688;
-        border-radius:10px;
-        padding:10px 12px;
-        font-size:14px;
-        resize:vertical;
+        max-width:900px;
+        margin:15px auto;
+        padding:15px;
+        border-radius:12px;
+        background:#111;
+        overflow:auto;
         box-sizing:border-box;
-        outline:none;
-        font-family:'Segoe UI',sans-serif;
-        transition:border 0.3s;
-    " onfocus="this.style.border='1px solid #00eaff'" onblur="this.style.border='1px solid #006688'"></textarea>
+    "
+>
 
-    <!-- Botones de acción -->
-    <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;align-items:center;">
+    <img
+        id="previewImagen"
+        style="
+            display:block;
+            max-width:100%;
+            max-height:90vh;
+            width:auto;
+            height:auto;
+            margin:10px auto;
+            border-radius:10px;
+            object-fit:contain;
+        "
+    >
 
-      <button id="btnAplicarEdicion" type="button" onclick="editarImagenActual()" style="
-        padding:11px 24px;
-        background:linear-gradient(135deg,#005577,#007799);
-        color:#fff;
-        border:none;
-        border-radius:10px;
-        font-size:15px;
-        font-weight:600;
-        cursor:pointer;
-        box-shadow:0 0 14px #00eaff44;
-        transition:0.3s;
-      " onmouseover="this.style.boxShadow='0 0 22px #00eaff88'" onmouseout="this.style.boxShadow='0 0 14px #00eaff44'">
-        ✨ Aplicar con IA
-      </button>
+    <textarea
+        id="promptImagen"
+        placeholder="Describí la modificación..."
+        style="
+            width:100%;
+            height:90px;
+            margin-top:10px;
+            box-sizing:border-box;
+            resize:vertical;
+        "
+    ></textarea>
+    
+    <div
+    style="
+        display:flex;
+        gap:10px;
+        margin-top:10px;
+        flex-wrap:wrap;
+    "
+>
 
-      <a id="btnDescargarEdicion" download="foschi_editada.png" style="
-        display:none;
-        padding:11px 20px;
-        background:linear-gradient(135deg,#004400,#006600);
-        color:#00ff88;
-        border:1px solid #00ff8844;
-        border-radius:10px;
-        font-size:14px;
-        font-weight:600;
-        cursor:pointer;
-        text-decoration:none;
-        transition:0.3s;
-      ">⬇️ Descargar</a>
+    <button
+        type="button"
+        onclick="editarImagenActual()"
+    >
+        🖼️ Aplicar modificación
+    </button>
 
-      <span id="editorEstado" style="
-        display:none;
-        align-items:center;
-        gap:8px;
-        color:#00eaff88;
-        font-size:13px;
-      ">
-        <span style="
-          display:inline-block;
-          width:16px;height:16px;
-          border:2px solid #00eaff33;
-          border-top-color:#00eaff;
-          border-radius:50%;
-          animation:spinAnim 0.7s linear infinite;
-        "></span>
-        Procesando con IA...
-      </span>
+    <button
+        type="button"
+        onclick="cancelarEdicionImagen()"
+    >
+        ❌ Cancelar
+    </button>
 
-    </div>
+</div>
 
-  </div><!-- fin caja interior -->
-</div><!-- fin modal -->
+    <button onclick="editarImagenActual()">
+        🖼️ Editar Imagen
+    </button>
 
-<style>
-@keyframes spinAnim { to { transform:rotate(360deg); } }
-#btnAplicarEdicion:disabled { opacity:0.5; cursor:not-allowed; }
-</style>
+</div>
 <div id="voiceWave" style="
 position:fixed;
 bottom:110px;
@@ -2510,13 +2414,32 @@ document.getElementById("imagenInput")
 
     lector.onload = function(ev){
 
-      document.getElementById(
-        "previewImagen"
-      ).src = ev.target.result;
+      // Mostrar imagen original
+      let prev = document.getElementById("previewImagen");
+      prev.src = ev.target.result;
+      prev.style.display = "block";
 
-      document.getElementById(
-        "editorImagen"
-      ).style.display = "flex";
+      // Ocultar placeholder original
+      let phOrig = document.getElementById("placeholderOrig");
+      if(phOrig) phOrig.style.display = "none";
+
+      // Resetear resultado anterior
+      let resImg = document.getElementById("resultadoImagen");
+      if(resImg){ resImg.src = ""; resImg.style.display = "none"; }
+      let phRes = document.getElementById("placeholderResult");
+      if(phRes) phRes.style.display = "flex";
+
+      // Resetear botones y estado
+      let btnDesc = document.getElementById("btnDescargarEdicion");
+      if(btnDesc) btnDesc.style.display = "none";
+      let estado = document.getElementById("editorEstado");
+      if(estado) estado.style.display = "none";
+      let btnAplicar = document.getElementById("btnAplicarEdicion");
+      if(btnAplicar) btnAplicar.disabled = false;
+      document.getElementById("promptImagen").value = "";
+
+      // Abrir modal (flex para centrar la caja interior)
+      document.getElementById("editorImagen").style.display = "flex";
     };
 
     lector.readAsDataURL(file);
@@ -2797,91 +2720,99 @@ function salirModoDocumento(){
 
 async function editarImagenActual(){
 
-    let prompt = document.getElementById("promptImagen").value.trim();
+    let prompt = document
+        .getElementById("promptImagen")
+        .value
+        .trim();
 
     if(!prompt){
-        document.getElementById("promptImagen").focus();
-        document.getElementById("promptImagen").style.border = "1px solid #ff4444";
-        setTimeout(()=>{ document.getElementById("promptImagen").style.border = "1px solid #006688"; }, 1500);
+
+        alert("Escribí una modificación");
+
         return;
     }
 
-    if(!imagenActualArchivo) return;
-
-    // Estado: cargando
-    let btnAplicar = document.getElementById("btnAplicarEdicion");
-    let estado = document.getElementById("editorEstado");
-    btnAplicar.disabled = true;
-    estado.style.display = "flex";
-    document.getElementById("btnDescargarEdicion").style.display = "none";
-
-    // Ocultar resultado anterior
-    let resImg = document.getElementById("resultadoImagen");
-    let phRes  = document.getElementById("placeholderResult");
-    resImg.style.display = "none";
-    if(phRes) phRes.style.display = "flex";
-
     let formData = new FormData();
-    formData.append("imagen", imagenActualArchivo);
-    formData.append("prompt", prompt);
+
+    formData.append(
+        "imagen",
+        imagenActualArchivo
+    );
+
+    formData.append(
+        "prompt",
+        prompt
+    );
 
     try{
 
-        const r = await fetch("/editar_imagen", { method:"POST", body:formData });
+        agregar(
+          "🖼️ Editando imagen...",
+          "ai"
+        );
+
+        const r = await fetch(
+          "/editar_imagen",
+          {
+            method:"POST",
+            body:formData
+          }
+        );
+
         const data = await r.json();
 
-        estado.style.display = "none";
-        btnAplicar.disabled = false;
-
         if(!data.ok){
-            alert("Error: " + data.error);
+
+            alert(data.error);
+
             return;
         }
 
-        // Mostrar resultado en la columna derecha del modal
-        let dataUrl = "data:image/png;base64," + data.imagen;
-        resImg.src = dataUrl;
-        resImg.style.display = "block";
-        if(phRes) phRes.style.display = "none";
+        let nuevaImagen =
+          "data:image/png;base64," +
+          data.imagen;
 
-        // Habilitar descarga
-        let btnDesc = document.getElementById("btnDescargarEdicion");
-        btnDesc.href = dataUrl;
-        btnDesc.style.display = "inline-block";
+        document.getElementById(
+          "previewImagen"
+        ).src = nuevaImagen;
+
+        agregar(
+          "✅ Imagen editada",
+          "ai"
+        );
 
     }catch(err){
 
-        console.error(err);
-        estado.style.display = "none";
-        btnAplicar.disabled = false;
-        alert("Error de red al editar imagen.");
+        console.log(err);
+
+        agregar(
+          "❌ Error editando imagen",
+          "ai"
+        );
     }
 }
 function cancelarEdicionImagen(){
 
-    document.getElementById("editorImagen").style.display = "none";
-    document.getElementById("promptImagen").value = "";
+    document.getElementById(
+        "editorImagen"
+    ).style.display = "none";
 
-    // Reset imágenes y placeholders
-    let prev = document.getElementById("previewImagen");
-    if(prev){ prev.src = ""; prev.style.display = "none"; }
-    let res = document.getElementById("resultadoImagen");
-    if(res){ res.src = ""; res.style.display = "none"; }
-    let phOrig = document.getElementById("placeholderOrig");
-    if(phOrig) phOrig.style.display = "flex";
-    let phRes = document.getElementById("placeholderResult");
-    if(phRes) phRes.style.display = "flex";
+    document.getElementById(
+        "promptImagen"
+    ).value = "";
 
-    // Reset botones y estado
-    let btnDesc = document.getElementById("btnDescargarEdicion");
-    if(btnDesc) btnDesc.style.display = "none";
-    let estado = document.getElementById("editorEstado");
-    if(estado) estado.style.display = "none";
-    let btnAplicar = document.getElementById("btnAplicarEdicion");
-    if(btnAplicar) btnAplicar.disabled = false;
+    document.getElementById(
+        "previewImagen"
+    ).src = "";
 
     imagenActualArchivo = null;
+
     modoImagen = "";
+
+    agregar(
+        "❌ Edición cancelada",
+        "ai"
+    );
 }
 </script>
 
