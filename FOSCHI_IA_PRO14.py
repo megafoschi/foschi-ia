@@ -2348,6 +2348,7 @@ document.getElementById("imagenInput")
 
   if(!file) return;
 
+  // 🖼️ EDITAR IMAGEN
   if(modoImagen === "editar"){
 
     imagenActualArchivo = file;
@@ -2370,70 +2371,7 @@ document.getElementById("imagenInput")
     return;
   }
 
-  let formData = new FormData();
-
-  formData.append(
-    "imagen",
-    file
-  );
-
-  agregar(
-    "🖼️ Editando imagen...",
-    "ai"
-  );
-
-  try{
-
-    const r = await fetch(
-      "/editar_imagen",
-      {
-        method:"POST",
-        body:formData
-      }
-    );
-
-    const data = await r.json();
-
-    if(!data.ok){
-
-      agregar(
-        "❌ " + data.error,
-        "ai"
-      );
-
-      return;
-    }
-
-    let img = document.createElement("img");
-
-    img.src =
-      "data:image/png;base64," +
-      data.imagen;
-
-    document
-      .getElementById("chat")
-      .appendChild(img);
-
-    agregar(
-      "✅ Imagen editada.",
-      "ai"
-    );
-
-  }catch(err){
-
-    console.log(err);
-
-    agregar(
-      "❌ Error editando imagen",
-      "ai"
-    );
-  }
-
-  e.target.value = "";
-
-  return;
-}
-
+  // 📷 IMAGEN A WORD
   let formData = new FormData();
 
   formData.append("imagen", file);
@@ -2451,20 +2389,31 @@ document.getElementById("imagenInput")
     );
 
     if(!r.ok){
+
       let txt = await r.text();
-      agregar("❌ Error: " + txt, "ai");
+
+      agregar(
+        "❌ Error: " + txt,
+        "ai"
+      );
+
       e.target.value = "";
+
       return;
     }
 
     const blob = await r.blob();
 
-    const url = window.URL.createObjectURL(blob);
+    const url =
+      window.URL.createObjectURL(blob);
 
-    const a = document.createElement("a");
+    const a =
+      document.createElement("a");
 
     a.href = url;
-    a.download = "imagen_extraida.docx";
+
+    a.download =
+      "imagen_extraida.docx";
 
     document.body.appendChild(a);
 
@@ -2487,7 +2436,6 @@ document.getElementById("imagenInput")
       "❌ Error procesando la imagen.",
       "ai"
     );
-
   }
 
   e.target.value = "";
