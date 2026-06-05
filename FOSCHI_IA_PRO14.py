@@ -40,6 +40,7 @@ from suscripciones import usuario_premium, aviso_vencimiento
 from suscripciones import activar_premium
 
 from openai import OpenAI
+from io import BytesIO
 from PIL import Image
 from docx.shared import Inches
 import base64
@@ -515,9 +516,18 @@ def editar_imagen():
 
         imagen = request.files["imagen"]
 
+        print("NOMBRE:", imagen.filename)
+        print("TIPO:", imagen.content_type)
+
+        contenido = BytesIO(
+            imagen.read()
+        )
+
+        contenido.name = imagen.filename
+
         resultado = client.images.edit(
             model="gpt-image-1",
-            image=imagen.stream,
+            image=contenido,
             prompt=request.form.get(
                 "prompt",
                 ""
