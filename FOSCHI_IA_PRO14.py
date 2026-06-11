@@ -506,13 +506,13 @@ def imagen_a_word():
 )
 def editar_imagen():
 
-    if "imagen" not in request.files:
-        return jsonify({
-            "ok": False,
-            "error": "No se recibió imagen"
-        }), 400
-
     try:
+
+        if "imagen" not in request.files:
+            return jsonify({
+                "ok": False,
+                "error": "No se recibió imagen"
+            }), 400
 
         imagen = request.files["imagen"]
 
@@ -525,6 +525,9 @@ def editar_imagen():
 
         contenido.name = imagen.filename
 
+        # "quality" alto da más detalle pero tarda mucho más y puede
+        # provocar timeouts del servidor/proxy. "medium" es un buen
+        # equilibrio; podés probar "high" si tu hosting lo soporta.
         resultado = client.images.edit(
             model="gpt-image-1",
             image=contenido,
@@ -533,7 +536,7 @@ def editar_imagen():
                 ""
             ),
             size="1024x1024",
-            quality="high"
+            quality="medium"
         )
 
         return jsonify({
@@ -558,22 +561,25 @@ def editar_imagen():
 )
 def generar_imagen():
 
-    data = request.get_json(silent=True) or {}
-    prompt = (data.get("prompt") or "").strip()
-
-    if not prompt:
-        return jsonify({
-            "ok": False,
-            "error": "No se recibió descripción para generar la imagen"
-        }), 400
-
     try:
 
+        data = request.get_json(silent=True) or {}
+        prompt = (data.get("prompt") or "").strip()
+
+        if not prompt:
+            return jsonify({
+                "ok": False,
+                "error": "No se recibió descripción para generar la imagen"
+            }), 400
+
+        # "quality" alto da más detalle pero tarda mucho más y puede
+        # provocar timeouts del servidor/proxy. "medium" es un buen
+        # equilibrio; podés probar "high" si tu hosting lo soporta.
         resultado = client.images.generate(
             model="gpt-image-1",
             prompt=prompt,
             size="1024x1024",
-            quality="high"
+            quality="medium"
         )
 
         return jsonify({
@@ -1560,13 +1566,24 @@ recognitionConversacion.onresult = function(event){
   recognitionConversacion.onend = function(){
 
   if(modoConversacion && !audioActual){
-    recognitionConversacion.start();
+    safeStartRecognition();
   }
 
 };
 
-  recognitionConversacion.start();
+  safeStartRecognition();
 
+}
+
+// Evita "InvalidStateError: recognition has already started"
+// cuando varios eventos intentan reiniciar el reconocimiento al mismo tiempo
+function safeStartRecognition(){
+  if(!recognitionConversacion) return;
+  try{
+    recognitionConversacion.start();
+  }catch(e){
+    // ya estaba escuchando, no hacemos nada
+  }
 }
 
 function detenerConversacion(){
@@ -1708,7 +1725,7 @@ function hablarTexto(texto, div=null){
 
     // 🎤 volver a escuchar cuando termina
     if(modoConversacion && recognitionConversacion){
-      recognitionConversacion.start();
+      safeStartRecognition();
     }
 
   };
