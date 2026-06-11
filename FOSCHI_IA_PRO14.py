@@ -532,7 +532,8 @@ def editar_imagen():
                 "prompt",
                 ""
             ),
-            size="1024x1024"
+            size="1024x1024",
+            quality="high"
         )
 
         return jsonify({
@@ -549,7 +550,47 @@ def editar_imagen():
             "ok": False,
             "error": str(e)
         }), 500
-                          
+
+
+@app.route(
+    "/generar_imagen",
+    methods=["POST"]
+)
+def generar_imagen():
+
+    data = request.get_json(silent=True) or {}
+    prompt = (data.get("prompt") or "").strip()
+
+    if not prompt:
+        return jsonify({
+            "ok": False,
+            "error": "No se recibió descripción para generar la imagen"
+        }), 400
+
+    try:
+
+        resultado = client.images.generate(
+            model="gpt-image-1",
+            prompt=prompt,
+            size="1024x1024",
+            quality="high"
+        )
+
+        return jsonify({
+            "ok": True,
+            "imagen": resultado.data[0].b64_json
+        })
+
+    except Exception as e:
+
+        print("ERROR GENERAR IMAGEN:")
+        print(str(e))
+
+        return jsonify({
+            "ok": False,
+            "error": str(e)
+        }), 500
+
 # ---------------- RESPUESTA IA ----------------
 
 def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5):
@@ -1265,13 +1306,13 @@ body.day #dictadoPanel{
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
       <div style="flex:1;min-width:200px;text-align:center;">
         <div style="color:#00eaff66;font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">Original</div>
-        <img id="previewImagen" src="" style="display:none;width:100%;max-height:280px;object-fit:contain;border-radius:10px;border:1px solid #00eaff22;background:#001122;">
-        <div id="placeholderOrig" style="display:flex;align-items:center;justify-content:center;height:160px;border-radius:10px;border:2px dashed #00eaff22;background:#001122;color:#00eaff33;font-size:13px;">Sin imagen</div>
+        <img id="previewImagen" src="" class="img-box" style="display:none;">
+        <div id="placeholderOrig" class="img-placeholder" style="display:flex;">Sin imagen</div>
       </div>
       <div style="flex:1;min-width:200px;text-align:center;">
         <div style="color:#00eaff66;font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">Resultado</div>
-        <img id="resultadoImagen" src="" style="display:none;width:100%;max-height:280px;object-fit:contain;border-radius:10px;border:1px solid #00eaff22;background:#001122;">
-        <div id="placeholderResult" style="display:flex;align-items:center;justify-content:center;height:160px;border-radius:10px;border:2px dashed #00eaff22;background:#001122;color:#00eaff33;font-size:13px;">Aquí aparecerá la edición</div>
+        <img id="resultadoImagen" src="" class="img-box" style="display:none;">
+        <div id="placeholderResult" class="img-placeholder" style="display:flex;">Aquí aparecerá la edición</div>
       </div>
     </div>
 
@@ -1290,9 +1331,64 @@ body.day #dictadoPanel{
 
   </div>
 </div>
+
+<!-- MODAL FLOTANTE GENERADOR DE IMAGEN -->
+<div id="generadorImagen" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,8,20,0.88);align-items:center;justify-content:center;padding:12px;box-sizing:border-box;">
+  <div style="background:linear-gradient(135deg,#001a2e,#002a44);border:1px solid #00eaff55;border-radius:18px;box-shadow:0 0 40px #00eaff33;width:100%;max-width:900px;max-height:94vh;overflow-y:auto;padding:22px;box-sizing:border-box;">
+
+    <!-- Título y botón cerrar -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <span style="color:#00eaff;font-size:17px;font-weight:700;text-shadow:0 0 8px #00eaff;letter-spacing:1px;">🎨 Generador de Imagen IA</span>
+      <button onclick="cancelarGeneradorImagen()" style="background:transparent;border:1px solid #ff444466;color:#ff6666;border-radius:8px;padding:6px 16px;font-size:15px;cursor:pointer;">✕ Cerrar</button>
+    </div>
+
+    <!-- Resultado -->
+    <div style="text-align:center;margin-bottom:14px;">
+      <div style="color:#00eaff66;font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">Resultado</div>
+      <img id="resultadoGenerador" src="" class="img-box" style="display:none;">
+      <div id="placeholderGenerador" class="img-placeholder" style="display:flex;">Aquí aparecerá tu imagen generada</div>
+    </div>
+
+    <!-- Prompt -->
+    <textarea id="promptGenerador" placeholder="Describí la imagen que querés generar... (ej: un atardecer en la playa, estilo realista)" style="width:100%;height:75px;background:#001122;color:#00eaff;border:1px solid #006688;border-radius:10px;padding:10px 12px;font-size:14px;resize:vertical;box-sizing:border-box;outline:none;font-family:'Segoe UI',sans-serif;"></textarea>
+
+    <!-- Botones -->
+    <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;align-items:center;">
+      <button id="btnGenerarImagen" type="button" onclick="generarImagenIA()" style="padding:11px 24px;background:linear-gradient(135deg,#005577,#007799);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;box-shadow:0 0 14px #00eaff44;">✨ Generar con IA</button>
+      <a id="btnDescargarGenerador" download="foschi_generada.png" style="display:none;padding:11px 18px;background:linear-gradient(135deg,#004400,#006600);color:#00ff88;border:1px solid #00ff8844;border-radius:10px;font-size:14px;font-weight:600;text-decoration:none;cursor:pointer;">⬇️ Descargar</a>
+      <span id="generadorEstado" style="display:none;align-items:center;gap:8px;color:#00eaff88;font-size:13px;">
+        <span style="display:inline-block;width:15px;height:15px;border:2px solid #00eaff33;border-top-color:#00eaff;border-radius:50%;animation:spinImg 0.7s linear infinite;"></span>
+        Generando con IA...
+      </span>
+    </div>
+
+  </div>
+</div>
+
 <style>
   @keyframes spinImg { to { transform:rotate(360deg); } }
-  #btnAplicarEdicion:disabled { opacity:0.5; cursor:not-allowed; }
+  #btnAplicarEdicion:disabled, #btnGenerarImagen:disabled { opacity:0.5; cursor:not-allowed; }
+  .img-box{
+    width:100%;
+    height:280px;
+    object-fit:contain;
+    border-radius:10px;
+    border:1px solid #00eaff22;
+    background:#001122;
+  }
+  .img-placeholder{
+    align-items:center;
+    justify-content:center;
+    height:280px;
+    border-radius:10px;
+    border:2px dashed #00eaff22;
+    background:#001122;
+    color:#00eaff33;
+    font-size:13px;
+    text-align:center;
+    padding:0 12px;
+    box-sizing:border-box;
+  }
 </style>
 <div id="voiceWave" style="
 position:fixed;
@@ -1300,6 +1396,7 @@ bottom:110px;
 left:50%;
 transform:translateX(-50%);
 display:none;
+align-items:center;
 gap:4px;
 z-index:999;
 ">
@@ -1308,6 +1405,7 @@ z-index:999;
 <div class="wave"></div>
 <div class="wave"></div>
 <div class="wave"></div>
+<button onclick="detenerConversacion()" title="Salir del modo conversación" style="margin-left:10px;background:#ff0000;color:#fff;border:none;border-radius:50%;width:28px;height:28px;font-size:14px;font-weight:bold;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 0 10px #ff000066;">✕</button>
 </div>
 
 <div id="dictadoEstado" style="
@@ -2775,6 +2873,117 @@ function cancelarEdicionImagen(){
     imagenActualArchivo = null;
     modoImagen = "";
 }
+
+// ===============================
+// 🎨 GENERADOR DE IMAGEN IA
+// ===============================
+
+function abrirGeneradorImagen(){
+
+    if(!isPremium){
+        alert("⚠️ Esta función requiere Premium. Pasá a Premium para usarla.");
+        return;
+    }
+
+    document.getElementById("promptGenerador").value = "";
+
+    let res = document.getElementById("resultadoGenerador");
+    res.src = "";
+    res.style.display = "none";
+
+    let ph = document.getElementById("placeholderGenerador");
+    if(ph) ph.style.display = "flex";
+
+    document.getElementById("btnDescargarGenerador").style.display = "none";
+    document.getElementById("generadorEstado").style.display = "none";
+    document.getElementById("btnGenerarImagen").disabled = false;
+
+    document.getElementById("generadorImagen").style.display = "flex";
+}
+
+async function generarImagenIA(){
+
+    let prompt = document
+        .getElementById("promptGenerador")
+        .value
+        .trim();
+
+    if(!prompt){
+        alert("Describí la imagen que querés generar");
+        return;
+    }
+
+    // UI: cargando
+    let btnGenerar = document.getElementById("btnGenerarImagen");
+    let estado = document.getElementById("generadorEstado");
+    btnGenerar.disabled = true;
+    estado.style.display = "flex";
+    document.getElementById("btnDescargarGenerador").style.display = "none";
+
+    // Ocultar resultado anterior
+    let resImg = document.getElementById("resultadoGenerador");
+    let phRes  = document.getElementById("placeholderGenerador");
+    resImg.style.display = "none";
+    if(phRes) phRes.style.display = "flex";
+
+    try{
+
+        const r = await fetch("/generar_imagen", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt: prompt })
+        });
+        const data = await r.json();
+
+        estado.style.display = "none";
+        btnGenerar.disabled = false;
+
+        if(!data.ok){
+            alert(data.error);
+            return;
+        }
+
+        // Mostrar resultado
+        let dataUrl = "data:image/png;base64," + data.imagen;
+        resImg.src = dataUrl;
+        resImg.style.display = "block";
+        if(phRes) phRes.style.display = "none";
+
+        // Habilitar descarga
+        let btnDesc = document.getElementById("btnDescargarGenerador");
+        btnDesc.href = dataUrl;
+        btnDesc.style.display = "inline-block";
+
+        agregar("✅ Imagen generada con IA", "ai");
+
+    }catch(err){
+
+        console.log(err);
+        estado.style.display = "none";
+        btnGenerar.disabled = false;
+        agregar("❌ Error generando imagen", "ai");
+    }
+}
+
+function cancelarGeneradorImagen(){
+
+    document.getElementById("generadorImagen").style.display = "none";
+    document.getElementById("promptGenerador").value = "";
+
+    let res = document.getElementById("resultadoGenerador");
+    res.src = "";
+    res.style.display = "none";
+    let ph = document.getElementById("placeholderGenerador");
+    if(ph) ph.style.display = "flex";
+
+    let btnDesc = document.getElementById("btnDescargarGenerador");
+    if(btnDesc) btnDesc.style.display = "none";
+    let estado = document.getElementById("generadorEstado");
+    if(estado) estado.style.display = "none";
+    let btnGenerar = document.getElementById("btnGenerarImagen");
+    if(btnGenerar) btnGenerar.disabled = false;
+}
+
 </script>
 
 <div id="authModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:9999;">
