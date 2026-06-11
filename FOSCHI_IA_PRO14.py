@@ -1799,6 +1799,13 @@ function toggleAdjuntosMenu(){
   m.style.display = m.style.display === "block" ? "none" : "block";
   if(m.style.display==="block"){ setTimeout(()=>window.addEventListener('click', closeMenuOnClickOutside),50); }
 }
+// Cierra el menú de adjuntos automáticamente al elegir cualquier opción
+document.getElementById("adjuntos_menu").addEventListener("click", function(e){
+  const btn = e.target.closest("button");
+  if(!btn) return;
+  document.getElementById("adjuntos_menu").style.display = "none";
+  window.removeEventListener('click', closeMenuOnClickOutside);
+});
 function closeMenuOnClickOutside(e){
   const menu = document.getElementById("adjuntos_menu");
   const clip = document.getElementById("clipBtn");
