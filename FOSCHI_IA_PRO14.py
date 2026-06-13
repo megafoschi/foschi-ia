@@ -1443,7 +1443,7 @@ body.day #dictadoPanel{
       <button id="btnGenerarPresentacion" type="button" onclick="generarPresentacionIA()" style="padding:11px 24px;background:linear-gradient(135deg,#005577,#007799);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;box-shadow:0 0 14px #00eaff44;">✨ Generar presentación</button>
       <span id="presEstado" style="display:none;align-items:center;gap:8px;color:#00eaff88;font-size:13px;">
         <span style="display:inline-block;width:15px;height:15px;border:2px solid #00eaff33;border-top-color:#00eaff;border-radius:50%;animation:spinImg 0.7s linear infinite;"></span>
-        Generando presentación con IA... puede tardar un poco.
+        Generando presentación con IA... esto puede tardar 1-2 minutos, no cierres esta ventana.
       </span>
     </div>
 
@@ -3157,36 +3157,25 @@ async function generarPresentacionIA(){
 
     try{
 
+        // 1) Iniciar el job de generación (responde rápido, sin esperar la IA)
         const r = await fetch("/generar_presentacion", {
             method: "POST",
             body: formData
         });
 
-        if(!r.ok){
-            let errTxt = "Error generando la presentación";
-            try{
-                let errJson = await r.json();
-                errTxt = errJson.error || errTxt;
-            }catch(e){}
+        let data = null;
+        try{ data = await r.json(); }catch(e){}
+
+        if(!r.ok || !data || !data.ok || !data.job_id){
+            let errTxt = (data && data.error) ? data.error : "Error iniciando la generación de la presentación";
             estado.style.display = "none";
             btn.disabled = false;
             alert("❌ " + errTxt);
             return;
         }
 
-        const blob = await r.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "presentacion_foschi.pptx";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-
-        estado.style.display = "none";
-        btn.disabled = false;
-        cerrarGeneradorPresentacion();
-        agregar("✅ Presentación generada y descargada (.pptx)", "ai");
+        // 2) Consultar el estado periódicamente hasta que esté listo
+        await esperarYDescargarPresentacion(data.job_id, btn, estado);
 
     }catch(err){
 
@@ -3195,6 +3184,60 @@ async function generarPresentacionIA(){
         btn.disabled = false;
         agregar("❌ Error generando la presentación", "ai");
     }
+}
+
+function esperarYDescargarPresentacion(jobId, btn, estado){
+    return new Promise((resolve)=>{
+        const intervalo = setInterval(async ()=>{
+            try{
+                const r = await fetch("/estado_presentacion/" + jobId);
+                const data = await r.json();
+
+                if(!data.ok){
+                    clearInterval(intervalo);
+                    estado.style.display = "none";
+                    btn.disabled = false;
+                    alert("❌ " + (data.error || "Error consultando el estado de la presentación"));
+                    resolve();
+                    return;
+                }
+
+                if(data.status === "listo"){
+                    clearInterval(intervalo);
+
+                    // Descargar el archivo ya generado
+                    const a = document.createElement("a");
+                    a.href = "/descargar_presentacion/" + jobId;
+                    a.download = "presentacion_foschi.pptx";
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+
+                    estado.style.display = "none";
+                    btn.disabled = false;
+                    cerrarGeneradorPresentacion();
+                    agregar("✅ Presentación generada y descargada (.pptx)", "ai");
+                    resolve();
+
+                }else if(data.status === "error"){
+                    clearInterval(intervalo);
+                    estado.style.display = "none";
+                    btn.disabled = false;
+                    alert("❌ " + (data.error || "Error generando la presentación"));
+                    resolve();
+                }
+                // si status === "procesando", seguimos esperando
+
+            }catch(err){
+                clearInterval(intervalo);
+                estado.style.display = "none";
+                btn.disabled = false;
+                console.log(err);
+                agregar("❌ Error consultando el estado de la presentación", "ai");
+                resolve();
+            }
+        }, 4000);
+    });
 }
 
 </script>
@@ -3833,6 +3876,14 @@ TEXTO:
 
 # ---------------- GENERADOR DE PRESENTACIONES (PPTX) ----------------
 
+# Generar la presentación (texto IA + imágenes IA) puede tardar más de lo que
+# permite el timeout del servidor/proxy si se hace todo en una sola request
+# (eso provoca errores 500/502). Por eso el proceso se hace en un hilo en
+# segundo plano y el front-end consulta el estado por separado.
+PRESENTACIONES_JOBS = {}
+PRESENTACIONES_LOCK = threading.Lock()
+
+
 def generar_estructura_presentacion(contenido_base, tema, num_slides=8):
     """
     Usa OpenAI para generar la estructura de una presentación en formato JSON.
@@ -3946,10 +3997,10 @@ def _agregar_fondo(slide, prs, color):
     return fondo
 
 
-def construir_pptx(estructura, incluir_imagenes=True, videos_files=None):
+def construir_pptx(estructura, incluir_imagenes=True, video_paths=None):
     """
     Construye un archivo .pptx a partir de la estructura generada por IA.
-    videos_files: lista de FileStorage con videos cortos (opcional) para
+    video_paths: lista de rutas a archivos de video cortos (opcional) para
     insertar en las primeras diapositivas en lugar de imágenes generadas.
     Devuelve la ruta del archivo .pptx generado (en TEMP_DIR).
     """
@@ -4004,7 +4055,7 @@ def construir_pptx(estructura, incluir_imagenes=True, videos_files=None):
 
     # ---- Diapositivas de contenido ----
     diapositivas = estructura.get("diapositivas", [])
-    videos_files = videos_files or []
+    video_paths = video_paths or []
     video_idx = 0
 
     # Pre-generar TODAS las imágenes en paralelo (si corresponde) para no
@@ -4014,7 +4065,7 @@ def construir_pptx(estructura, incluir_imagenes=True, videos_files=None):
         indices_a_generar = []
         prompts_a_generar = []
         for idx, dia in enumerate(diapositivas):
-            if idx < len(videos_files):
+            if idx < len(video_paths):
                 continue  # esa diapositiva usará video, no imagen
             img_prompt = dia.get("imagen_prompt") or dia.get("titulo") or estructura.get("titulo_presentacion", "")
             indices_a_generar.append(idx)
@@ -4034,7 +4085,7 @@ def construir_pptx(estructura, incluir_imagenes=True, videos_files=None):
         slide = prs.slides.add_slide(blank_layout)
         _agregar_fondo(slide, prs, COLOR_FONDO)
 
-        hay_video = video_idx < len(videos_files)
+        hay_video = video_idx < len(video_paths)
         hay_media = hay_video or incluir_imagenes
         ancho_texto = PptxInches(7.0) if hay_media else PptxInches(11.7)
 
@@ -4088,19 +4139,20 @@ def construir_pptx(estructura, incluir_imagenes=True, videos_files=None):
 
         # Imagen o video a la derecha
         if hay_video:
-            video_file = videos_files[video_idx]
+            video_path = video_paths[video_idx]
             video_idx += 1
             try:
-                video_file.stream.seek(0)
-                video_bytes = BytesIO(video_file.read())
+                with open(video_path, "rb") as vf:
+                    video_bytes = BytesIO(vf.read())
                 slide.shapes.add_movie(
                     video_bytes,
                     PptxInches(8.1), PptxInches(1.7),
                     PptxInches(4.6), PptxInches(3.5),
                     mime_type="video/mp4"
                 )
-            except Exception as e:
-                print("Error insertando video en presentación:", e)
+            except Exception:
+                print("Error insertando video en presentación:")
+                traceback.print_exc()
         elif incluir_imagenes:
             img_bytes = imagenes_por_slide[idx]
             if img_bytes:
@@ -4114,7 +4166,7 @@ def construir_pptx(estructura, incluir_imagenes=True, videos_files=None):
                     traceback.print_exc()
 
     # ---- Videos sobrantes: se agregan como diapositivas extra ----
-    while video_idx < len(videos_files):
+    while video_idx < len(video_paths):
         slide = prs.slides.add_slide(blank_layout)
         _agregar_fondo(slide, prs, COLOR_FONDO)
 
@@ -4127,19 +4179,20 @@ def construir_pptx(estructura, incluir_imagenes=True, videos_files=None):
         p.font.bold = True
         p.font.color.rgb = COLOR_TITULO
 
-        video_file = videos_files[video_idx]
+        video_path = video_paths[video_idx]
         video_idx += 1
         try:
-            video_file.stream.seek(0)
-            video_bytes = BytesIO(video_file.read())
+            with open(video_path, "rb") as vf:
+                video_bytes = BytesIO(vf.read())
             slide.shapes.add_movie(
                 video_bytes,
                 PptxInches(2.0), PptxInches(1.5),
                 PptxInches(9.3), PptxInches(5.6),
                 mime_type="video/mp4"
             )
-        except Exception as e:
-            print("Error insertando video extra en presentación:", e)
+        except Exception:
+            print("Error insertando video extra en presentación:")
+            traceback.print_exc()
 
     nombre = f"presentacion_{uuid.uuid4().hex}.pptx"
     ruta = os.path.join(TEMP_DIR, nombre)
@@ -4147,12 +4200,58 @@ def construir_pptx(estructura, incluir_imagenes=True, videos_files=None):
     return ruta
 
 
+def _procesar_presentacion_job(job_id, contenido_base, tema, titulo_pres, num_slides, incluir_imagenes, video_paths):
+    """Corre en un hilo aparte: genera la estructura con IA, construye el .pptx
+    y actualiza el estado del job. Al final borra los videos temporales subidos."""
+    try:
+        estructura = generar_estructura_presentacion(contenido_base, tema, num_slides)
+        if not estructura:
+            with PRESENTACIONES_LOCK:
+                PRESENTACIONES_JOBS[job_id] = {
+                    "status": "error",
+                    "ruta": None,
+                    "error": "No pude generar el contenido de la presentación. Probá de nuevo en unos segundos."
+                }
+            return
+
+        if titulo_pres:
+            estructura["titulo_presentacion"] = titulo_pres
+
+        ruta_pptx = construir_pptx(estructura, incluir_imagenes=incluir_imagenes, video_paths=video_paths)
+
+        with PRESENTACIONES_LOCK:
+            PRESENTACIONES_JOBS[job_id] = {
+                "status": "listo",
+                "ruta": ruta_pptx,
+                "error": None
+            }
+
+    except Exception as e:
+        print("ERROR EN JOB DE PRESENTACION:", e)
+        traceback.print_exc()
+        with PRESENTACIONES_LOCK:
+            PRESENTACIONES_JOBS[job_id] = {
+                "status": "error",
+                "ruta": None,
+                "error": str(e)
+            }
+    finally:
+        # limpiar videos temporales subidos
+        for vp in (video_paths or []):
+            try:
+                if os.path.exists(vp):
+                    os.remove(vp)
+            except Exception:
+                pass
+
+
 @app.route("/generar_presentacion", methods=["POST"])
 def generar_presentacion():
     """
-    Genera una presentación (.pptx) desde cero a partir de un tema descrito por el
-    usuario y/o de un documento subido previamente (vía /upload_doc), con imágenes
-    generadas por IA y/o videos cortos subidos por el usuario.
+    Inicia en segundo plano la generación de una presentación (.pptx) a partir
+    de un tema descrito por el usuario y/o de un documento subido previamente
+    (vía /upload_doc), con imágenes generadas por IA y/o videos cortos subidos
+    por el usuario. Devuelve un job_id para consultar el progreso.
     """
     try:
         usuario = request.form.get("usuario_id", "anon")
@@ -4191,42 +4290,82 @@ def generar_presentacion():
                 "error": "Indicá un tema/descripción o subí un documento (📄 Analizar Documento) para generar la presentación."
             }), 400
 
-        estructura = generar_estructura_presentacion(contenido_base, tema, num_slides)
-        if not estructura:
-            return jsonify({
-                "ok": False,
-                "error": "No pude generar el contenido de la presentación. Probá de nuevo en unos segundos."
-            }), 500
-
-        if titulo_pres:
-            estructura["titulo_presentacion"] = titulo_pres
-
-        videos_files = []
+        # Guardar videos subidos en disco YA (los FileStorage no sobreviven
+        # al hilo en segundo plano)
+        video_paths = []
         if "videos" in request.files:
-            videos_files = [v for v in request.files.getlist("videos") if v and v.filename]
+            for v in request.files.getlist("videos"):
+                if not v or not v.filename:
+                    continue
+                nombre_video = f"{uuid.uuid4().hex}_{secure_filename(v.filename)}"
+                ruta_video = os.path.join(TEMP_DIR, nombre_video)
+                try:
+                    v.save(ruta_video)
+                    video_paths.append(ruta_video)
+                except Exception as e:
+                    print("Error guardando video temporal:", e)
 
-        ruta_pptx = construir_pptx(estructura, incluir_imagenes=incluir_imagenes, videos_files=videos_files)
+        job_id = uuid.uuid4().hex
+        with PRESENTACIONES_LOCK:
+            PRESENTACIONES_JOBS[job_id] = {"status": "procesando", "ruta": None, "error": None}
 
-        @after_this_request
-        def _cleanup(response):
-            try:
-                if os.path.exists(ruta_pptx):
-                    os.remove(ruta_pptx)
-            except Exception:
-                pass
-            return response
-
-        return send_file(
-            ruta_pptx,
-            as_attachment=True,
-            mimetype="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            download_name="presentacion_foschi.pptx"
+        hilo = threading.Thread(
+            target=_procesar_presentacion_job,
+            args=(job_id, contenido_base, tema, titulo_pres, num_slides, incluir_imagenes, video_paths),
+            daemon=True
         )
+        hilo.start()
+
+        return jsonify({"ok": True, "job_id": job_id})
 
     except Exception as e:
         print("ERROR GENERAR PRESENTACION:", e)
         traceback.print_exc()
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/estado_presentacion/<job_id>")
+def estado_presentacion(job_id):
+    with PRESENTACIONES_LOCK:
+        job = PRESENTACIONES_JOBS.get(job_id)
+
+    if not job:
+        return jsonify({"ok": False, "error": "Job no encontrado"}), 404
+
+    return jsonify({
+        "ok": True,
+        "status": job["status"],
+        "error": job.get("error")
+    })
+
+
+@app.route("/descargar_presentacion/<job_id>")
+def descargar_presentacion(job_id):
+    with PRESENTACIONES_LOCK:
+        job = PRESENTACIONES_JOBS.get(job_id)
+
+    if not job or job["status"] != "listo" or not job.get("ruta"):
+        return jsonify({"ok": False, "error": "La presentación todavía no está lista"}), 404
+
+    ruta_pptx = job["ruta"]
+
+    @after_this_request
+    def _cleanup(response):
+        try:
+            if os.path.exists(ruta_pptx):
+                os.remove(ruta_pptx)
+        except Exception:
+            pass
+        with PRESENTACIONES_LOCK:
+            PRESENTACIONES_JOBS.pop(job_id, None)
+        return response
+
+    return send_file(
+        ruta_pptx,
+        as_attachment=True,
+        mimetype="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        download_name="presentacion_foschi.pptx"
+    )
 
 
 # ---------------- RUN ----------------
