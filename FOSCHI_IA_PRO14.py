@@ -52,6 +52,13 @@ import PyPDF2
 from docx import Document as DocxDocument  # para crear / leer .docx
 import docx as docx_reader  # para leer .docx (Document ya importado para crear)
 
+# --- librerías adicionales para presentaciones (PPTX) ---
+from pptx import Presentation
+from pptx.util import Inches as PptxInches, Pt
+from pptx.dml.color import RGBColor
+from pptx.enum.text import PP_ALIGN
+from pptx.enum.shapes import MSO_SHAPE
+
 # ---------------- CONFIG ----------------
 APP_NAME = "FOSCHI IA WEB"
 CREADOR = "Gustavo Enrique Foschi"
@@ -776,6 +783,29 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
         learn_from_message(usuario, mensaje, texto)
         return {"texto": texto, "imagenes": [], "borrar_historial": False}
 
+    # PRESENTACIONES (POWERPOINT)
+    if any(p in mensaje_lower for p in [
+        "presentación", "presentacion", "powerpoint", "power point",
+        "diapositivas", "diapositiva", "slides", "ppt"
+    ]):
+        tema_pre = (
+            mensaje
+            .replace("\\", "\\\\")
+            .replace("'", "\\'")
+            .replace('"', "&quot;")
+            .replace("\n", " ")
+            .strip()
+        )
+        texto = (
+            "🖥️ ¡Puedo armarte una presentación de PowerPoint (.pptx) desde cero, "
+            "con imágenes generadas por IA o videos cortos que vos subas! "
+            "También puedo basarme en un documento que ya hayas subido. "
+            "Tocá el botón para configurarla:<br><br>"
+            f"<button onclick=\"abrirGeneradorPresentacion('{tema_pre}')\">🖥️ Crear presentación</button>"
+        )
+        learn_from_message(usuario, mensaje, texto)
+        return {"texto": texto, "imagenes": [], "borrar_historial": False}
+
     # SALIDA GENERAL: pasar a OpenAI para respuesta conversacional
     try:
         memoria = load_json(MEMORY_FILE)
@@ -1371,8 +1401,52 @@ body.day #dictadoPanel{
   </div>
 </div>
 
-<style>
-  @keyframes spinImg { to { transform:rotate(360deg); } }
+<!-- MODAL FLOTANTE GENERADOR DE PRESENTACIONES -->
+<div id="generadorPresentacion" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,8,20,0.88);align-items:center;justify-content:center;padding:12px;box-sizing:border-box;">
+  <div style="background:linear-gradient(135deg,#001a2e,#002a44);border:1px solid #00eaff55;border-radius:18px;box-shadow:0 0 40px #00eaff33;width:100%;max-width:640px;max-height:94vh;overflow-y:auto;padding:22px;box-sizing:border-box;">
+
+    <!-- Título y botón cerrar -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <span style="color:#00eaff;font-size:17px;font-weight:700;text-shadow:0 0 8px #00eaff;letter-spacing:1px;">🖥️ Crear Presentación con IA</span>
+      <button onclick="cerrarGeneradorPresentacion()" style="background:transparent;border:1px solid #ff444466;color:#ff6666;border-radius:8px;padding:6px 16px;font-size:15px;cursor:pointer;">✕ Cerrar</button>
+    </div>
+
+    <div id="presInfoDoc" style="display:none;background:#00223a;border:1px solid #00eaff33;border-radius:10px;padding:10px 12px;color:#00eaff;font-size:13px;margin-bottom:12px;"></div>
+
+    <label style="color:#00eaff99;font-size:12px;letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:6px;">Título (opcional)</label>
+    <input id="presTitulo" type="text" placeholder="Ej: Plan de marketing 2026" style="width:100%;background:#001122;color:#00eaff;border:1px solid #006688;border-radius:10px;padding:10px 12px;font-size:14px;box-sizing:border-box;outline:none;font-family:'Segoe UI',sans-serif;margin-bottom:12px;">
+
+    <label style="color:#00eaff99;font-size:12px;letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:6px;">Tema / qué querés que incluya</label>
+    <textarea id="presTema" placeholder="Describí el tema, el público y los puntos clave que querés tratar... (si subiste un documento, esto se usa como enfoque opcional)" style="width:100%;height:90px;background:#001122;color:#00eaff;border:1px solid #006688;border-radius:10px;padding:10px 12px;font-size:14px;resize:vertical;box-sizing:border-box;outline:none;font-family:'Segoe UI',sans-serif;margin-bottom:12px;"></textarea>
+
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+      <div style="flex:1;min-width:140px;">
+        <label style="color:#00eaff99;font-size:12px;letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:6px;">Cantidad de diapositivas</label>
+        <input id="presNumSlides" type="number" min="3" max="20" value="8" style="width:100%;background:#001122;color:#00eaff;border:1px solid #006688;border-radius:10px;padding:10px 12px;font-size:14px;box-sizing:border-box;outline:none;font-family:'Segoe UI',sans-serif;">
+      </div>
+      <div style="flex:1;min-width:140px;display:flex;align-items:center;">
+        <label style="color:#00eaff;font-size:14px;display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:18px;">
+          <input id="presIncluirImagenes" type="checkbox" checked style="width:18px;height:18px;cursor:pointer;">
+          🎨 Generar imágenes con IA
+        </label>
+      </div>
+    </div>
+
+    <label style="color:#00eaff99;font-size:12px;letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:6px;">Videos cortos (opcional, .mp4)</label>
+    <input id="presVideos" type="file" accept="video/mp4,video/*" multiple style="width:100%;color:#00eaff;font-size:13px;margin-bottom:6px;">
+    <div style="color:#00eaff66;font-size:12px;margin-bottom:14px;">Si subís videos, se insertan en las primeras diapositivas en lugar de las imágenes generadas.</div>
+
+    <!-- Botones -->
+    <div style="display:flex;gap:10px;margin-top:6px;flex-wrap:wrap;align-items:center;">
+      <button id="btnGenerarPresentacion" type="button" onclick="generarPresentacionIA()" style="padding:11px 24px;background:linear-gradient(135deg,#005577,#007799);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;box-shadow:0 0 14px #00eaff44;">✨ Generar presentación</button>
+      <span id="presEstado" style="display:none;align-items:center;gap:8px;color:#00eaff88;font-size:13px;">
+        <span style="display:inline-block;width:15px;height:15px;border:2px solid #00eaff33;border-top-color:#00eaff;border-radius:50%;animation:spinImg 0.7s linear infinite;"></span>
+        Generando presentación con IA... puede tardar un poco.
+      </span>
+    </div>
+
+  </div>
+</div>
   #btnAplicarEdicion:disabled, #btnGenerarImagen:disabled { opacity:0.5; cursor:not-allowed; }
   .img-box{
     width:100%;
@@ -1443,6 +1517,10 @@ z-index:999;
 
 <button onclick="abrirGeneradorImagen()">
 🎨 Generar Imagen
+</button>
+
+<button onclick="abrirGeneradorPresentacion()">
+🖥️ Crear Presentación
 </button>
 </div>
 
@@ -3008,6 +3086,115 @@ function cancelarGeneradorImagen(){
     if(btnGenerar) btnGenerar.disabled = false;
 }
 
+// ===============================
+// 🖥️ GENERADOR DE PRESENTACIONES (PPTX)
+// ===============================
+
+function abrirGeneradorPresentacion(temaPrefill){
+
+    if(!isPremium){
+        alert("⚠️ Esta función requiere Premium. Pasá a Premium para usarla.");
+        return;
+    }
+
+    document.getElementById("presTitulo").value = "";
+    document.getElementById("presTema").value = temaPrefill || "";
+    document.getElementById("presNumSlides").value = 8;
+    document.getElementById("presIncluirImagenes").checked = true;
+    document.getElementById("presVideos").value = "";
+    document.getElementById("presEstado").style.display = "none";
+    document.getElementById("btnGenerarPresentacion").disabled = false;
+
+    let infoDoc = document.getElementById("presInfoDoc");
+    if(documentoActual){
+        infoDoc.style.display = "block";
+        infoDoc.innerHTML = "📄 Tenés un documento cargado: se usará como base de la presentación. Si además escribís un tema, lo usaremos como enfoque adicional.";
+    }else{
+        infoDoc.style.display = "none";
+    }
+
+    document.getElementById("generadorPresentacion").style.display = "flex";
+}
+
+function cerrarGeneradorPresentacion(){
+    document.getElementById("generadorPresentacion").style.display = "none";
+}
+
+async function generarPresentacionIA(){
+
+    let tema = document.getElementById("presTema").value.trim();
+    let titulo = document.getElementById("presTitulo").value.trim();
+    let numSlides = document.getElementById("presNumSlides").value || 8;
+    let incluirImagenes = document.getElementById("presIncluirImagenes").checked;
+    let videos = document.getElementById("presVideos").files;
+
+    if(!tema && !documentoActual){
+        alert("Escribí un tema/descripción o subí un documento (📄 Analizar Documento) antes de generar la presentación.");
+        return;
+    }
+
+    let btn = document.getElementById("btnGenerarPresentacion");
+    let estado = document.getElementById("presEstado");
+    btn.disabled = true;
+    estado.style.display = "flex";
+
+    let formData = new FormData();
+    formData.append("usuario_id", usuario_id);
+    formData.append("tema", tema);
+    formData.append("titulo", titulo);
+    formData.append("num_slides", numSlides);
+    formData.append("incluir_imagenes", incluirImagenes ? "true" : "false");
+
+    if(documentoActual){
+        formData.append("doc_id", documentoActual);
+    }
+
+    for(let i=0; i<videos.length; i++){
+        formData.append("videos", videos[i]);
+    }
+
+    try{
+
+        const r = await fetch("/generar_presentacion", {
+            method: "POST",
+            body: formData
+        });
+
+        if(!r.ok){
+            let errTxt = "Error generando la presentación";
+            try{
+                let errJson = await r.json();
+                errTxt = errJson.error || errTxt;
+            }catch(e){}
+            estado.style.display = "none";
+            btn.disabled = false;
+            alert("❌ " + errTxt);
+            return;
+        }
+
+        const blob = await r.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "presentacion_foschi.pptx";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+
+        estado.style.display = "none";
+        btn.disabled = false;
+        cerrarGeneradorPresentacion();
+        agregar("✅ Presentación generada y descargada (.pptx)", "ai");
+
+    }catch(err){
+
+        console.log(err);
+        estado.style.display = "none";
+        btn.disabled = false;
+        agregar("❌ Error generando la presentación", "ai");
+    }
+}
+
 </script>
 
 <div id="authModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:9999;">
@@ -3641,6 +3828,372 @@ TEXTO:
         as_attachment=True,
         download_name="resumen_foschi.docx"
     )
+
+# ---------------- GENERADOR DE PRESENTACIONES (PPTX) ----------------
+
+def generar_estructura_presentacion(contenido_base, tema, num_slides=8):
+    """
+    Usa OpenAI para generar la estructura de una presentación en formato JSON.
+    Devuelve un dict con 'titulo_presentacion', 'subtitulo' y 'diapositivas'
+    (lista de {'titulo','bullets','notas','imagen_prompt'}), o None si falla.
+    """
+    try:
+        cliente = OpenAI(api_key=OPENAI_API_KEY)
+
+        if contenido_base and contenido_base.strip():
+            fuente = (
+                "Basate en el siguiente contenido/documento para armar la presentación:\n\n"
+                f"{contenido_base[:12000]}\n\n"
+                f"Enfoque adicional pedido por el usuario (si aplica): {tema or 'usar el contenido tal cual, resumido'}"
+            )
+        else:
+            fuente = f"Tema de la presentación: {tema}"
+
+        prompt = f"""
+Sos un diseñador experto de presentaciones corporativas. Generá la estructura de una
+presentación de PowerPoint de {num_slides} diapositivas (sin contar la portada), en español.
+
+{fuente}
+
+Respondé EXCLUSIVAMENTE con un JSON válido, sin texto adicional, sin explicaciones y sin
+bloques de markdown (sin ```), con esta forma exacta:
+
+{{
+  "titulo_presentacion": "Título principal de la presentación",
+  "subtitulo": "Subtítulo o frase introductoria corta",
+  "diapositivas": [
+    {{
+      "titulo": "Título de la diapositiva",
+      "bullets": ["punto 1", "punto 2", "punto 3"],
+      "notas": "Notas para el orador (1-2 frases)",
+      "imagen_prompt": "Descripción corta EN INGLÉS para generar una imagen ilustrativa con IA, sin texto dentro de la imagen"
+    }}
+  ]
+}}
+
+Reglas:
+- Cada diapositiva debe tener entre 3 y 5 bullets, breves, claros y sin repetir el título.
+- Generá exactamente {num_slides} diapositivas dentro de "diapositivas".
+- No incluyas comentarios ni texto fuera del JSON.
+"""
+
+        resp = cliente.chat.completions.create(
+            model="gpt-4-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.6,
+            max_tokens=3500
+        )
+
+        texto = resp.choices[0].message.content.strip()
+
+        # Limpiar posibles bloques de markdown ```json ... ```
+        texto = re.sub(r"^```(json)?", "", texto.strip())
+        texto = re.sub(r"```$", "", texto.strip())
+        texto = texto.strip()
+
+        estructura = json.loads(texto)
+
+        if not isinstance(estructura.get("diapositivas"), list) or not estructura["diapositivas"]:
+            return None
+
+        return estructura
+
+    except Exception as e:
+        print("Error generando estructura de presentación:", e)
+        return None
+
+
+def generar_imagen_presentacion_bytes(prompt_imagen):
+    """Genera una imagen con IA para una diapositiva. Devuelve bytes PNG o None si falla."""
+    try:
+        cliente = OpenAI(api_key=OPENAI_API_KEY)
+        resultado = cliente.images.generate(
+            model="gpt-image-1",
+            prompt=prompt_imagen or "ilustración abstracta minimalista, colores azules",
+            size="1024x1024",
+            quality="medium"
+        )
+        b64 = resultado.data[0].b64_json
+        return base64.b64decode(b64)
+    except Exception as e:
+        print("Error generando imagen para presentación:", e)
+        return None
+
+
+def _agregar_fondo(slide, prs, color):
+    """Agrega un rectángulo de fondo de color sólido a toda la diapositiva."""
+    fondo = slide.shapes.add_shape(
+        MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height
+    )
+    fondo.fill.solid()
+    fondo.fill.fore_color.rgb = color
+    fondo.line.fill.background()
+    fondo.shadow.inherit = False
+    # Enviar el fondo detrás de los demás elementos
+    spTree = slide.shapes._spTree
+    spTree.remove(fondo._element)
+    spTree.insert(2, fondo._element)
+    return fondo
+
+
+def construir_pptx(estructura, incluir_imagenes=True, videos_files=None):
+    """
+    Construye un archivo .pptx a partir de la estructura generada por IA.
+    videos_files: lista de FileStorage con videos cortos (opcional) para
+    insertar en las primeras diapositivas en lugar de imágenes generadas.
+    Devuelve la ruta del archivo .pptx generado (en TEMP_DIR).
+    """
+    prs = Presentation()
+    prs.slide_width = PptxInches(13.333)
+    prs.slide_height = PptxInches(7.5)
+
+    COLOR_FONDO = RGBColor(0x00, 0x14, 0x24)
+    COLOR_TITULO = RGBColor(0x00, 0xEA, 0xFF)
+    COLOR_TEXTO = RGBColor(0xFF, 0xFF, 0xFF)
+    COLOR_ACENTO = RGBColor(0x33, 0xAA, 0xCC)
+
+    blank_layout = prs.slide_layouts[6]
+
+    # ---- Diapositiva de portada ----
+    slide = prs.slides.add_slide(blank_layout)
+    _agregar_fondo(slide, prs, COLOR_FONDO)
+
+    titulo_box = slide.shapes.add_textbox(
+        PptxInches(1), PptxInches(2.6), PptxInches(11.3), PptxInches(1.8)
+    )
+    tf = titulo_box.text_frame
+    tf.word_wrap = True
+    p = tf.paragraphs[0]
+    p.text = estructura.get("titulo_presentacion") or "Presentación"
+    p.font.size = Pt(44)
+    p.font.bold = True
+    p.font.color.rgb = COLOR_TITULO
+    p.alignment = PP_ALIGN.CENTER
+
+    sub = estructura.get("subtitulo") or ""
+    if sub:
+        sub_box = slide.shapes.add_textbox(
+            PptxInches(1), PptxInches(4.3), PptxInches(11.3), PptxInches(1)
+        )
+        tf2 = sub_box.text_frame
+        tf2.word_wrap = True
+        p2 = tf2.paragraphs[0]
+        p2.text = sub
+        p2.font.size = Pt(22)
+        p2.font.color.rgb = COLOR_TEXTO
+        p2.alignment = PP_ALIGN.CENTER
+
+    pie = slide.shapes.add_textbox(
+        PptxInches(1), PptxInches(6.7), PptxInches(11.3), PptxInches(0.5)
+    )
+    pf = pie.text_frame.paragraphs[0]
+    pf.text = f"Generado por {APP_NAME}"
+    pf.font.size = Pt(12)
+    pf.font.color.rgb = COLOR_ACENTO
+    pf.alignment = PP_ALIGN.CENTER
+
+    # ---- Diapositivas de contenido ----
+    diapositivas = estructura.get("diapositivas", [])
+    videos_files = videos_files or []
+    video_idx = 0
+
+    for idx, dia in enumerate(diapositivas):
+        slide = prs.slides.add_slide(blank_layout)
+        _agregar_fondo(slide, prs, COLOR_FONDO)
+
+        hay_video = video_idx < len(videos_files)
+        hay_media = hay_video or incluir_imagenes
+        ancho_texto = PptxInches(7.0) if hay_media else PptxInches(11.7)
+
+        # Título
+        titulo_box = slide.shapes.add_textbox(
+            PptxInches(0.6), PptxInches(0.4), PptxInches(12.1), PptxInches(1)
+        )
+        tf = titulo_box.text_frame
+        tf.word_wrap = True
+        p = tf.paragraphs[0]
+        p.text = dia.get("titulo") or f"Diapositiva {idx + 1}"
+        p.font.size = Pt(30)
+        p.font.bold = True
+        p.font.color.rgb = COLOR_TITULO
+
+        # Línea decorativa bajo el título
+        linea = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE, PptxInches(0.6), PptxInches(1.35), PptxInches(3.5), Pt(3)
+        )
+        linea.fill.solid()
+        linea.fill.fore_color.rgb = COLOR_TITULO
+        linea.line.fill.background()
+        linea.shadow.inherit = False
+
+        # Bullets
+        contenido_box = slide.shapes.add_textbox(
+            PptxInches(0.6), PptxInches(1.7), ancho_texto, PptxInches(5.3)
+        )
+        tf = contenido_box.text_frame
+        tf.word_wrap = True
+        bullets = dia.get("bullets") or []
+        if not bullets:
+            bullets = [dia.get("contenido", "")] if dia.get("contenido") else []
+        for i, b in enumerate(bullets):
+            if i == 0:
+                p = tf.paragraphs[0]
+            else:
+                p = tf.add_paragraph()
+            p.text = "•  " + str(b)
+            p.font.size = Pt(20)
+            p.font.color.rgb = COLOR_TEXTO
+            p.space_after = Pt(14)
+
+        # Notas del orador
+        notas = dia.get("notas") or ""
+        if notas:
+            try:
+                slide.notes_slide.notes_text_frame.text = notas
+            except Exception:
+                pass
+
+        # Imagen o video a la derecha
+        if hay_video:
+            video_file = videos_files[video_idx]
+            video_idx += 1
+            try:
+                video_file.stream.seek(0)
+                video_bytes = BytesIO(video_file.read())
+                slide.shapes.add_movie(
+                    video_bytes,
+                    PptxInches(8.1), PptxInches(1.7),
+                    PptxInches(4.6), PptxInches(3.5),
+                    mime_type="video/mp4"
+                )
+            except Exception as e:
+                print("Error insertando video en presentación:", e)
+        elif incluir_imagenes:
+            img_prompt = dia.get("imagen_prompt") or dia.get("titulo") or estructura.get("titulo_presentacion", "")
+            img_bytes = generar_imagen_presentacion_bytes(img_prompt)
+            if img_bytes:
+                try:
+                    img_stream = BytesIO(img_bytes)
+                    slide.shapes.add_picture(
+                        img_stream, PptxInches(8.1), PptxInches(1.7), width=PptxInches(4.6)
+                    )
+                except Exception as e:
+                    print("Error insertando imagen en presentación:", e)
+
+    # ---- Videos sobrantes: se agregan como diapositivas extra ----
+    while video_idx < len(videos_files):
+        slide = prs.slides.add_slide(blank_layout)
+        _agregar_fondo(slide, prs, COLOR_FONDO)
+
+        titulo_box = slide.shapes.add_textbox(
+            PptxInches(0.6), PptxInches(0.4), PptxInches(12.1), PptxInches(1)
+        )
+        p = titulo_box.text_frame.paragraphs[0]
+        p.text = "Video"
+        p.font.size = Pt(30)
+        p.font.bold = True
+        p.font.color.rgb = COLOR_TITULO
+
+        video_file = videos_files[video_idx]
+        video_idx += 1
+        try:
+            video_file.stream.seek(0)
+            video_bytes = BytesIO(video_file.read())
+            slide.shapes.add_movie(
+                video_bytes,
+                PptxInches(2.0), PptxInches(1.5),
+                PptxInches(9.3), PptxInches(5.6),
+                mime_type="video/mp4"
+            )
+        except Exception as e:
+            print("Error insertando video extra en presentación:", e)
+
+    nombre = f"presentacion_{uuid.uuid4().hex}.pptx"
+    ruta = os.path.join(TEMP_DIR, nombre)
+    prs.save(ruta)
+    return ruta
+
+
+@app.route("/generar_presentacion", methods=["POST"])
+def generar_presentacion():
+    """
+    Genera una presentación (.pptx) desde cero a partir de un tema descrito por el
+    usuario y/o de un documento subido previamente (vía /upload_doc), con imágenes
+    generadas por IA y/o videos cortos subidos por el usuario.
+    """
+    try:
+        usuario = request.form.get("usuario_id", "anon")
+
+        if not usuario_premium(usuario) and not es_superusuario(usuario):
+            return jsonify({
+                "ok": False,
+                "error": "Esta función es exclusiva para usuarios Premium. Activá Foschi IA Premium para crear presentaciones."
+            }), 403
+
+        tema = (request.form.get("tema") or "").strip()
+        titulo_pres = (request.form.get("titulo") or "").strip()
+        doc_id = (request.form.get("doc_id") or "").strip()
+
+        try:
+            num_slides = int(request.form.get("num_slides", 8))
+        except (TypeError, ValueError):
+            num_slides = 8
+        num_slides = max(3, min(num_slides, 20))
+
+        incluir_imagenes = (request.form.get("incluir_imagenes", "true").lower() == "true")
+
+        contenido_base = ""
+        if doc_id:
+            txt_path = os.path.join(TEMP_DIR, f"{doc_id}.txt")
+            if os.path.exists(txt_path):
+                try:
+                    with open(txt_path, "r", encoding="utf-8") as f:
+                        contenido_base = f.read()
+                except Exception as e:
+                    print("Error leyendo documento base para presentación:", e)
+
+        if not contenido_base and not tema:
+            return jsonify({
+                "ok": False,
+                "error": "Indicá un tema/descripción o subí un documento (📄 Analizar Documento) para generar la presentación."
+            }), 400
+
+        estructura = generar_estructura_presentacion(contenido_base, tema, num_slides)
+        if not estructura:
+            return jsonify({
+                "ok": False,
+                "error": "No pude generar el contenido de la presentación. Probá de nuevo en unos segundos."
+            }), 500
+
+        if titulo_pres:
+            estructura["titulo_presentacion"] = titulo_pres
+
+        videos_files = []
+        if "videos" in request.files:
+            videos_files = [v for v in request.files.getlist("videos") if v and v.filename]
+
+        ruta_pptx = construir_pptx(estructura, incluir_imagenes=incluir_imagenes, videos_files=videos_files)
+
+        @after_this_request
+        def _cleanup(response):
+            try:
+                if os.path.exists(ruta_pptx):
+                    os.remove(ruta_pptx)
+            except Exception:
+                pass
+            return response
+
+        return send_file(
+            ruta_pptx,
+            as_attachment=True,
+            mimetype="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            download_name="presentacion_foschi.pptx"
+        )
+
+    except Exception as e:
+        print("ERROR GENERAR PRESENTACION:", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
