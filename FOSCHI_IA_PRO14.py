@@ -8,6 +8,8 @@ import io
 import re
 import time
 import threading
+import traceback
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 
 import pytz
@@ -3891,6 +3893,12 @@ Reglas:
         texto = re.sub(r"```$", "", texto.strip())
         texto = texto.strip()
 
+        # Por si OpenAI agrega texto extra antes/después del JSON
+        inicio = texto.find("{")
+        fin = texto.rfind("}")
+        if inicio != -1 and fin != -1 and fin > inicio:
+            texto = texto[inicio:fin + 1]
+
         estructura = json.loads(texto)
 
         if not isinstance(estructura.get("diapositivas"), list) or not estructura["diapositivas"]:
@@ -3900,6 +3908,7 @@ Reglas:
 
     except Exception as e:
         print("Error generando estructura de presentación:", e)
+        traceback.print_exc()
         return None
 
 
@@ -3917,6 +3926,7 @@ def generar_imagen_presentacion_bytes(prompt_imagen):
         return base64.b64decode(b64)
     except Exception as e:
         print("Error generando imagen para presentación:", e)
+        traceback.print_exc()
         return None
 
 
@@ -3997,6 +4007,29 @@ def construir_pptx(estructura, incluir_imagenes=True, videos_files=None):
     videos_files = videos_files or []
     video_idx = 0
 
+    # Pre-generar TODAS las imágenes en paralelo (si corresponde) para no
+    # acumular tiempos de espera secuenciales y evitar timeouts del servidor.
+    imagenes_por_slide = [None] * len(diapositivas)
+    if incluir_imagenes:
+        indices_a_generar = []
+        prompts_a_generar = []
+        for idx, dia in enumerate(diapositivas):
+            if idx < len(videos_files):
+                continue  # esa diapositiva usará video, no imagen
+            img_prompt = dia.get("imagen_prompt") or dia.get("titulo") or estructura.get("titulo_presentacion", "")
+            indices_a_generar.append(idx)
+            prompts_a_generar.append(img_prompt)
+
+        if prompts_a_generar:
+            try:
+                with ThreadPoolExecutor(max_workers=min(5, len(prompts_a_generar))) as executor:
+                    resultados = list(executor.map(generar_imagen_presentacion_bytes, prompts_a_generar))
+                for idx, img_bytes in zip(indices_a_generar, resultados):
+                    imagenes_por_slide[idx] = img_bytes
+            except Exception:
+                print("Error generando imágenes en paralelo:")
+                traceback.print_exc()
+
     for idx, dia in enumerate(diapositivas):
         slide = prs.slides.add_slide(blank_layout)
         _agregar_fondo(slide, prs, COLOR_FONDO)
@@ -4069,16 +4102,16 @@ def construir_pptx(estructura, incluir_imagenes=True, videos_files=None):
             except Exception as e:
                 print("Error insertando video en presentación:", e)
         elif incluir_imagenes:
-            img_prompt = dia.get("imagen_prompt") or dia.get("titulo") or estructura.get("titulo_presentacion", "")
-            img_bytes = generar_imagen_presentacion_bytes(img_prompt)
+            img_bytes = imagenes_por_slide[idx]
             if img_bytes:
                 try:
                     img_stream = BytesIO(img_bytes)
                     slide.shapes.add_picture(
                         img_stream, PptxInches(8.1), PptxInches(1.7), width=PptxInches(4.6)
                     )
-                except Exception as e:
-                    print("Error insertando imagen en presentación:", e)
+                except Exception:
+                    print("Error insertando imagen en presentación:")
+                    traceback.print_exc()
 
     # ---- Videos sobrantes: se agregan como diapositivas extra ----
     while video_idx < len(videos_files):
@@ -4192,6 +4225,7 @@ def generar_presentacion():
 
     except Exception as e:
         print("ERROR GENERAR PRESENTACION:", e)
+        traceback.print_exc()
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
