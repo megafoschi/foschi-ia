@@ -1144,25 +1144,27 @@ body.day #clipBtn:hover{
   text-align:left;
 }
 
-/* Opción del menú premium iluminada al seleccionarla */
-#premiumMenu button.opcion-seleccionada{
+/* Opción del menú de adjuntos iluminada al seleccionarla */
+#adjuntos_menu button.opcion-seleccionada{
   background:#003547 !important;
   color:#ffd700 !important;
   border:1px solid #ffd700 !important;
   box-shadow:0 0 16px #ffd700, 0 0 28px #ffd70066 !important;
-  animation: iluminarOpcionPremium 0.5s ease-in-out;
+  animation: iluminarOpcionAdjunto 0.4s ease-in-out;
 }
 
-@keyframes iluminarOpcionPremium{
+@keyframes iluminarOpcionAdjunto{
   0%{ box-shadow:0 0 2px #ffd70033; }
   50%{ box-shadow:0 0 26px #ffd700; }
   100%{ box-shadow:0 0 16px #ffd700; }
 }
 
-/* --- AVISO "ESTE ES EL MENÚ PREMIUM" (solo usuarios no premium) --- */
-#premiumHint{
+/* --- AVISO "ACÁ ESTÁ EL MENÚ" SOBRE EL CLIP (solo usuarios no premium) --- */
+#clipBtn{ position:relative; }
+
+#adjuntosHint{
   position:absolute;
-  top:40px;
+  bottom:50px;
   left:0;
   background:#001f2e;
   color:#00eaff;
@@ -1174,31 +1176,31 @@ body.day #clipBtn:hover{
   box-shadow:0 0 14px #00eaff99;
   z-index:99;
   pointer-events:none;
-  animation: pulsoPremiumHint 1.6s ease-in-out infinite;
+  animation: pulsoAdjuntosHint 1.6s ease-in-out infinite;
 }
 
-#premiumHint::before{
+#adjuntosHint::after{
   content:"";
   position:absolute;
-  top:-6px;
-  left:16px;
-  border-width:0 6px 6px 6px;
+  bottom:-6px;
+  left:14px;
+  border-width:6px 6px 0 6px;
   border-style:solid;
-  border-color:transparent transparent #00eaff transparent;
+  border-color:#00eaff transparent transparent transparent;
 }
 
-@keyframes pulsoPremiumHint{
+@keyframes pulsoAdjuntosHint{
   0%,100%{ box-shadow:0 0 8px #00eaff66; opacity:0.9; }
   50%{ box-shadow:0 0 20px #00eaff; opacity:1; }
 }
 
-body.day #premiumHint{
+body.day #adjuntosHint{
   background:#ffffff;
   color:#0077aa;
   border-color:#0077aa;
 }
-body.day #premiumHint::before{
-  border-color:transparent transparent #0077aa transparent;
+body.day #adjuntosHint::after{
+  border-color:#0077aa transparent transparent transparent;
 }
 
 /* --- AJUSTES RESPONSIVE PARA MÓVIL --- */
@@ -1363,17 +1365,13 @@ body.day #dictadoPanel{
       </button>
 
       {% if not premium %}
-      <div id="premiumHint">👉 Este es el menú Premium</div>
-      {% endif %}
-
-      {% if not premium %}
       <div id="premiumMenu"
            style="display:none; position:absolute; top:36px; left:0;
                   background:#001f2e; border:1px solid #003547;
                   border-radius:6px; padding:6px;
                   box-shadow:0 6px 16px rgba(0,0,0,0.6); z-index:100;">
-        <button onclick="seleccionarOpcionPremium(this,'mensual')">💎 Pago Mensual</button>
-        <button onclick="seleccionarOpcionPremium(this,'anual')">💎 Pago Anual</button>
+        <button onclick="irPremium('mensual')">💎 Pago Mensual</button>
+        <button onclick="irPremium('anual')">💎 Pago Anual</button>
       </div>
       {% endif %}
     </div>
@@ -1601,7 +1599,12 @@ z-index:999;
 <div id="inputBar">
 
   <!-- Clip — visible cuando NO está dictando -->
-  <div id="clipBtn" title="Adjuntar" onclick="toggleAdjuntosMenu()">📎</div>
+  <div id="clipBtn" title="Adjuntar" onclick="toggleAdjuntosMenu()">
+    📎
+    {% if not premium %}
+    <span id="adjuntosHint">👉 Funciones Premium acá</span>
+    {% endif %}
+  </div>
 
   <!-- Input de texto -->
   <input type="text" id="mensaje" placeholder="Escribí tu mensaje o hablá" />
@@ -1874,50 +1877,18 @@ function hablarTexto(texto, div=null){
   audioActual.play();
 }
 
-let premiumInactivityTimer = null;
-
-function iniciarTemporizadorInactividadPremium(){
-  // Reinicia el contador cada vez que el mouse se mueve
-  document.addEventListener("mousemove", resetPremiumInactivityTimer);
-  resetPremiumInactivityTimer();
-}
-
-function detenerTemporizadorInactividadPremium(){
-  clearTimeout(premiumInactivityTimer);
-  premiumInactivityTimer = null;
-  document.removeEventListener("mousemove", resetPremiumInactivityTimer);
-}
-
-function resetPremiumInactivityTimer(){
-  clearTimeout(premiumInactivityTimer);
-  premiumInactivityTimer = setTimeout(() => {
-    const menu = document.getElementById("premiumMenu");
-    if(menu) menu.style.display = "none";
-    window.removeEventListener('click', closePremiumMenuOnClickOutside);
-    detenerTemporizadorInactividadPremium();
-  }, 6000); // 6 segundos sin mover el mouse => se cierra el menú
-}
-
 function togglePremiumMenu(){
   if(isPremium) return;
-
-  // Una vez que el usuario interactúa con el botón, ya no necesita el aviso
-  const hint = document.getElementById("premiumHint");
-  if(hint) hint.style.display = "none";
 
   const menu = document.getElementById("premiumMenu");
   if(!menu) return;
 
-  const seAbre = menu.style.display !== "block";
-  menu.style.display = seAbre ? "block" : "none";
+  menu.style.display = (menu.style.display === "block") ? "none" : "block";
 
-  if(seAbre){
+  if(menu.style.display === "block"){
     setTimeout(() => {
       window.addEventListener("click", closePremiumMenuOnClickOutside);
     }, 50);
-    iniciarTemporizadorInactividadPremium();
-  } else {
-    detenerTemporizadorInactividadPremium();
   }
 }
 
@@ -1927,17 +1898,7 @@ function closePremiumMenuOnClickOutside(e){
   if(!menu.contains(e.target) && !btn.contains(e.target)){
     menu.style.display="none";
     window.removeEventListener('click', closePremiumMenuOnClickOutside);
-    detenerTemporizadorInactividadPremium();
   }
-}
-
-function seleccionarOpcionPremium(boton, tipo){
-  // Ilumina la opción elegida y apaga el resto
-  document.querySelectorAll("#premiumMenu button").forEach(b => b.classList.remove("opcion-seleccionada"));
-  boton.classList.add("opcion-seleccionada");
-
-  detenerTemporizadorInactividadPremium();
-  irPremium(tipo);
 }
 
 function irPremium(tipo){
@@ -1994,26 +1955,73 @@ function checkPremium(tipo){
 
 }
 
-function toggleAdjuntosMenu(){
-  const m = document.getElementById("adjuntos_menu");
-  m.style.display = m.style.display === "block" ? "none" : "block";
-  if(m.style.display==="block"){ setTimeout(()=>window.addEventListener('click', closeMenuOnClickOutside),50); }
+let adjuntosInactivityTimer = null;
+
+function iniciarTemporizadorInactividadAdjuntos(){
+  // Se reinicia cada vez que el mouse se mueve mientras el menú está abierto
+  document.addEventListener("mousemove", resetAdjuntosInactivityTimer);
+  resetAdjuntosInactivityTimer();
 }
-// Cierra el menú de adjuntos automáticamente al elegir cualquier opción
+
+function detenerTemporizadorInactividadAdjuntos(){
+  clearTimeout(adjuntosInactivityTimer);
+  adjuntosInactivityTimer = null;
+  document.removeEventListener("mousemove", resetAdjuntosInactivityTimer);
+}
+
+function resetAdjuntosInactivityTimer(){
+  clearTimeout(adjuntosInactivityTimer);
+  adjuntosInactivityTimer = setTimeout(cerrarAdjuntosMenu, 6000); // 6s sin mover el mouse
+}
+
+function cerrarAdjuntosMenu(){
+  const m = document.getElementById("adjuntos_menu");
+  if(m) m.style.display = "none";
+  window.removeEventListener('click', closeMenuOnClickOutside);
+  detenerTemporizadorInactividadAdjuntos();
+}
+
+function toggleAdjuntosMenu(){
+  // Una vez que el usuario abre el menú, ya no necesita el aviso
+  const hint = document.getElementById("adjuntosHint");
+  if(hint) hint.style.display = "none";
+
+  const m = document.getElementById("adjuntos_menu");
+  const seAbre = m.style.display !== "block";
+  m.style.display = seAbre ? "block" : "none";
+
+  if(seAbre){
+    m.querySelectorAll("button").forEach(b => b.classList.remove("opcion-seleccionada"));
+    setTimeout(()=>window.addEventListener('click', closeMenuOnClickOutside),50);
+    iniciarTemporizadorInactividadAdjuntos();
+  } else {
+    detenerTemporizadorInactividadAdjuntos();
+  }
+}
+
+// Cierra el menú de adjuntos automáticamente si el mouse se va de encima
+document.getElementById("adjuntos_menu").addEventListener("mouseleave", cerrarAdjuntosMenu);
+
+// Ilumina la opción elegida y luego cierra el menú
 document.getElementById("adjuntos_menu").addEventListener("click", function(e){
   const btn = e.target.closest("button");
   if(!btn) return;
-  document.getElementById("adjuntos_menu").style.display = "none";
-  window.removeEventListener('click', closeMenuOnClickOutside);
+
+  document.querySelectorAll("#adjuntos_menu button").forEach(b => b.classList.remove("opcion-seleccionada"));
+  btn.classList.add("opcion-seleccionada");
+
+  setTimeout(cerrarAdjuntosMenu, 180);
 });
 function closeMenuOnClickOutside(e){
   const menu = document.getElementById("adjuntos_menu");
   const clip = document.getElementById("clipBtn");
-  if(!menu.contains(e.target) && !clip.contains(e.target)){ menu.style.display="none"; window.removeEventListener('click', closeMenuOnClickOutside); }
+  if(!menu.contains(e.target) && !clip.contains(e.target)){
+    menu.style.display="none";
+    window.removeEventListener('click', closeMenuOnClickOutside);
+    detenerTemporizadorInactividadAdjuntos();
+  }
 }
 function abrirDictadoDesdeMenu(){
-  document.getElementById("adjuntos_menu").style.display = "none";
-  window.removeEventListener('click', closeMenuOnClickOutside);
   toggleDictado();
 }
 
@@ -2172,8 +2180,12 @@ setInterval(chequearRecordatorios,10000);
 
 /* --- SALUDO INICIAL --- */
 window.onload = function() {
-    agregar("👋 ¡Hola! Bienvenido a Foschi IA","ai");
-    let saludoAudio = new Audio("/tts?texto=👋 ¡Hola! Bienvenido a Foschi IA");
+    let textoSaludo = isPremium
+      ? "🙏 ¡Gracias por ser parte de Foschi IA Premium! 💎 Ya tenés todas las funciones desbloqueadas."
+      : "👋 ¡Hola! Bienvenido a Foschi IA";
+
+    agregar(textoSaludo,"ai");
+    let saludoAudio = new Audio("/tts?texto=" + encodeURIComponent(textoSaludo));
     saludoAudio.playbackRate = 1.25;
     saludoAudio.play();
 };
