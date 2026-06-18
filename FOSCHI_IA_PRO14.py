@@ -1144,6 +1144,63 @@ body.day #clipBtn:hover{
   text-align:left;
 }
 
+/* Opción del menú premium iluminada al seleccionarla */
+#premiumMenu button.opcion-seleccionada{
+  background:#003547 !important;
+  color:#ffd700 !important;
+  border:1px solid #ffd700 !important;
+  box-shadow:0 0 16px #ffd700, 0 0 28px #ffd70066 !important;
+  animation: iluminarOpcionPremium 0.5s ease-in-out;
+}
+
+@keyframes iluminarOpcionPremium{
+  0%{ box-shadow:0 0 2px #ffd70033; }
+  50%{ box-shadow:0 0 26px #ffd700; }
+  100%{ box-shadow:0 0 16px #ffd700; }
+}
+
+/* --- AVISO "ESTE ES EL MENÚ PREMIUM" (solo usuarios no premium) --- */
+#premiumHint{
+  position:absolute;
+  top:40px;
+  left:0;
+  background:#001f2e;
+  color:#00eaff;
+  border:1px solid #00eaff;
+  font-size:12px;
+  padding:6px 10px;
+  border-radius:6px;
+  white-space:nowrap;
+  box-shadow:0 0 14px #00eaff99;
+  z-index:99;
+  pointer-events:none;
+  animation: pulsoPremiumHint 1.6s ease-in-out infinite;
+}
+
+#premiumHint::before{
+  content:"";
+  position:absolute;
+  top:-6px;
+  left:16px;
+  border-width:0 6px 6px 6px;
+  border-style:solid;
+  border-color:transparent transparent #00eaff transparent;
+}
+
+@keyframes pulsoPremiumHint{
+  0%,100%{ box-shadow:0 0 8px #00eaff66; opacity:0.9; }
+  50%{ box-shadow:0 0 20px #00eaff; opacity:1; }
+}
+
+body.day #premiumHint{
+  background:#ffffff;
+  color:#0077aa;
+  border-color:#0077aa;
+}
+body.day #premiumHint::before{
+  border-color:transparent transparent #0077aa transparent;
+}
+
 /* --- AJUSTES RESPONSIVE PARA MÓVIL --- */
 @media (max-width:600px){
   #inputBar input[type=text]{ font-size:18px; padding:12px; }
@@ -1306,13 +1363,17 @@ body.day #dictadoPanel{
       </button>
 
       {% if not premium %}
+      <div id="premiumHint">👉 Este es el menú Premium</div>
+      {% endif %}
+
+      {% if not premium %}
       <div id="premiumMenu"
            style="display:none; position:absolute; top:36px; left:0;
                   background:#001f2e; border:1px solid #003547;
                   border-radius:6px; padding:6px;
                   box-shadow:0 6px 16px rgba(0,0,0,0.6); z-index:100;">
-        <button onclick="irPremium('mensual')">💎 Pago Mensual</button>
-        <button onclick="irPremium('anual')">💎 Pago Anual</button>
+        <button onclick="seleccionarOpcionPremium(this,'mensual')">💎 Pago Mensual</button>
+        <button onclick="seleccionarOpcionPremium(this,'anual')">💎 Pago Anual</button>
       </div>
       {% endif %}
     </div>
@@ -1813,18 +1874,50 @@ function hablarTexto(texto, div=null){
   audioActual.play();
 }
 
+let premiumInactivityTimer = null;
+
+function iniciarTemporizadorInactividadPremium(){
+  // Reinicia el contador cada vez que el mouse se mueve
+  document.addEventListener("mousemove", resetPremiumInactivityTimer);
+  resetPremiumInactivityTimer();
+}
+
+function detenerTemporizadorInactividadPremium(){
+  clearTimeout(premiumInactivityTimer);
+  premiumInactivityTimer = null;
+  document.removeEventListener("mousemove", resetPremiumInactivityTimer);
+}
+
+function resetPremiumInactivityTimer(){
+  clearTimeout(premiumInactivityTimer);
+  premiumInactivityTimer = setTimeout(() => {
+    const menu = document.getElementById("premiumMenu");
+    if(menu) menu.style.display = "none";
+    window.removeEventListener('click', closePremiumMenuOnClickOutside);
+    detenerTemporizadorInactividadPremium();
+  }, 6000); // 6 segundos sin mover el mouse => se cierra el menú
+}
+
 function togglePremiumMenu(){
   if(isPremium) return;
+
+  // Una vez que el usuario interactúa con el botón, ya no necesita el aviso
+  const hint = document.getElementById("premiumHint");
+  if(hint) hint.style.display = "none";
 
   const menu = document.getElementById("premiumMenu");
   if(!menu) return;
 
-  menu.style.display = (menu.style.display === "block") ? "none" : "block";
+  const seAbre = menu.style.display !== "block";
+  menu.style.display = seAbre ? "block" : "none";
 
-  if(menu.style.display === "block"){
+  if(seAbre){
     setTimeout(() => {
       window.addEventListener("click", closePremiumMenuOnClickOutside);
     }, 50);
+    iniciarTemporizadorInactividadPremium();
+  } else {
+    detenerTemporizadorInactividadPremium();
   }
 }
 
@@ -1834,7 +1927,17 @@ function closePremiumMenuOnClickOutside(e){
   if(!menu.contains(e.target) && !btn.contains(e.target)){
     menu.style.display="none";
     window.removeEventListener('click', closePremiumMenuOnClickOutside);
+    detenerTemporizadorInactividadPremium();
   }
+}
+
+function seleccionarOpcionPremium(boton, tipo){
+  // Ilumina la opción elegida y apaga el resto
+  document.querySelectorAll("#premiumMenu button").forEach(b => b.classList.remove("opcion-seleccionada"));
+  boton.classList.add("opcion-seleccionada");
+
+  detenerTemporizadorInactividadPremium();
+  irPremium(tipo);
 }
 
 function irPremium(tipo){
