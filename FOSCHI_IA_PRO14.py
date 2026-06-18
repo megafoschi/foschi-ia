@@ -1133,7 +1133,7 @@ body.day #clipBtn:hover{
  z-index:999;
  max-width:90vw;
 }
-#adjuntos_menu button{ display:block; width:200px; margin:4px 0; text-align:left; }
+#adjuntos_menu button{ display:block; width:200px; margin:4px 0; text-align:left; transition:0.2s; }
 .hidden_file_input{ display:none; }
 
 /* --- MENÚ PREMIUM --- */
@@ -1144,12 +1144,16 @@ body.day #clipBtn:hover{
   text-align:left;
 }
 
-/* Opción del menú de adjuntos iluminada al seleccionarla */
+/* Opciones del menú de adjuntos: se iluminan al pasar el mouse o al elegirlas */
+#adjuntos_menu button:hover,
 #adjuntos_menu button.opcion-seleccionada{
   background:#003547 !important;
   color:#ffd700 !important;
   border:1px solid #ffd700 !important;
   box-shadow:0 0 16px #ffd700, 0 0 28px #ffd70066 !important;
+}
+
+#adjuntos_menu button.opcion-seleccionada{
   animation: iluminarOpcionAdjunto 0.4s ease-in-out;
 }
 
@@ -1844,6 +1848,14 @@ function enviar(){
 
 document.getElementById("mensaje").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); checkDailyLimit(); } });
 
+// Saca emojis del texto para que la voz no los lea (ej: "manos en oración", "diamante", "mano saludando")
+function quitarEmojisParaVoz(texto){
+  return texto
+    .replace(/[\\u{1F1E6}-\\u{1F1FF}\\u{1F300}-\\u{1FAFF}\\u{2190}-\\u{21FF}\\u{2300}-\\u{27BF}\\u{2B00}-\\u{2BFF}\\u{FE0F}\\u{200D}\\u{20E3}]/gu, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 function hablarTexto(texto, div=null){
 
   if(!vozActiva) return;
@@ -1859,7 +1871,8 @@ function hablarTexto(texto, div=null){
   if(div) div.classList.add("playing");
   mensajeActual = div;
 
-  audioActual = new Audio("/tts?texto=" + encodeURIComponent(texto));
+  const textoParaVoz = quitarEmojisParaVoz(texto);
+  audioActual = new Audio("/tts?texto=" + encodeURIComponent(textoParaVoz));
   audioActual.playbackRate = 1.25;
 
   audioActual.onended = () => {
@@ -2185,9 +2198,6 @@ window.onload = function() {
       : "👋 ¡Hola! Bienvenido a Foschi IA";
 
     agregar(textoSaludo,"ai");
-    let saludoAudio = new Audio("/tts?texto=" + encodeURIComponent(textoSaludo));
-    saludoAudio.playbackRate = 1.25;
-    saludoAudio.play();
 };
 /* =============================== */
 /* === BOTÓN MODO DAY / NIGHT ==== */
