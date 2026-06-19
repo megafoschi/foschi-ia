@@ -1294,7 +1294,7 @@ body.day .user a{
   position:fixed;
   bottom:62px;
   left:0; right:0;
-  height:180px;
+  max-height:180px;
   overflow-y:auto;
   background:#00060d;
   border-top:2px solid #ff003366;
@@ -1308,68 +1308,15 @@ body.day .user a{
   word-break:break-word;
   scrollbar-width:thin;
   scrollbar-color:#ff003366 transparent;
-  resize:vertical;
-  outline:none;
-  font-family:'Segoe UI',sans-serif;
-  box-sizing:border-box;
-  border-left:none;
-  border-right:none;
-  border-bottom:none;
 }
 #dictadoPanel::-webkit-scrollbar{ width:4px; }
 #dictadoPanel::-webkit-scrollbar-thumb{ background:#ff003366; border-radius:4px; }
-#dictadoPanel:focus{ border-top-color:#ff003399; box-shadow:0 -2px 12px #ff003322; }
 
 body.day #dictadoPanel{
   background:#f5f5f5;
   color:#111;
   border-color:#cc000055;
 }
-
-/* Barra de herramientas del dictado */
-#dictadoToolbar{
-  position:fixed;
-  bottom:242px;
-  left:0; right:0;
-  display:none;
-  align-items:center;
-  gap:8px;
-  padding:6px 14px;
-  background:#000d1a;
-  border-top:1px solid #ff003322;
-  z-index:26;
-  flex-wrap:wrap;
-}
-#dictadoToolbar button{
-  font-size:12px;
-  padding:4px 10px;
-  border-radius:6px;
-  border:1px solid #ff003355;
-  background:#1a0008;
-  color:#ff6688;
-  cursor:pointer;
-}
-#dictadoToolbar button:hover{ background:#330010; }
-#dictadoToolbar .dictado-parcial{
-  margin-left:auto;
-  font-size:12px;
-  color:#ff003388;
-  font-style:italic;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  max-width:200px;
-}
-body.day #dictadoToolbar{
-  background:#f0f0f0;
-  border-color:#cc000033;
-}
-body.day #dictadoToolbar button{
-  background:#fff0f2;
-  color:#cc0033;
-  border-color:#cc000055;
-}
-body.day #dictadoToolbar button:hover{ background:#ffe0e5; }
 
 #dictadoBtn.activo{
   background:#ff0033 !important;
@@ -1604,14 +1551,6 @@ z-index:999;
 <div class="wave"></div>
 <div class="wave"></div>
 <button onclick="detenerConversacion()" title="Salir del modo conversación" style="margin-left:10px;background:#ff0000;color:#fff;border:none;border-radius:50%;width:28px;height:28px;font-size:14px;font-weight:bold;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 0 10px #ff000066;">✕</button>
-</div>
-
-<!-- TOOLBAR DICTADO -->
-<div id="dictadoToolbar">
-  <button onclick="corregirConIA()" title="Corrige puntuación y ortografía con IA">✨ Corregir con IA</button>
-  <button onclick="limpiarPanelDictado()" title="Borra todo el texto del panel">🗑️ Limpiar</button>
-  <button onclick="copiarTextoDictado()" title="Copia el texto al portapapeles">📋 Copiar</button>
-  <span class="dictado-parcial" id="dictadoParcialLabel"></span>
 </div>
 
 <div id="dictadoEstado" style="
@@ -1911,12 +1850,8 @@ document.getElementById("mensaje").addEventListener("keydown",e=>{ if(e.key==="E
 
 // Saca emojis del texto para que la voz no los lea (ej: "manos en oración", "diamante", "mano saludando")
 function quitarEmojisParaVoz(texto){
-  // Elimina emojis y símbolos especiales usando surrogate pairs y rangos seguros
   return texto
-    .replace(/[\uD800-\uDFFF]/g, "")
-    .replace(/[\u2600-\u27BF]/g, "")
-    .replace(/[\u2B00-\u2BFF]/g, "")
-    .replace(/[\uFE0F\u200D\u20E3]/g, "")
+    .replace(/[\\u{1F1E6}-\\u{1F1FF}\\u{1F300}-\\u{1FAFF}\\u{2190}-\\u{21FF}\\u{2300}-\\u{27BF}\\u{2B00}-\\u{2BFF}\\u{FE0F}\\u{200D}\\u{20E3}]/gu, "")
     .replace(/\s{2,}/g, " ")
     .trim();
 }
@@ -2287,37 +2222,26 @@ let textoDictado = localStorage.getItem("dictado_guardado") || "";
 let ultimoTexto = "";
 let reinicioDictado = false;
 
-// Crea el panel de previsualización una sola vez (textarea editable)
+// Crea el panel de previsualización una sola vez
 function getPanelDictado(){
   let p = document.getElementById("dictadoPanel");
   if(!p){
-    p = document.createElement("textarea");
+    p = document.createElement("div");
     p.id = "dictadoPanel";
-    p.placeholder = "El texto dictado aparecerá acá. Podés editarlo manualmente en cualquier momento.";
-    // sincronizar edición manual con textoDictado
-    p.addEventListener("input", function(){
-      textoDictado = p.value;
-      localStorage.setItem("dictado_guardado", textoDictado);
-    });
     document.body.appendChild(p);
   }
   return p;
 }
 
 // Refresca lo que se ve en el panel:
-// texto confirmado en el textarea + parcial en el label flotante
+// texto confirmado (blanco) + lo que se está diciendo ahora (gris)
 function actualizarPanel(parcial){
   const panel = getPanelDictado();
-  // Solo actualiza si el usuario no está editando manualmente
-  if(document.activeElement !== panel){
-    panel.value = textoDictado;
-    panel.scrollTop = panel.scrollHeight;
-  }
-  // Mostrar texto parcial (en escucha) en el label
-  const label = document.getElementById("dictadoParcialLabel");
-  if(label){
-    label.textContent = parcial ? "🎙️ " + parcial : "";
-  }
+  const enCurso = parcial
+    ? '<span style="color:#888">' + parcial + '</span>'
+    : "";
+  panel.innerHTML = textoDictado + enCurso;
+  panel.scrollTop = panel.scrollHeight;
 }
 
 function _resetUI(){
@@ -2329,11 +2253,7 @@ function _resetUI(){
   document.getElementById("mensaje").placeholder = "Escribí tu mensaje o hablá";
   const panel = getPanelDictado();
   panel.style.display = "none";
-  panel.value = "";
-  const toolbar = document.getElementById("dictadoToolbar");
-  if(toolbar) toolbar.style.display = "none";
-  const label = document.getElementById("dictadoParcialLabel");
-  if(label) label.textContent = "";
+  panel.innerHTML = "";
 }
 
 function toggleDictado(){
@@ -2381,12 +2301,9 @@ function iniciarDictado(){
   // Mostrar panel y limpiar input
   const panel = getPanelDictado();
   panel.style.display = "block";
-  panel.value = textoDictado; // restaurar si había texto guardado
   actualizarPanel("");
   document.getElementById("mensaje").value = "";
   document.getElementById("mensaje").placeholder = "🎤 Dictando...";
-  const toolbar = document.getElementById("dictadoToolbar");
-  if(toolbar) toolbar.style.display = "flex";
 
  reconocimiento.onresult = function(event){
 
@@ -2561,9 +2478,8 @@ function finalizarDictado(){
 
   if(reconocimiento){ reconocimiento.stop(); reconocimiento = null; }
 
-  // ⚠️ Leer del panel (textarea) para respetar ediciones manuales
-  const panel = getPanelDictado();
-  const textoFinal = (panel ? panel.value : textoDictado).trim();
+  // ⚠️ Guardar el texto ANTES de limpiar las variables
+  const textoFinal = textoDictado.trim();
   textoDictado = "";
   ultimoTexto = "";
   localStorage.removeItem("dictado_guardado");
@@ -2723,68 +2639,6 @@ async function descargarWordDictado(texto){
     console.log(err);
 
     alert("Error descargando Word");
-  }
-}
-
-// =====================
-// 🛠️ HERRAMIENTAS PANEL DICTADO
-// =====================
-
-function limpiarPanelDictado(){
-  if(!confirm("¿Borrar todo el texto del dictado?")) return;
-  const panel = getPanelDictado();
-  panel.value = "";
-  textoDictado = "";
-  ultimoTexto = "";
-  localStorage.removeItem("dictado_guardado");
-  actualizarPanel("");
-}
-
-function copiarTextoDictado(){
-  const panel = getPanelDictado();
-  const texto = panel.value.trim();
-  if(!texto){ alert("No hay texto para copiar"); return; }
-  navigator.clipboard.writeText(texto).then(()=>{
-    alert("✅ Texto copiado al portapapeles");
-  }).catch(()=>{
-    // fallback para navegadores sin clipboard API
-    panel.select();
-    document.execCommand("copy");
-    alert("✅ Texto copiado");
-  });
-}
-
-async function corregirConIA(){
-  const panel = getPanelDictado();
-  const texto = panel.value.trim();
-  if(!texto){ alert("No hay texto para corregir"); return; }
-
-  const btnCorregir = document.querySelector("#dictadoToolbar button");
-  const textoOriginal = btnCorregir ? btnCorregir.textContent : "";
-  if(btnCorregir){ btnCorregir.textContent = "⏳ Corrigiendo..."; btnCorregir.disabled = true; }
-
-  try{
-    const r = await fetch("/preguntar",{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({
-        mensaje: "Corregí la puntuación, ortografía y formato de este texto dictado. Devolvé SOLO el texto corregido, sin explicaciones ni comentarios:\n\n" + texto,
-        usuario_id: usuario_id
-      })
-    });
-    const data = await r.json();
-    if(data && data.texto){
-      panel.value = data.texto;
-      textoDictado = data.texto;
-      localStorage.setItem("dictado_guardado", textoDictado);
-    } else {
-      alert("No se pudo corregir el texto");
-    }
-  }catch(err){
-    console.log(err);
-    alert("Error al corregir con IA");
-  }finally{
-    if(btnCorregir){ btnCorregir.textContent = textoOriginal || "✨ Corregir con IA"; btnCorregir.disabled = false; }
   }
 }
 
