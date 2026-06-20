@@ -8,6 +8,11 @@ SUPERUSUARIOS = {
         "nombre": "Gustavo",
         "nivel": 100
     },
+    "gustavofoschi@hotmail.com": {
+        "rol": "superadmin",
+        "nombre": "Gustavo",
+        "nivel": 100
+    },
     "libre@gmail.com": {
         "rol": "admin",
         "nombre": "libre",
