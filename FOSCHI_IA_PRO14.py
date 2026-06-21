@@ -1954,10 +1954,10 @@ function checkPremiumIngles() {
     alert("⚠️ El Profesor de Inglés es una función Premium. Pasá a Premium para usarla.");
     return;
   }
-  // Cerrar el menú de adjuntos
+  // Cerrar el menú de adjuntos primero, luego abrir el modal
   const menu = document.getElementById("adjuntos_menu");
   if (menu) { menu.style.display = "none"; menu.setAttribute("aria-hidden","true"); }
-  abrirProfesorIngles();
+  setTimeout(() => abrirProfesorIngles(), 50);
 }
 
 function checkPremium(tipo){
@@ -3423,7 +3423,7 @@ function esperarYDescargarPresentacion(jobId, btn, estado){
 <!-- ═══════════════════════════════════════════════════════ -->
 <!-- 📚  MODAL PROFESOR DE INGLÉS                           -->
 <!-- ═══════════════════════════════════════════════════════ -->
-<div id="modalIngles" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,8,20,0.95);align-items:flex-start;justify-content:center;padding:10px;box-sizing:border-box;overflow-y:auto;">
+<div id="modalIngles" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,8,20,0.95);overflow-y:auto;padding:10px;box-sizing:border-box;">
   <div style="background:linear-gradient(160deg,#001a0d,#002a1a,#001a2e);border:1.5px solid #00cc6644;border-radius:20px;box-shadow:0 0 50px #00cc6622;width:100%;max-width:820px;margin:0 auto;padding:22px;box-sizing:border-box;">
 
     <!-- HEADER -->
@@ -3518,7 +3518,7 @@ let inglesEscenarioActual = "";
 let inglesPerfil = null;
 
 function abrirProfesorIngles() {
-  document.getElementById("modalIngles").style.display = "flex";
+  document.getElementById("modalIngles").style.display = "block";
   inglesCargarPerfil();
 }
 function cerrarIngles() {
