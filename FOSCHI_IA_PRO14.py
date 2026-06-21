@@ -1949,12 +1949,19 @@ function irPremium(tipo){
     .catch(err => console.error(err));
 }
 
+function abrirProfesorIngles() {
+  document.getElementById("modalIngles").style.display = "block";
+  if (typeof inglesCargarPerfil === "function") inglesCargarPerfil();
+}
+function cerrarIngles() {
+  document.getElementById("modalIngles").style.display = "none";
+}
+
 function checkPremiumIngles() {
   if (!isPremium && !isSuper) {
     alert("⚠️ El Profesor de Inglés es una función Premium. Pasá a Premium para usarla.");
     return;
   }
-  // Cerrar el menú de adjuntos primero, luego abrir el modal
   const menu = document.getElementById("adjuntos_menu");
   if (menu) { menu.style.display = "none"; menu.setAttribute("aria-hidden","true"); }
   setTimeout(() => abrirProfesorIngles(), 50);
@@ -3516,14 +3523,6 @@ function esperarYDescargarPresentacion(jobId, btn, estado){
 let inglesTabActual = "conversacion";
 let inglesEscenarioActual = "";
 let inglesPerfil = null;
-
-function abrirProfesorIngles() {
-  document.getElementById("modalIngles").style.display = "block";
-  inglesCargarPerfil();
-}
-function cerrarIngles() {
-  document.getElementById("modalIngles").style.display = "none";
-}
 
 function inglesSetTab(tab) {
   inglesTabActual = tab;
