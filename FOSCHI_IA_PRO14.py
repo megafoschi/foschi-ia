@@ -2151,9 +2151,7 @@ if(borrarMatch){
 // CORREGIR PALABRA
 // ============================
 
-let corregirMatch = txt.match(
-  /corregir (.+) por (.+)/i
-);
+let corregirMatch = txt.match(/corregir (.+) por (.+)/i);
 
 if(corregirMatch){
 
@@ -2542,7 +2540,7 @@ function mejorarTextoDictado(texto){
   texto = texto.replace(/abrir pregunta/gi, "¿");
   texto = texto.replace(/cerrar pregunta/gi, "?");
 
-  // admiración — sin \b para evitar error con Unicode en algunos navegadores
+  // admiración — sin \b con Unicode para evitar error en navegadores
   texto = texto.replace(/abrir admiraci[oó]n/gi, "¡");
   texto = texto.replace(/cerrar admiraci[oó]n/gi, "!");
 
@@ -2580,12 +2578,7 @@ function mejorarTextoDictado(texto){
   }
 
   // mayúscula después de punto
-  texto = texto.replace(
-    /([.!?]\s*)([a-záéíóúñ])/g,
-    function(match, p1, p2){
-      return p1 + p2.toUpperCase();
-    }
-  );
+  texto = texto.replace(/([.!?]\s*)([a-záéíóúñ])/g, function(match, p1, p2){ return p1 + p2.toUpperCase(); });
 
   return texto;
 }
