@@ -1640,6 +1640,12 @@ z-index:999;
 </div>
 
 <script>
+// --- Variables críticas (deben estar primero) ---
+let isPremium = {{ 'true' if premium else 'false' }};
+let isSuper = {{ 'true' if is_super else 'false' }};
+let rolUsuario = "{{ rol or '' }}";
+let nivelUsuario = {{ nivel or 0 }};
+
 // --- Variables y funciones generales ---
 let usuario_id="{{usuario_id}}";
 let documentoActual = null;
@@ -1755,15 +1761,10 @@ function detenerConversacion(){
 }
 
 let MAX_NO_PREMIUM = 5;
-let isPremium = {{ 'true' if premium else 'false' }};
 const hoy = new Date().toISOString().slice(0,10); // YYYY-MM-DD
 let preguntasHoy = parseInt(
   localStorage.getItem("preguntasHoy_" + hoy) || "0"
 );
-
-let isSuper = {{ 'true' if is_super else 'false' }};
-let rolUsuario = "{{ rol or '' }}";
-let nivelUsuario = {{ nivel or 0 }};
 
 function logoClick(){ alert("FOSCHI NUNCA MUERE, TRASCIENDE..."); }
 function toggleVoz(estado=null){ vozActiva=estado!==null?estado:!vozActiva; document.getElementById("vozBtn").textContent=vozActiva?"🔊 Voz activada":"🔇 Silenciada"; }
@@ -2538,19 +2539,19 @@ function mejorarTextoDictado(texto){
   texto = texto.replace(/punto/gi, ".");
 
   // preguntas
-  texto = texto.replace(/\babrir pregunta\b/gi, "¿");
-  texto = texto.replace(/\bcerrar pregunta\b/gi, "?");
+  texto = texto.replace(/abrir pregunta/gi, "¿");
+  texto = texto.replace(/cerrar pregunta/gi, "?");
 
-  // admiración
-  texto = texto.replace(/\babrir admiración\b/gi, "¡");
-  texto = texto.replace(/\bcerrar admiración\b/gi, "!");
+  // admiración — sin \b para evitar error con Unicode en algunos navegadores
+  texto = texto.replace(/abrir admiraci[oó]n/gi, "¡");
+  texto = texto.replace(/cerrar admiraci[oó]n/gi, "!");
 
   // paréntesis
-  texto = texto.replace(/\babrir paréntesis\b/gi, "(");
-  texto = texto.replace(/\bcerrar paréntesis\b/gi, ")");
+  texto = texto.replace(/abrir par[eé]ntesis/gi, "(");
+  texto = texto.replace(/cerrar par[eé]ntesis/gi, ")");
 
   // nuevo párrafo
-  texto = texto.replace(/nuevo párrafo/gi, " ");
+  texto = texto.replace(/nuevo p[aá]rrafo/gi, " ");
 
   // =========================
   // ESPACIOS
