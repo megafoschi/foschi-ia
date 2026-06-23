@@ -3357,7 +3357,7 @@ function agregarMensajeIngles(texto, rol){
   div.style.cssText = rol === "profesor"
     ? "background:rgba(0,234,255,0.08);border:1px solid #00eaff33;border-radius:10px;padding:10px 14px;margin-bottom:10px;color:#00eaff;"
     : "background:rgba(51,0,255,0.12);border:1px solid #4455ff55;border-radius:10px;padding:10px 14px;margin-bottom:10px;color:#b4b7ff;text-align:right;";
-  div.innerHTML = (rol === "profesor" ? "👨‍🏫 <b>Profesor:</b> " : "🧑‍🎓 <b>Vos:</b> ") + texto.replace(/\n/g, "<br>");
+  div.innerHTML = (rol === "profesor" ? "&#x1F468;&#x200D;&#x1F3EB; <b>Profesor:</b> " : "&#x1F9D1;&#x200D;&#x1F393; <b>Vos:</b> ") + texto.replace(/\n/g, "<br>");
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
 }
