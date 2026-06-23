@@ -41,6 +41,23 @@ from usuarios import registrar_usuario, autenticar_usuario
 from suscripciones import usuario_premium, aviso_vencimiento
 from suscripciones import activar_premium
 
+from profesor_ingles import (
+    obtener_perfil as ingles_perfil,
+    guardar_perfil as ingles_guardar,
+    actualizar_racha as ingles_racha,
+    sumar_puntos as ingles_puntos,
+    registrar_error as ingles_error,
+    completar_leccion as ingles_completar,
+    registrar_examen as ingles_registrar_examen,
+    resumen_progreso as ingles_resumen,
+    prompt_conversacion_basica,
+    prompt_leccion,
+    prompt_escenario,
+    prompt_examen,
+    prompt_diccionario,
+    NIVELES, ESCENARIOS,
+)
+
 from openai import OpenAI
 from io import BytesIO
 from PIL import Image
@@ -3391,6 +3408,382 @@ function esperarYDescargarPresentacion(jobId, btn, estado){
   </div>
 </div>
    
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- 📚  MODAL PROFESOR DE INGLÉS  v2                        -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div id="modalIngles" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,8,20,0.95);overflow-y:auto;padding:10px;box-sizing:border-box;">
+  <div style="background:linear-gradient(160deg,#001a0d,#002a1a,#001a2e);border:1.5px solid #00cc6644;border-radius:20px;box-shadow:0 0 50px #00cc6622;width:100%;max-width:840px;margin:0 auto;padding:22px;box-sizing:border-box;">
+
+    <!-- HEADER -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+      <div>
+        <span style="color:#00ff88;font-size:20px;font-weight:800;text-shadow:0 0 12px #00ff8888;">📚 Profesor de Inglés</span>
+        <span id="inglesNivelBadge" style="margin-left:12px;background:#003d1a;border:1px solid #00cc66;color:#00ff88;border-radius:20px;padding:3px 12px;font-size:12px;font-weight:700;">A1</span>
+      </div>
+      <button onclick="cerrarIngles()" style="background:transparent;border:1px solid #ff444466;color:#ff6666;border-radius:8px;padding:6px 16px;cursor:pointer;">✕ Cerrar</button>
+    </div>
+
+    <!-- TABS -->
+    <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;">
+      <button class="ingles-tab active" onclick="inglesSetTab('conversacion')" id="tab-conversacion">💬 Conversación</button>
+      <button class="ingles-tab" onclick="inglesSetTab('leccion')" id="tab-leccion">🎓 Lección</button>
+      <button class="ingles-tab" onclick="inglesSetTab('escenario')" id="tab-escenario">🌍 Escenario real</button>
+      <button class="ingles-tab" onclick="inglesSetTab('examen')" id="tab-examen">📝 Examen</button>
+      <button class="ingles-tab" onclick="inglesSetTab('diccionario')" id="tab-diccionario">📖 Diccionario</button>
+      <button class="ingles-tab" onclick="inglesSetTab('progreso')" id="tab-progreso">📊 Mi progreso</button>
+    </div>
+
+    <!-- ── CONVERSACIÓN ── -->
+    <div id="panel-conversacion" class="ingles-panel">
+      <div style="margin-bottom:10px;color:#00cc66;font-size:13px;">Hablá con tu profesor en inglés. Corrige tus errores y explica en español. 🇬🇧</div>
+      <div id="inglesChat" style="background:#000d06;border:1px solid #00441a;border-radius:12px;padding:14px;height:320px;overflow-y:auto;margin-bottom:12px;display:flex;flex-direction:column;gap:10px;"></div>
+      <div style="display:flex;gap:8px;align-items:flex-end;">
+        <textarea id="inglesInput" placeholder="Write in English..." style="flex:1;background:#001a0d;color:#e6ffe6;border:1px solid #00cc6644;border-radius:10px;padding:10px 12px;font-size:14px;resize:none;height:52px;outline:none;font-family:'Segoe UI',sans-serif;" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();inglesEnviar();}"></textarea>
+        <button onclick="inglesEnviar()" style="background:linear-gradient(135deg,#003d1a,#006633);color:#00ff88;border:1px solid #00cc66;border-radius:10px;padding:12px 18px;cursor:pointer;font-size:18px;">➤</button>
+        <button onclick="inglesHablar('inglesInput','inglesEnviar')" id="inglesVozBtn" title="Hablar en inglés" style="background:#001a0d;color:#00cc66;border:1px solid #00cc6644;border-radius:10px;padding:12px 14px;cursor:pointer;font-size:18px;">🎤</button>
+        <button onclick="inglesLeerRespuesta('inglesChat')" title="Escuchar última respuesta del profesor" style="background:#001a0d;color:#00cc66;border:1px solid #00cc6644;border-radius:10px;padding:12px 14px;cursor:pointer;font-size:16px;">🔊</button>
+      </div>
+      <div style="margin-top:6px;display:flex;gap:10px;justify-content:space-between;align-items:center;">
+        <button onclick="inglesLimpiarChat('conversacion','inglesChat')" style="background:transparent;border:none;color:#006633;font-size:12px;cursor:pointer;text-decoration:underline;">🗑️ Nueva conversación</button>
+        <span style="color:#00cc6666;font-size:11px;">El historial se mantiene hasta que lo reiniciés</span>
+      </div>
+    </div>
+
+    <!-- ── LECCIÓN ── -->
+    <div id="panel-leccion" class="ingles-panel" style="display:none;">
+      <div style="margin-bottom:10px;color:#00cc66;font-size:13px;">Clases estructuradas con ejercicios y evaluación. 🎓</div>
+      <div id="inglesLeccionChat" style="background:#000d06;border:1px solid #00441a;border-radius:12px;padding:14px;height:300px;overflow-y:auto;margin-bottom:12px;display:flex;flex-direction:column;gap:10px;"></div>
+      <div style="display:flex;gap:8px;align-items:flex-end;">
+        <textarea id="inglesLeccionInput" placeholder="Respondé los ejercicios..." style="flex:1;background:#001a0d;color:#e6ffe6;border:1px solid #00cc6644;border-radius:10px;padding:10px 12px;font-size:14px;resize:none;height:52px;outline:none;font-family:'Segoe UI',sans-serif;" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();inglesEnviarLeccion();}"></textarea>
+        <button onclick="inglesEnviarLeccion()" style="background:linear-gradient(135deg,#003d1a,#006633);color:#00ff88;border:1px solid #00cc66;border-radius:10px;padding:12px 18px;cursor:pointer;font-size:18px;">➤</button>
+        <button onclick="inglesHablar('inglesLeccionInput','inglesEnviarLeccion')" title="Hablar" style="background:#001a0d;color:#00cc66;border:1px solid #00cc6644;border-radius:10px;padding:12px 14px;cursor:pointer;font-size:18px;">🎤</button>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+        <button onclick="inglesNuevaLeccion()" style="background:#002a1a;border:1px solid #00cc6644;color:#00ff88;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;">🎓 Nueva lección</button>
+        <button onclick="inglesCompletarLeccion()" style="background:#003d1a;border:1px solid #00cc66;color:#00ff88;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;">✅ Completar (+50 pts)</button>
+        <button onclick="inglesLeerRespuesta('inglesLeccionChat')" style="background:#001a0d;border:1px solid #00cc6644;color:#00cc66;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px;">🔊 Escuchar</button>
+      </div>
+    </div>
+
+    <!-- ── ESCENARIO ── -->
+    <div id="panel-escenario" class="ingles-panel" style="display:none;">
+      <div style="margin-bottom:10px;color:#00cc66;font-size:13px;">Simulá situaciones reales en inglés. El profesor interpreta el rol y corrige. 🌍</div>
+      <div id="escenarioSelector" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:14px;"></div>
+      <div id="escenarioChat" style="display:none;">
+        <div id="escenarioChatNombre" style="color:#00ff88;font-weight:700;margin-bottom:8px;font-size:14px;"></div>
+        <div id="inglesEscenarioMessages" style="background:#000d06;border:1px solid #00441a;border-radius:12px;padding:14px;height:280px;overflow-y:auto;margin-bottom:12px;display:flex;flex-direction:column;gap:10px;"></div>
+        <div style="display:flex;gap:8px;align-items:flex-end;">
+          <textarea id="inglesEscenarioInput" placeholder="Respond in English..." style="flex:1;background:#001a0d;color:#e6ffe6;border:1px solid #00cc6644;border-radius:10px;padding:10px 12px;font-size:14px;resize:none;height:52px;outline:none;font-family:'Segoe UI',sans-serif;" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();inglesEnviarEscenario();}"></textarea>
+          <button onclick="inglesEnviarEscenario()" style="background:linear-gradient(135deg,#003d1a,#006633);color:#00ff88;border:1px solid #00cc66;border-radius:10px;padding:12px 18px;cursor:pointer;font-size:18px;">➤</button>
+          <button onclick="inglesHablar('inglesEscenarioInput','inglesEnviarEscenario')" title="Hablar en inglés" style="background:#001a0d;color:#00cc66;border:1px solid #00cc6644;border-radius:10px;padding:12px 14px;cursor:pointer;font-size:18px;">🎤</button>
+          <button onclick="inglesLeerRespuesta('inglesEscenarioMessages')" title="Escuchar" style="background:#001a0d;color:#00cc66;border:1px solid #00cc6644;border-radius:10px;padding:12px 14px;cursor:pointer;font-size:16px;">🔊</button>
+        </div>
+        <button onclick="volverEscenarios()" style="margin-top:10px;background:transparent;border:none;color:#00cc66;font-size:13px;cursor:pointer;text-decoration:underline;">← Elegir otro escenario</button>
+      </div>
+    </div>
+
+    <!-- ── EXAMEN ── -->
+    <div id="panel-examen" class="ingles-panel" style="display:none;">
+      <div style="margin-bottom:12px;color:#00cc66;font-size:13px;">Evaluá tu nivel con un examen de 5 preguntas. Puntaje máximo: 100 pts. 📝</div>
+      <div id="inglesExamenChat" style="background:#000d06;border:1px solid #00441a;border-radius:12px;padding:14px;height:320px;overflow-y:auto;margin-bottom:12px;display:flex;flex-direction:column;gap:10px;"></div>
+      <div style="display:flex;gap:8px;align-items:flex-end;">
+        <textarea id="inglesExamenInput" placeholder="Respondé las preguntas..." style="flex:1;background:#001a0d;color:#e6ffe6;border:1px solid #00cc6644;border-radius:10px;padding:10px 12px;font-size:14px;resize:none;height:52px;outline:none;font-family:'Segoe UI',sans-serif;" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();inglesEnviarExamen();}"></textarea>
+        <button onclick="inglesEnviarExamen()" style="background:linear-gradient(135deg,#003d1a,#006633);color:#00ff88;border:1px solid #00cc66;border-radius:10px;padding:12px 18px;cursor:pointer;font-size:18px;">➤</button>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:8px;">
+        <button onclick="inglesIniciarExamen()" style="background:#003d1a;border:1px solid #00cc66;color:#00ff88;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;">📝 Nuevo examen</button>
+        <button onclick="inglesLimpiarChat('examen','inglesExamenChat')" style="background:transparent;border:none;color:#006633;font-size:12px;cursor:pointer;text-decoration:underline;">🗑️ Borrar</button>
+      </div>
+    </div>
+
+    <!-- ── DICCIONARIO ── -->
+    <div id="panel-diccionario" class="ingles-panel" style="display:none;">
+      <div style="margin-bottom:12px;color:#00cc66;font-size:13px;">Buscá cualquier palabra o expresión en inglés. Incluye pronunciación, ejemplos y errores comunes. 📖</div>
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
+        <input id="inglesDiccionarioInput" type="text" placeholder="Ej: nevertheless, get away with, put off..." style="flex:1;background:#001a0d;color:#e6ffe6;border:1px solid #00cc6644;border-radius:10px;padding:10px 14px;font-size:14px;outline:none;font-family:'Segoe UI',sans-serif;" onkeydown="if(event.key==='Enter') inglesConsultarDiccionario();">
+        <button onclick="inglesConsultarDiccionario()" style="background:linear-gradient(135deg,#003d1a,#006633);color:#00ff88;border:1px solid #00cc66;border-radius:10px;padding:10px 18px;cursor:pointer;font-size:16px;">🔍</button>
+      </div>
+      <div id="inglesDiccionarioResult" style="background:#000d06;border:1px solid #00441a;border-radius:12px;padding:16px;min-height:120px;color:#e6ffe6;font-size:14px;line-height:1.8;white-space:pre-wrap;">Buscá una palabra para ver su definición completa...</div>
+      <div style="margin-top:10px;">
+        <button onclick="inglesLeerTexto(document.getElementById('inglesDiccionarioResult').textContent,'en')" style="background:transparent;border:none;color:#00cc66;font-size:12px;cursor:pointer;text-decoration:underline;">🔊 Escuchar</button>
+      </div>
+    </div>
+
+    <!-- ── PROGRESO ── -->
+    <div id="panel-progreso" class="ingles-panel" style="display:none;">
+      <div id="inglesStats" style="background:#000d06;border:1px solid #00441a;border-radius:14px;padding:18px;margin-bottom:14px;font-size:14px;line-height:1.9;white-space:pre-wrap;color:#e6ffe6;">Cargando...</div>
+      <div style="background:#001a0d;border:1px solid #00cc6622;border-radius:12px;padding:14px;margin-bottom:12px;">
+        <div style="color:#00ff88;font-weight:700;margin-bottom:10px;">🎯 Tu nivel CEFR — Hacé clic para cambiar</div>
+        <div id="nivelesGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;"></div>
+      </div>
+      <div style="background:#001a0d;border:1px solid #00cc6622;border-radius:12px;padding:14px;">
+        <div style="color:#00ff88;font-weight:700;margin-bottom:8px;">🏆 Logros desbloqueados</div>
+        <div id="inglesLogros" style="color:#00aa55;font-size:13px;line-height:1.9;">Cargando...</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<style>
+.ingles-tab{background:#001a0d;border:1px solid #00cc6644;color:#00aa55;border-radius:8px;padding:7px 16px;cursor:pointer;font-size:13px;font-weight:600;transition:all .2s;}
+.ingles-tab.active,.ingles-tab:hover{background:#003d1a;border-color:#00cc66;color:#00ff88;}
+.ingles-burbuja-user{align-self:flex-end;background:#003d1a;border:1px solid #00cc6633;color:#e6ffe6;border-radius:14px 14px 4px 14px;padding:9px 14px;max-width:85%;font-size:13px;line-height:1.5;word-break:break-word;}
+.ingles-burbuja-ai{align-self:flex-start;background:#001a0d;border:1px solid #00441a;color:#e6ffe6;border-radius:4px 14px 14px 14px;padding:9px 14px;max-width:90%;font-size:13px;line-height:1.7;word-break:break-word;white-space:pre-wrap;}
+.ingles-burbuja-ai .correccion-ok{color:#00ff88;font-weight:700;}
+.ingles-burbuja-ai .correccion-exp{color:#ffdd88;}
+.ingles-burbuja-ai .nueva-palabra{color:#88ccff;border-top:1px solid #00441a;margin-top:8px;padding-top:6px;}
+</style>
+
+<script>
+// ══════════════════════════════════════════════
+//  📚 PROFESOR DE INGLÉS — JS v2
+// ══════════════════════════════════════════════
+let inglesTabActual = "conversacion";
+let inglesEscenarioActual = "";
+let inglesPerfil = null;
+let inglesAudioActual = null;  // TTS en inglés
+
+function inglesSetTab(tab) {
+  inglesTabActual = tab;
+  document.querySelectorAll(".ingles-tab").forEach(b => b.classList.remove("active"));
+  document.querySelectorAll(".ingles-panel").forEach(p => p.style.display = "none");
+  document.getElementById("tab-" + tab).classList.add("active");
+  document.getElementById("panel-" + tab).style.display = "block";
+  if (tab === "progreso") inglesCargarProgreso();
+  if (tab === "escenario") inglesRenderEscenarios();
+  if (tab === "examen" && document.getElementById("inglesExamenChat").children.length === 0) {
+    inglesMsg("inglesExamenChat", "Tocá '📝 Nuevo examen' para comenzar una evaluación de tu nivel actual.", "ai");
+  }
+}
+
+async function inglesCargarPerfil() {
+  const r = await fetch("/ingles/perfil");
+  const d = await r.json();
+  inglesPerfil = d;
+  document.getElementById("inglesNivelBadge").textContent =
+    d.perfil.nivel + " — " + (d.niveles[d.perfil.nivel]?.nombre || "");
+}
+
+// ── TTS en inglés ──────────────────────────────
+function inglesLeerTexto(texto, lang = "en") {
+  if (inglesAudioActual) { inglesAudioActual.pause(); inglesAudioActual = null; }
+  const limpio = texto
+    .replace(/[^\x00-\x7F\s.,!?;:'"()-]/g, "")
+    .replace(/✅|💡|📖|🔊|🎤|📝|🏆|⭐/g, "")
+    .replace(/\*\*/g, "")
+    .trim()
+    .slice(0, 500);
+  const url = "/tts_ingles?texto=" + encodeURIComponent(limpio) + "&lang=" + lang;
+  inglesAudioActual = new Audio(url);
+  inglesAudioActual.play().catch(() => {});
+}
+
+function inglesLeerRespuesta(chatId) {
+  const chat = document.getElementById(chatId);
+  const burbujas = chat.querySelectorAll(".ingles-burbuja-ai");
+  if (!burbujas.length) return;
+  const ultima = burbujas[burbujas.length - 1];
+  let texto = ultima.textContent || "";
+  const corteFeedback = texto.indexOf("✅");
+  if (corteFeedback > 10) texto = texto.slice(0, corteFeedback);
+  const corteNuevaPalabra = texto.indexOf("📖");
+  if (corteNuevaPalabra > 10) texto = texto.slice(0, corteNuevaPalabra);
+  inglesLeerTexto(texto.trim(), "en");
+}
+
+// ── Reconocimiento de voz genérico ─────────────
+function inglesHablar(inputId, callbackFn) {
+  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Rec) { alert("Tu navegador no soporta reconocimiento de voz."); return; }
+  const rec = new Rec();
+  rec.lang = "en-US"; rec.interimResults = false;
+  const btn = document.getElementById("inglesVozBtn");
+  if (btn) btn.textContent = "🔴";
+  rec.start();
+  rec.onresult = e => {
+    const transcripto = e.results[0][0].transcript;
+    document.getElementById(inputId).value = transcripto;
+    if (btn) btn.textContent = "🎤";
+    if (callbackFn === "inglesEnviar") inglesEnviar();
+    else if (callbackFn === "inglesEnviarLeccion") inglesEnviarLeccion();
+    else if (callbackFn === "inglesEnviarEscenario") inglesEnviarEscenario();
+    else if (callbackFn === "inglesEnviarExamen") inglesEnviarExamen();
+  };
+  rec.onerror = rec.onend = () => { if (btn) btn.textContent = "🎤"; };
+}
+
+// ── Limpiar historial de un chat ───────────────
+async function inglesLimpiarChat(subModo, chatId) {
+  document.getElementById(chatId).innerHTML = "";
+  await fetch("/ingles/chat", {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({mensaje: "__limpiar__", sub_modo: subModo, limpiar_historial: true})
+  });
+  inglesMsg(chatId, "Chat reiniciado. ¡Empecemos! 🎓", "ai");
+}
+
+// ── Conversación ───────────────────────────────
+async function inglesEnviar() {
+  const input = document.getElementById("inglesInput");
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = "";
+  inglesMsg("inglesChat", msg, "user");
+  const load = inglesMsg("inglesChat", "✍️ Thinking...", "ai");
+  const r = await fetch("/ingles/chat", {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({mensaje: msg, sub_modo: "conversacion"})
+  });
+  const d = await r.json();
+  load.remove();
+  inglesMsg("inglesChat", d.texto, "ai");
+}
+
+// ── Lección ────────────────────────────────────
+function inglesNuevaLeccion() {
+  document.getElementById("inglesLeccionChat").innerHTML = "";
+  inglesMsg("inglesLeccionChat", "Hello! I'm your English teacher. Let's start a new lesson.\nEscribí 'start' para comenzar, o pedime un tema específico. 🎓", "ai");
+}
+
+async function inglesEnviarLeccion() {
+  const input = document.getElementById("inglesLeccionInput");
+  const msg = input.value.trim(); if (!msg) return; input.value = "";
+  inglesMsg("inglesLeccionChat", msg, "user");
+  const load = inglesMsg("inglesLeccionChat", "✍️ Preparando lección...", "ai");
+  const r = await fetch("/ingles/chat", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({mensaje:msg, sub_modo:"leccion"}) });
+  const d = await r.json(); load.remove();
+  inglesMsg("inglesLeccionChat", d.texto, "ai");
+}
+
+async function inglesCompletarLeccion() {
+  const r = await fetch("/ingles/leccion_completada", {method:"POST"});
+  const d = await r.json();
+  if (d.ok) {
+    inglesMsg("inglesLeccionChat", "🏆 ¡Lección completada! +50 pts y 10 palabras.\n\n" + d.resumen, "ai");
+    inglesCargarPerfil();
+  }
+}
+
+// ── Escenarios ─────────────────────────────────
+function inglesRenderEscenarios() {
+  if (!inglesPerfil) { inglesCargarPerfil().then(inglesRenderEscenarios); return; }
+  const grid = document.getElementById("escenarioSelector");
+  grid.innerHTML = "";
+  Object.entries(inglesPerfil.escenarios || {}).forEach(([key, esc]) => {
+    const btn = document.createElement("button");
+    btn.style.cssText = "background:#001a0d;border:1px solid #00cc6633;border-radius:12px;padding:14px 10px;cursor:pointer;color:#00ff88;font-size:13px;font-weight:600;text-align:center;transition:all .2s;width:100%;";
+    btn.innerHTML = `<div style="font-size:26px;margin-bottom:6px;">${esc.emoji}</div>${esc.nombre}`;
+    btn.onmouseover = () => btn.style.borderColor = "#00cc66";
+    btn.onmouseout  = () => btn.style.borderColor = "#00cc6633";
+    btn.onclick = () => inglesIniciarEscenario(key, esc);
+    grid.appendChild(btn);
+  });
+}
+
+async function inglesIniciarEscenario(key, esc) {
+  inglesEscenarioActual = key;
+  document.getElementById("escenarioSelector").style.display = "none";
+  document.getElementById("escenarioChat").style.display = "block";
+  document.getElementById("escenarioChatNombre").textContent = esc.emoji + " " + esc.nombre;
+  document.getElementById("inglesEscenarioMessages").innerHTML = "";
+  const load = inglesMsg("inglesEscenarioMessages", "✍️ Iniciando escenario...", "ai");
+  const r = await fetch("/ingles/chat", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({mensaje:"__inicio__", sub_modo:"escenario", escenario:key, limpiar_historial:true}) });
+  const d = await r.json(); load.remove();
+  inglesMsg("inglesEscenarioMessages", d.texto, "ai");
+}
+
+async function inglesEnviarEscenario() {
+  const input = document.getElementById("inglesEscenarioInput");
+  const msg = input.value.trim(); if (!msg) return; input.value = "";
+  inglesMsg("inglesEscenarioMessages", msg, "user");
+  const load = inglesMsg("inglesEscenarioMessages", "✍️ Responding...", "ai");
+  const r = await fetch("/ingles/chat", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({mensaje:msg, sub_modo:"escenario", escenario:inglesEscenarioActual}) });
+  const d = await r.json(); load.remove();
+  inglesMsg("inglesEscenarioMessages", d.texto, "ai");
+}
+
+function volverEscenarios() {
+  inglesEscenarioActual = "";
+  document.getElementById("escenarioSelector").style.display = "grid";
+  document.getElementById("escenarioChat").style.display = "none";
+}
+
+// ── Examen ─────────────────────────────────────
+async function inglesIniciarExamen() {
+  document.getElementById("inglesExamenChat").innerHTML = "";
+  const load = inglesMsg("inglesExamenChat", "📝 Preparando tu examen de nivel actual...", "ai");
+  const r = await fetch("/ingles/chat", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({mensaje:"__inicio_examen__", sub_modo:"examen", limpiar_historial:true})
+  });
+  const d = await r.json(); load.remove();
+  inglesMsg("inglesExamenChat", d.texto, "ai");
+}
+
+async function inglesEnviarExamen() {
+  const input = document.getElementById("inglesExamenInput");
+  const msg = input.value.trim(); if (!msg) return; input.value = "";
+  inglesMsg("inglesExamenChat", msg, "user");
+  const load = inglesMsg("inglesExamenChat", "✍️ Evaluando tus respuestas...", "ai");
+  const r = await fetch("/ingles/chat", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({mensaje:msg, sub_modo:"examen"}) });
+  const d = await r.json(); load.remove();
+  inglesMsg("inglesExamenChat", d.texto, "ai");
+  if (d.texto.includes("PUNTAJE FINAL")) inglesCargarPerfil();
+}
+
+// ── Diccionario ────────────────────────────────
+async function inglesConsultarDiccionario() {
+  const input = document.getElementById("inglesDiccionarioInput");
+  const palabra = input.value.trim(); if (!palabra) return;
+  const result = document.getElementById("inglesDiccionarioResult");
+  result.textContent = "🔍 Buscando...";
+  const r = await fetch("/ingles/diccionario", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({palabra})
+  });
+  const d = await r.json();
+  result.textContent = d.texto;
+}
+
+// ── Progreso ───────────────────────────────────
+async function inglesCargarProgreso() {
+  const r = await fetch("/ingles/perfil");
+  const d = await r.json(); inglesPerfil = d;
+  document.getElementById("inglesStats").textContent = d.resumen;
+  const grid = document.getElementById("nivelesGrid"); grid.innerHTML = "";
+  Object.entries(d.niveles).forEach(([cod, info]) => {
+    const btn = document.createElement("button");
+    const activo = cod === d.perfil.nivel;
+    btn.style.cssText = `background:${activo?"#003d1a":"#001a0d"};border:1px solid ${activo?"#00cc66":"#00441a"};border-radius:8px;padding:10px 6px;cursor:pointer;color:${activo?"#00ff88":"#00aa55"};font-size:12px;font-weight:${activo?"800":"600"};text-align:center;`;
+    btn.innerHTML = `${info.emoji}<br><b>${cod}</b><br><span style="font-size:10px;opacity:.8">${info.nombre}</span>`;
+    btn.onclick = () => inglesSetNivel(cod);
+    grid.appendChild(btn);
+  });
+  const logros = d.perfil.logros || [];
+  document.getElementById("inglesLogros").innerHTML = logros.length
+    ? logros.map(l => `<div>✅ ${l}</div>`).join("")
+    : "Todavía no desbloqueaste logros. ¡Empezá a estudiar! 💪";
+}
+
+async function inglesSetNivel(nivel) {
+  const r = await fetch("/ingles/cambiar_nivel", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({nivel}) });
+  const d = await r.json();
+  if (d.ok) { document.getElementById("inglesNivelBadge").textContent = d.nivel + " — " + d.nombre; inglesCargarProgreso(); }
+}
+
+// ── Utilidad ───────────────────────────────────
+function inglesMsg(chatId, texto, tipo) {
+  const chat = document.getElementById(chatId);
+  const div = document.createElement("div");
+  div.className = tipo === "user" ? "ingles-burbuja-user" : "ingles-burbuja-ai";
+  div.textContent = texto;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+  return div;
+}
+</script>
+
 </body>
 </html>
 
@@ -3648,6 +4041,22 @@ def tts():
     texto = request.args.get("texto","")
     try:
         tts_obj = gTTS(text=texto, lang="es", slow=False, tld="com.mx")
+        archivo = io.BytesIO()
+        tts_obj.write_to_fp(archivo)
+        archivo.seek(0)
+        return send_file(archivo, mimetype="audio/mpeg")
+    except Exception as e:
+        return f"Error TTS: {e}", 500
+
+@app.route("/tts_ingles")
+def tts_ingles():
+    """TTS bilingüe: inglés (en) o español (es)."""
+    texto = request.args.get("texto", "")
+    lang  = request.args.get("lang", "en")
+    if lang not in ("en", "es"):
+        lang = "en"
+    try:
+        tts_obj = gTTS(text=texto, lang=lang, slow=False)
         archivo = io.BytesIO()
         tts_obj.write_to_fp(archivo)
         archivo.seek(0)
@@ -4491,6 +4900,118 @@ def descargar_presentacion(job_id):
         mimetype="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         download_name="presentacion_foschi.pptx"
     )
+
+
+# ---------------- PROFESOR DE INGLÉS ----------------
+# Almacena historial de conversación inglés en memoria por sesión
+# Formato: { "usuario_submodo_key": [ {role, content}, ... ] }
+_INGLES_HISTORIAL = {}
+
+@app.route("/ingles/chat", methods=["POST"])
+def ingles_chat():
+    data = request.get_json()
+    mensaje   = (data.get("mensaje") or "").strip()
+    sub_modo  = data.get("sub_modo", "conversacion")   # conversacion | leccion | escenario | examen
+    escenario = data.get("escenario", "")
+    limpiar   = data.get("limpiar_historial", False)
+
+    if "usuario_id" not in session:
+        session["usuario_id"] = str(uuid.uuid4())
+    usuario = session.get("user_email") or session["usuario_id"]
+
+    perfil = ingles_perfil(usuario)
+    nivel  = perfil.get("nivel", "A1")
+    ingles_racha(usuario)
+
+    # Clave única por usuario + modo (para separar contextos)
+    hist_key = f"{usuario}_{sub_modo}_{escenario}"
+    if limpiar or hist_key not in _INGLES_HISTORIAL:
+        _INGLES_HISTORIAL[hist_key] = []
+
+    # Seleccionar prompt del sistema
+    if sub_modo == "leccion":
+        system = prompt_leccion(nivel)
+    elif sub_modo == "escenario" and escenario:
+        system = prompt_escenario(escenario, nivel)
+    elif sub_modo == "examen":
+        system = prompt_examen(nivel)
+    else:
+        system = prompt_conversacion_basica(nivel, perfil)
+
+    # Construir mensajes con historial (máximo últimas 10 rondas = 20 mensajes)
+    historial = _INGLES_HISTORIAL[hist_key][-20:]
+    messages = [{"role": "system", "content": system}] + historial + [{"role": "user", "content": mensaje}]
+
+    try:
+        client_ai = OpenAI(api_key=OPENAI_API_KEY)
+        resp = client_ai.chat.completions.create(
+            model="gpt-4-turbo",
+            messages=messages,
+            temperature=0.65,
+            max_tokens=800,
+        )
+        texto = resp.choices[0].message.content.strip()
+
+        # Guardar en historial
+        _INGLES_HISTORIAL[hist_key].append({"role": "user", "content": mensaje})
+        _INGLES_HISTORIAL[hist_key].append({"role": "assistant", "content": texto})
+        # Limitar historial a 40 mensajes (20 rondas)
+        _INGLES_HISTORIAL[hist_key] = _INGLES_HISTORIAL[hist_key][-40:]
+
+        # Puntos según resultado
+        if "✅ Correcto:" in texto or "✅ Correction:" in texto:
+            ingles_error(usuario, mensaje[:80])
+            ingles_puntos(usuario, 5)
+        else:
+            ingles_puntos(usuario, 10)
+        if "📖" in texto:
+            ingles_puntos(usuario, 0, palabras=1)
+
+        # Detectar puntaje de examen (busca "PUNTAJE FINAL: X/100")
+        import re as _re
+        m = _re.search(r"PUNTAJE FINAL[:\s]+(\d+)/100", texto)
+        if m and sub_modo == "examen":
+            puntaje = int(m.group(1))
+            ingles_registrar_examen(usuario, puntaje)
+
+    except Exception as e:
+        texto = f"Error al conectar con la IA: {e}"
+
+    return jsonify({"texto": texto})
+
+
+@app.route("/ingles/diccionario", methods=["POST"])
+def ingles_diccionario():
+    """Consulta el diccionario de inglés integrado."""
+    data    = request.get_json()
+    palabra = (data.get("palabra") or "").strip()
+    if not palabra:
+        return jsonify({"texto": "Escribí una palabra o expresión para buscar."})
+
+    if "usuario_id" not in session:
+        session["usuario_id"] = str(uuid.uuid4())
+    usuario = session.get("user_email") or session["usuario_id"]
+    perfil  = ingles_perfil(usuario)
+    nivel   = perfil.get("nivel", "A1")
+
+    system = prompt_diccionario(palabra, nivel)
+    try:
+        client_ai = OpenAI(api_key=OPENAI_API_KEY)
+        resp = client_ai.chat.completions.create(
+            model="gpt-4-turbo",
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user",   "content": f"Buscar: {palabra}"},
+            ],
+            temperature=0.3,
+            max_tokens=500,
+        )
+        texto = resp.choices[0].message.content.strip()
+        ingles_puntos(usuario, 0, palabras=1)
+    except Exception as e:
+        texto = f"Error al consultar diccionario: {e}"
+
+    return jsonify({"texto": texto})
 
 
 # ---------------- RUN ----------------

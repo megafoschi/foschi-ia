@@ -1,5 +1,6 @@
 # profesor_ingles.py
 # Módulo del Modo Profesor de Inglés para FOSCHI IA
+# v2 — con examen, diccionario, historial de contexto y prompts mejorados
 
 import json
 import os
@@ -60,6 +61,34 @@ ESCENARIOS = {
         "nombre": "Conversación con amigos",
         "apertura": "Hey! Long time no see! How have you been? What have you been up to lately?",
     },
+    "medico": {
+        "emoji": "🏥",
+        "nombre": "Médico / Doctor",
+        "apertura": "Good morning! I'm Dr. Smith. Please have a seat. What seems to be the problem today?",
+    },
+    "banco": {
+        "emoji": "🏦",
+        "nombre": "Banco",
+        "apertura": "Good afternoon! Welcome to City Bank. How can I assist you today?",
+    },
+    "tienda": {
+        "emoji": "🛍️",
+        "nombre": "Tienda / Shopping",
+        "apertura": "Hi there! Welcome to our store. Are you looking for something specific today, or just browsing?",
+    },
+}
+
+# ──────────────────────────────────────────────
+#  TEMAS POR NIVEL (para lecciones)
+# ──────────────────────────────────────────────
+
+TEMAS_POR_NIVEL = {
+    "A1": ["saludos y presentaciones", "números y colores", "familia y descripción personal", "objetos cotidianos", "días y meses"],
+    "A2": ["tiempo libre y hobbies", "ir de compras", "pedir comida", "el cuerpo humano", "viajes cortos"],
+    "B1": ["trabajo y profesiones", "planes futuros", "experiencias pasadas", "opiniones y preferencias", "el medio ambiente"],
+    "B2": ["debate y argumentación", "noticias y actualidad", "cultura y arte", "tecnología", "economía básica"],
+    "C1": ["lenguaje formal e informal", "expresiones idiomáticas", "presentaciones profesionales", "análisis crítico", "literatura"],
+    "C2": ["lenguaje académico", "negociación avanzada", "humor y sarcasmo", "discurso político", "filosofía"],
 }
 
 # ──────────────────────────────────────────────
@@ -93,8 +122,10 @@ def _perfil_default():
         "ultimo_estudio": None,
         "errores_frecuentes": [],
         "logros": [],
-        "modo_activo": None,    # None | "conversacion" | "leccion" | "escenario"
+        "modo_activo": None,
         "escenario_activo": None,
+        "examenes_completados": 0,
+        "mejor_puntaje_examen": 0,
     }
 
 # ──────────────────────────────────────────────
@@ -106,7 +137,12 @@ def obtener_perfil(usuario):
     if usuario not in data:
         data[usuario] = _perfil_default()
         _save(data)
-    return data[usuario]
+    # Migrar perfiles viejos
+    perfil = data[usuario]
+    for k, v in _perfil_default().items():
+        if k not in perfil:
+            perfil[k] = v
+    return perfil
 
 
 def guardar_perfil(usuario, perfil):
@@ -119,17 +155,14 @@ def actualizar_racha(usuario):
     """Actualiza la racha de días consecutivos de estudio."""
     data = _load()
     perfil = data.get(usuario, _perfil_default())
-
     hoy = str(date.today())
     ultimo = perfil.get("ultimo_estudio")
-
     if ultimo == hoy:
-        pass  # ya estudió hoy
+        pass
     elif ultimo == str(date.fromordinal(date.today().toordinal() - 1)):
         perfil["racha_dias"] = perfil.get("racha_dias", 0) + 1
     else:
-        perfil["racha_dias"] = 1  # racha cortada
-
+        perfil["racha_dias"] = 1
     perfil["ultimo_estudio"] = hoy
     data[usuario] = perfil
     _save(data)
@@ -151,7 +184,7 @@ def registrar_error(usuario, error):
     perfil = data.get(usuario, _perfil_default())
     errores = perfil.get("errores_frecuentes", [])
     errores.append(error)
-    perfil["errores_frecuentes"] = errores[-20:]  # últimos 20
+    perfil["errores_frecuentes"] = errores[-20:]
     data[usuario] = perfil
     _save(data)
 
@@ -162,7 +195,20 @@ def completar_leccion(usuario):
     perfil["lecciones_completadas"] = perfil.get("lecciones_completadas", 0) + 1
     data[usuario] = perfil
     _save(data)
-    _verificar_logros(usuario)
+    return _verificar_logros(usuario)
+
+
+def registrar_examen(usuario, puntaje):
+    """Registra un examen completado y actualiza el mejor puntaje."""
+    data = _load()
+    perfil = data.get(usuario, _perfil_default())
+    perfil["examenes_completados"] = perfil.get("examenes_completados", 0) + 1
+    if puntaje > perfil.get("mejor_puntaje_examen", 0):
+        perfil["mejor_puntaje_examen"] = puntaje
+    perfil["puntaje_total"] = perfil.get("puntaje_total", 0) + puntaje
+    data[usuario] = perfil
+    _save(data)
+    return _verificar_logros(usuario)
 
 
 def _verificar_logros(usuario):
@@ -172,6 +218,8 @@ def _verificar_logros(usuario):
     lecciones = perfil.get("lecciones_completadas", 0)
     racha = perfil.get("racha_dias", 0)
     palabras = perfil.get("palabras_aprendidas", 0)
+    examenes = perfil.get("examenes_completados", 0)
+    mejor_exam = perfil.get("mejor_puntaje_examen", 0)
 
     nuevos = []
     if lecciones >= 1 and "primera_leccion" not in logros:
@@ -188,6 +236,12 @@ def _verificar_logros(usuario):
         logros.add("100_palabras"); nuevos.append("📖 100 palabras aprendidas")
     if palabras >= 500 and "500_palabras" not in logros:
         logros.add("500_palabras"); nuevos.append("📚 500 palabras aprendidas")
+    if examenes >= 1 and "primer_examen" not in logros:
+        logros.add("primer_examen"); nuevos.append("📝 Primer examen completado")
+    if mejor_exam >= 90 and "examen_90" not in logros:
+        logros.add("examen_90"); nuevos.append("⭐ Más de 90 pts en un examen")
+    if mejor_exam >= 100 and "examen_perfecto" not in logros:
+        logros.add("examen_perfecto"); nuevos.append("💯 ¡Examen perfecto!")
 
     perfil["logros"] = list(logros)
     data[usuario] = perfil
@@ -200,7 +254,6 @@ def resumen_progreso(usuario):
     perfil = obtener_perfil(usuario)
     nivel = perfil.get("nivel", "A1")
     info_nivel = NIVELES.get(nivel, NIVELES["A1"])
-
     logros = perfil.get("logros", [])
     racha = perfil.get("racha_dias", 0)
     llama = "🔥" if racha >= 3 else ""
@@ -215,9 +268,15 @@ def resumen_progreso(usuario):
 🎯 Pronunciación: **{perfil.get('pronunciacion_pct', 0)}%**
 {llama} Racha: **{racha} día{'s' if racha != 1 else ''}**
 ⭐ Puntaje total: **{perfil.get('puntaje_total', 0)} pts**
+📋 Exámenes: **{perfil.get('examenes_completados', 0)}** | Mejor: **{perfil.get('mejor_puntaje_examen', 0)} pts**
 🏆 Logros: **{len(logros)}** desbloqueados
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """.strip()
+
+
+def temas_sugeridos(nivel):
+    """Devuelve lista de temas recomendados para el nivel."""
+    return TEMAS_POR_NIVEL.get(nivel, TEMAS_POR_NIVEL["A1"])
 
 
 # ──────────────────────────────────────────────
@@ -225,55 +284,116 @@ def resumen_progreso(usuario):
 # ──────────────────────────────────────────────
 
 def prompt_conversacion_basica(nivel, perfil):
+    errores = ', '.join(perfil.get('errores_frecuentes', [])[-5:]) or 'ninguno registrado aún'
     return f"""
-Sos FOSCHI IA en modo **Profesor de Inglés** (conversación básica).
+Sos FOSCHI IA en modo **Profesor de Inglés** (conversación libre).
 
 Nivel del alumno: {nivel} — {NIVELES.get(nivel, {}).get('nombre', '')}
 
 REGLAS ESTRICTAS:
-1. Respondé SIEMPRE en inglés primero.
+1. Respondé SIEMPRE en inglés primero, siendo natural y fluido.
 2. Si el usuario comete un error gramatical o de vocabulario, mostrá:
    ✅ Correcto: [la versión corregida]
-   💡 Explicación: [por qué en español, de forma clara y breve]
+   💡 Explicación: [por qué, en español, de forma clara y breve]
 3. Continuá la conversación de forma natural después de la corrección.
 4. Adaptá el vocabulario y la complejidad al nivel {nivel}.
 5. Sé amable, alentador y paciente. Nunca hagas sentir mal al alumno.
 6. Si el alumno escribe todo bien, felicitalo brevemente y continuá.
-7. Al final de cada respuesta, si corresponde, enseñá UNA palabra nueva útil para su nivel con su traducción.
+7. Al final de CADA respuesta, enseñá UNA palabra nueva útil para su nivel:
+   📖 New word: **[palabra]** → [traducción] — [ejemplo de uso breve]
+8. Hacé preguntas para mantener la conversación fluida.
 
-Errores frecuentes de este alumno: {', '.join(perfil.get('errores_frecuentes', [])[-5:]) or 'ninguno registrado aún'}.
+Errores frecuentes de este alumno: {errores}.
 """.strip()
 
 
 def prompt_leccion(nivel):
+    temas = ', '.join(temas_sugeridos(nivel)[:3])
     return f"""
 Sos FOSCHI IA en modo **Profesor de Inglés** — dando una clase estructurada nivel {nivel}.
 
-ESTRUCTURA DE LA CLASE:
+ESTRUCTURA DE CADA CLASE:
 1. Empezá con una breve explicación del tema (2-3 oraciones en español + ejemplo en inglés).
-2. Dá 3 ejercicios prácticos (frases para completar o traducir).
-3. Esperá la respuesta del alumno y corregí cada ejercicio.
-4. Al terminar los 3 ejercicios, dá un puntaje del 0 al 100 y un mensaje motivador.
-5. Preguntá si quiere continuar con otro tema o hacer un repaso.
+2. Dá exactamente 3 ejercicios prácticos numerados (frases para completar o traducir).
+3. Esperá la respuesta del alumno y corregí cada ejercicio uno por uno.
+4. Al terminar los 3 ejercicios, dá un puntaje del 0 al 100.
+5. Terminá con un mensaje motivador y preguntá si quiere continuar o hacer repaso.
 
-TONO: Didáctico, claro, motivador. Explicá siempre en español. Los ejemplos y ejercicios en inglés.
+TEMAS RECOMENDADOS para nivel {nivel}: {temas}
+
+Si el usuario escribe "start" o "comenzar" o similar, empezá directamente con una lección.
+Si el usuario responde ejercicios, corregalos con ✅ (correcto) o ❌ (incorrecto) + explicación en español.
+
+TONO: Didáctico, claro, motivador. Explicá en español. Los ejercicios y ejemplos en inglés.
 """.strip()
 
 
 def prompt_escenario(escenario_key, nivel):
     esc = ESCENARIOS.get(escenario_key, {})
+    apertura = esc.get('apertura', '')
     return f"""
 Sos FOSCHI IA en modo **Conversación Real** — simulando el escenario: {esc.get('nombre', escenario_key)}.
 
 INSTRUCCIONES:
-1. Interpretá tu rol de forma natural y realista.
+1. Interpretá tu rol de forma natural y realista en inglés.
 2. Usá vocabulario típico de ese contexto real.
 3. Después de cada respuesta del alumno:
-   - Si hubo errores: mostrá la corrección con ✅ y 💡 explicación en español.
-   - Si estuvo bien: felicitalo brevemente y continuá el escenario.
+   - Si hubo errores: mostrá ✅ Correcto: [versión corregida] y 💡 Explicación: [en español]
+   - Si estuvo bien: felicitalo brevemente (una línea) y continuá el escenario.
 4. Adaptá la dificultad al nivel {nivel} del alumno.
-5. Hacé que la conversación avance de forma realista (no repetís la misma pregunta).
-6. Cuando el escenario llegue a un punto natural de cierre, ofrecé un resumen del desempeño.
+5. Hacé avanzar la conversación de forma realista (no repetís la misma pregunta).
+6. Cuando el escenario llegue a un cierre natural, ofrecé un resumen del desempeño.
+7. Al final de cada turno, enseñá UNA expresión útil típica de este contexto:
+   📖 Useful phrase: **[expresión]** → [traducción]
 
-IMPORTANTE: El alumno es argentino, explicá las correcciones siempre en español.
+Línea de apertura del escenario (si el usuario escribe "__inicio__"): {apertura}
+
+IMPORTANTE: El alumno es argentino. Explicá las correcciones SIEMPRE en español rioplatense.
+""".strip()
+
+
+def prompt_examen(nivel):
+    return f"""
+Sos FOSCHI IA en modo **Examen de Inglés** — nivel {nivel}.
+
+INSTRUCCIONES DEL EXAMEN:
+1. Generá un examen con EXACTAMENTE 5 preguntas variadas apropiadas para nivel {nivel}:
+   - 2 preguntas de gramática (completar o elegir la opción correcta)
+   - 1 pregunta de vocabulario (definir o traducir)
+   - 1 pregunta de comprensión (leer un párrafo corto y responder)
+   - 1 pregunta de producción (escribir 1-2 oraciones sobre un tema dado)
+2. Numerá las preguntas del 1 al 5.
+3. Esperá las respuestas del alumno.
+4. Cuando el alumno responda, evaluá CADA respuesta con:
+   ✅ [pregunta]: Correcto (20 pts) o ❌ [pregunta]: Incorrecto — [explicación en español]
+5. Al final, mostrá:
+   📊 PUNTAJE FINAL: X/100
+   [mensaje motivador según el puntaje]
+
+Si el usuario escribe "empezar examen" o "__inicio_examen__", generá el examen directamente.
+Si el usuario ya respondió preguntas, corregalas y dá el puntaje parcial/final.
+
+TONO: Formal pero amable. Sé justo y explica siempre por qué una respuesta es incorrecta.
+""".strip()
+
+
+def prompt_diccionario(palabra, nivel):
+    return f"""
+Sos FOSCHI IA funcionando como **Diccionario de Inglés**.
+
+El alumno busca la palabra o expresión: "{palabra}"
+Nivel del alumno: {nivel}
+
+Respondé con este formato exacto:
+
+🔤 **{palabra}**
+📖 Significado: [definición clara en español]
+🔊 Pronunciación: /[transcripción fonética aproximada]/
+📝 Categoría: [sustantivo / verbo / adjetivo / expresión / etc.]
+✏️ Ejemplo en inglés: "[oración de ejemplo apropiada para nivel {nivel}]"
+🇦🇷 Traducción del ejemplo: "[traducción al español]"
+🔁 Sinónimos: [2-3 sinónimos o palabras relacionadas]
+⚠️ Errores comunes: [error típico que cometen hablantes de español]
+
+Sé conciso y claro. Si la palabra tiene múltiples significados, mostrá los 2 más comunes.
 """.strip()
