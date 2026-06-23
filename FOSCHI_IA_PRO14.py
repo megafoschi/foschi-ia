@@ -1855,7 +1855,7 @@ document.getElementById("mensaje").addEventListener("keydown",e=>{ if(e.key==="E
 // Saca emojis del texto para que la voz no los lea (ej: "manos en oración", "diamante", "mano saludando")
 function quitarEmojisParaVoz(texto){
   return texto
-    .replace(/[\\u{1F1E6}-\\u{1F1FF}\\u{1F300}-\\u{1FAFF}\\u{2190}-\\u{21FF}\\u{2300}-\\u{27BF}\\u{2B00}-\\u{2BFF}\\u{FE0F}\\u{200D}\\u{20E3}]/gu, "")
+    .replace(/[\u{1F1E6}-\u{1F1FF}\u{1F300}-\u{1FAFF}\u{2190}-\u{21FF}\u{2300}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}\u{20E3}]/gu, "")
     .replace(/\s{2,}/g, " ")
     .trim();
 }
