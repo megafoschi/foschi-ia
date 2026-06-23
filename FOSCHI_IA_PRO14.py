@@ -1852,12 +1852,13 @@ function enviar(){
 
 document.getElementById("mensaje").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); checkDailyLimit(); } });
 
-// Saca emojis del texto para que la voz no los lea (ej: "manos en oración", "diamante", "mano saludando")
+// Saca emojis del texto para que la voz no los lea
 function quitarEmojisParaVoz(texto){
-  return texto
-    .replace(/[\u{1F1E6}-\u{1F1FF}\u{1F300}-\u{1FAFF}\u{2190}-\u{21FF}\u{2300}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}\u{20E3}]/gu, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
+  // Quita caracteres no imprimibles y emojis usando codePoint
+  return Array.from(texto).filter(function(c){
+    var cp = c.codePointAt(0);
+    return cp < 0x2000 || (cp >= 0x2E80 && cp <= 0x9FFF);
+  }).join("").replace(/  +/g, " ").trim();
 }
 
 function hablarTexto(texto, div=null){
