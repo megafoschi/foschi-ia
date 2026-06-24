@@ -662,6 +662,269 @@ def api_lecciones_nivel():
 
 
 # ============================================================
+# CLASE GUIADA PASO A PASO
+# ============================================================
+
+def bienvenida_progreso(usuario: str) -> dict:
+    """
+    Devuelve un mensaje de bienvenida personalizado con resumen de progreso.
+    """
+    prog = _progreso_usuario(usuario)
+    nivel = prog.get("nivel") or "A0"
+    nombre_nivel = next((n["nombre"] for n in NIVELES if n["codigo"] == nivel), nivel)
+    completadas = prog.get("lecciones_completadas", [])
+    examenes = prog.get("examenes_aprobados", [])
+    puntaje = prog.get("puntaje", 0)
+    ultima = prog.get("ultima_actividad") or "primera vez"
+    racha = prog.get("racha", 0)
+
+    # Última lección vista
+    ultima_leccion_id = completadas[-1] if completadas else None
+    ultima_leccion_titulo = "—"
+    if ultima_leccion_id:
+        for lecs in LECCIONES.values():
+            for l in lecs:
+                if l["id"] == ultima_leccion_id:
+                    ultima_leccion_titulo = l["titulo"]
+
+    # Calcular progreso total del nivel
+    total_nivel = len(LECCIONES.get(nivel, []))
+    completadas_nivel = sum(1 for lid in completadas if lid.startswith(nivel + "_"))
+    porcentaje = round((completadas_nivel / total_nivel) * 100) if total_nivel else 0
+
+    nombre_usuario = usuario.split("@")[0].capitalize() if "@" in usuario else usuario.capitalize()
+
+    return {
+        "nombre": nombre_usuario,
+        "nivel": nivel,
+        "nombre_nivel": nombre_nivel,
+        "ultima_leccion": ultima_leccion_titulo,
+        "porcentaje": porcentaje,
+        "puntaje": puntaje,
+        "racha": racha,
+        "ultima_actividad": ultima,
+        "lecciones_completadas": len(completadas),
+        "examenes_aprobados": len(examenes),
+    }
+
+
+def clase_guiada_ia(
+    leccion_id: str,
+    nivel: str,
+    modo: str,
+    historial_clase: list,
+    respuesta_alumno: str | None = None
+) -> dict:
+    """
+    Motor de la clase guiada interactiva.
+    - Si respuesta_alumno es None: genera el primer paso de la clase.
+    - Si hay respuesta: evalúa y continúa con el siguiente paso.
+    Devuelve: {mensaje, tipo, paso_actual, fin_clase}
+    """
+    titulo = leccion_id
+    for lec in LECCIONES.get(nivel, []):
+        if lec["id"] == leccion_id:
+            titulo = lec["titulo"]
+            break
+
+    es_nino = modo == "ninos"
+    tono = (
+        "Sos un profesor de inglés muy amigable para niños. Usá frases cortas, emojis y mucho aliento."
+        if es_nino else
+        "Sos FOSCHI IA, profesor de inglés profesional. Enseñás paso a paso, corregís errores con amabilidad y motivás al alumno."
+    )
+
+    historial_str = ""
+    for h in historial_clase[-8:]:
+        rol = "Profesor" if h.get("rol") == "profesor" else "Alumno"
+        historial_str += f"{rol}: {h.get('texto', '')}\n"
+
+    if not respuesta_alumno:
+        prompt = f"""
+{tono}
+
+Vas a dar la PRIMERA PARTE de una clase sobre: "{titulo}" (Nivel {nivel}).
+
+Presentate brevemente, explicá el primer concepto con un ejemplo, y terminá pidiendo al alumno que repita o responda algo concreto.
+Sé breve (máximo 5 líneas). Usá emojis. No uses asteriscos ni markdown.
+
+Respondé SOLO con JSON:
+{{"mensaje": "tu mensaje al alumno", "tipo": "presentacion", "paso": 1, "fin": false}}
+"""
+    else:
+        prompt = f"""
+{tono}
+
+Estás dando una clase sobre: "{titulo}" (Nivel {nivel}).
+
+HISTORIAL RECIENTE:
+{historial_str}
+
+El alumno acaba de responder: "{respuesta_alumno}"
+
+Tu tarea:
+1. Evaluá si la respuesta es correcta o tiene errores.
+2. Si tiene errores: mostrá ❌ y la corrección con ✅, explicá por qué brevemente.
+3. Si es correcta: felicitá brevemente.
+4. Avanzá al siguiente concepto O declarás la clase terminada si ya cubriste suficiente.
+
+Sé breve (máximo 6 líneas). Usá emojis. No uses asteriscos ni markdown.
+
+Si la clase terminó, "fin": true. Si sigue, "fin": false.
+
+Respondé SOLO con JSON:
+{{"mensaje": "tu respuesta al alumno", "tipo": "correccion|avance|cierre", "paso": <número>, "fin": true|false}}
+"""
+
+    resultado = _ia_json(prompt, max_tokens=500)
+    if not resultado:
+        return {
+            "mensaje": "Hubo un error. Intentá de nuevo.",
+            "tipo": "error",
+            "paso": 0,
+            "fin": False
+        }
+    return resultado
+
+
+def corregir_frase_libre(frase: str, nivel: str) -> dict:
+    """
+    Corrige una frase libre escrita por el alumno.
+    Devuelve: {correcta: bool, original, correccion, explicacion}
+    """
+    prompt = f"""
+Sos un profesor de inglés. El alumno (nivel {nivel}) escribió esta frase:
+"{frase}"
+
+Analizá si tiene errores gramaticales o de vocabulario en inglés.
+Si está correcta, decilo. Si tiene errores, mostrá la corrección.
+
+Respondé SOLO con JSON:
+{{
+  "correcta": true|false,
+  "original": "{frase}",
+  "correccion": "la frase correcta en inglés (o igual si ya era correcta)",
+  "explicacion": "explicación breve en español de qué estaba mal y por qué"
+}}
+"""
+    resultado = _ia_json(prompt, max_tokens=400)
+    if not resultado:
+        return {
+            "correcta": False,
+            "original": frase,
+            "correccion": frase,
+            "explicacion": "No se pudo analizar la frase."
+        }
+    return resultado
+
+
+def evaluar_pronunciacion_texto(palabra_correcta: str, intento_alumno: str) -> dict:
+    """
+    Simula evaluación de pronunciación comparando la transcripción fonética aproximada.
+    En un sistema real, esto usaría Web Speech API en el cliente.
+    Devuelve: {porcentaje, feedback}
+    """
+    a = palabra_correcta.lower().strip()
+    b = intento_alumno.lower().strip()
+
+    if a == b:
+        pct = 100
+    else:
+        # Distancia de Levenshtein simple
+        def lev(s1, s2):
+            m, n = len(s1), len(s2)
+            dp = list(range(n + 1))
+            for i in range(1, m + 1):
+                prev = dp[:]
+                dp[0] = i
+                for j in range(1, n + 1):
+                    if s1[i-1] == s2[j-1]:
+                        dp[j] = prev[j-1]
+                    else:
+                        dp[j] = 1 + min(prev[j], dp[j-1], prev[j-1])
+            return dp[n]
+        dist = lev(a, b)
+        max_len = max(len(a), len(b))
+        pct = max(0, round((1 - dist / max_len) * 100))
+
+    if pct == 100:
+        feedback = "¡Perfecto! 🎉"
+    elif pct >= 80:
+        feedback = "¡Muy bien! Casi perfecto. 👏"
+    elif pct >= 60:
+        feedback = "Buen intento. Seguí practicando. 💪"
+    elif pct >= 40:
+        feedback = "Vas por buen camino, pero necesitás más práctica. 📚"
+    else:
+        feedback = "Intentá de nuevo. Prestá atención a cada sílaba. 🔄"
+
+    return {"porcentaje": pct, "feedback": feedback, "correcto": palabra_correcta}
+
+
+# ============================================================
+# RUTAS — Clase guiada
+# ============================================================
+
+@profesor_bp.route("/ingles/api/bienvenida", methods=["GET"])
+def api_bienvenida():
+    usuario = session.get("user_email") or session.get("usuario_id", "anonimo")
+    datos = bienvenida_progreso(usuario)
+    return jsonify({"ok": True, "datos": datos})
+
+
+@profesor_bp.route("/ingles/api/clase_guiada", methods=["POST"])
+def api_clase_guiada():
+    """Motor de clase interactiva paso a paso."""
+    data = request.get_json()
+    usuario = session.get("user_email") or session.get("usuario_id", "anonimo")
+    leccion_id = data.get("leccion_id")
+    historial_clase = data.get("historial", [])
+    respuesta_alumno = data.get("respuesta_alumno")  # None en el primer turno
+
+    prog = _progreso_usuario(usuario)
+    nivel = prog.get("nivel") or "A0"
+    modo = prog.get("modo") or "adultos"
+
+    resultado = clase_guiada_ia(leccion_id, nivel, modo, historial_clase, respuesta_alumno)
+
+    # Si termina la clase, marcarla como completada
+    if resultado.get("fin"):
+        completadas = prog.get("lecciones_completadas", [])
+        if leccion_id not in completadas:
+            completadas.append(leccion_id)
+            puntaje = prog.get("puntaje", 0) + 15
+            _actualizar_progreso(usuario, {"lecciones_completadas": completadas, "puntaje": puntaje})
+
+    return jsonify({"ok": True, **resultado})
+
+
+@profesor_bp.route("/ingles/api/corregir", methods=["POST"])
+def api_corregir():
+    """Corrección de frase libre."""
+    data = request.get_json()
+    usuario = session.get("user_email") or session.get("usuario_id", "anonimo")
+    frase = data.get("frase", "").strip()
+    if not frase:
+        return jsonify({"ok": False, "error": "Frase vacía"})
+    prog = _progreso_usuario(usuario)
+    nivel = prog.get("nivel") or "A0"
+    resultado = corregir_frase_libre(frase, nivel)
+    return jsonify({"ok": True, **resultado})
+
+
+@profesor_bp.route("/ingles/api/pronunciacion", methods=["POST"])
+def api_pronunciacion():
+    """Evaluación de pronunciación por texto."""
+    data = request.get_json()
+    palabra = data.get("palabra", "").strip()
+    intento = data.get("intento", "").strip()
+    if not palabra or not intento:
+        return jsonify({"ok": False, "error": "Datos incompletos"})
+    resultado = evaluar_pronunciacion_texto(palabra, intento)
+    return jsonify({"ok": True, **resultado})
+
+
+# ============================================================
 # FUNCIÓN DE INTEGRACIÓN — llamar desde FOSCHI_IA_PRO14.py
 # ============================================================
 
@@ -879,9 +1142,12 @@ body{
   <!-- NAV SECCIONES -->
   <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;" id="navBar">
     <button class="btn" onclick="irA('secInicio')">🏠 Inicio</button>
+    <button class="btn verde" onclick="irA('secClaseGuiada')">🎓 Clase Guiada</button>
     <button class="btn" onclick="irA('secLecciones')">📚 Lecciones</button>
     <button class="btn" onclick="irA('secExamen')">📝 Examen</button>
     <button class="btn" onclick="irA('secConversacion')">💬 Conversar</button>
+    <button class="btn" onclick="irA('secCorrector')">✍️ Corrector</button>
+    <button class="btn" onclick="irA('secPronunciacion')">🎤 Pronunciación</button>
     <button class="btn" onclick="irA('secProgreso')">📈 Progreso</button>
     <button class="btn" onclick="irA('secDiagnostico')">🔍 Diagnóstico</button>
   </div>
@@ -901,9 +1167,111 @@ body{
       </p>
       <div id="resumenInicio" style="margin-top:12px;"></div>
     </div>
+    <!-- BIENVENIDA DINÁMICA tipo Duolingo -->
+    <div class="card" id="cardBienvenida" style="display:none;">
+      <h2>👋 Bienvenido de vuelta, <span id="bienNombre"></span></h2>
+      <div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:10px;">
+        <div style="flex:1;min-width:180px;">
+          <p style="font-size:13px;color:#00eaff88;margin:0 0 4px 0;">Último tema:</p>
+          <p id="bienUltimaLeccion" style="font-size:15px;font-weight:bold;margin:0;"></p>
+        </div>
+        <div style="flex:1;min-width:180px;">
+          <p style="font-size:13px;color:#00eaff88;margin:0 0 4px 0;">Nivel actual:</p>
+          <p id="bienNivel" style="font-size:15px;font-weight:bold;margin:0;color:#ffd700;"></p>
+        </div>
+        <div style="flex:1;min-width:180px;">
+          <p style="font-size:13px;color:#00eaff88;margin:0 0 4px 0;">Progreso del nivel:</p>
+          <div style="background:#002233;border-radius:8px;height:16px;margin-top:4px;overflow:hidden;">
+            <div id="bienBarra" style="height:100%;background:linear-gradient(90deg,#00eaff,#00ff88);border-radius:8px;transition:width 1s;width:0%;"></div>
+          </div>
+          <p id="bienPorcentaje" style="font-size:13px;margin:4px 0 0 0;text-align:right;"></p>
+        </div>
+      </div>
+      <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn verde" onclick="irA('secClaseGuiada')">🎓 Continuar clase guiada</button>
+        <button class="btn" onclick="irA('secLecciones')">📚 Ver lecciones</button>
+      </div>
+    </div>
   </div>
 
-  <!-- DIAGNÓSTICO -->
+  <!-- CLASE GUIADA PASO A PASO -->
+  <div id="secClaseGuiada" class="seccion">
+    <div class="card">
+      <h2>🎓 Clase Guiada Interactiva</h2>
+      <p style="font-size:13px;color:#00eaff88;margin-bottom:12px;">
+        Foschi IA te enseña paso a paso. Elegí una lección y empezá.
+      </p>
+      <!-- Selector de lección -->
+      <div id="claseListaLecciones" style="margin-bottom:14px;"></div>
+      <!-- Chat de clase -->
+      <div id="claseChat" style="background:#001122;border-radius:10px;padding:14px;min-height:200px;max-height:420px;overflow-y:auto;display:none;">
+        <!-- mensajes dinámicos -->
+      </div>
+      <!-- Input de respuesta -->
+      <div id="claseInput" style="display:none;margin-top:10px;display:none;">
+        <input id="claseRespuesta" type="text" placeholder="Tu respuesta..." 
+          style="width:100%;background:#001f2e;border:1px solid #006688;color:#00eaff;padding:10px;border-radius:8px;font-size:14px;"
+          onkeydown="if(event.key==='Enter') enviarClase()">
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn verde" onclick="enviarClase()">Responder ▶</button>
+          <button class="btn rojo" onclick="terminarClase()">✖ Terminar clase</button>
+        </div>
+      </div>
+      <div id="claseFin" style="display:none;margin-top:12px;padding:14px;background:#002a00;border:1px solid #00ff88;border-radius:10px;">
+        <p style="color:#00ff88;font-size:15px;font-weight:bold;">🏆 ¡Clase completada!</p>
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn verde" onclick="irA('secExamen');cargarExamen(claseGuiadaLeccionId)">📝 Rendir examen</button>
+          <button class="btn" onclick="irA('secClaseGuiada')">🔄 Nueva clase</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CORRECTOR DE FRASES -->
+  <div id="secCorrector" class="seccion">
+    <div class="card">
+      <h2>✍️ Corrector Automático de Frases</h2>
+      <p style="font-size:13px;color:#00eaff88;margin-bottom:12px;">
+        Escribí una frase en inglés y Foschi IA la corrige al instante.
+      </p>
+      <input id="inputCorrector" type="text" placeholder="Ej: I have 30 years" 
+        style="width:100%;background:#001f2e;border:1px solid #006688;color:#00eaff;padding:10px;border-radius:8px;font-size:14px;margin-bottom:10px;"
+        onkeydown="if(event.key==='Enter') corregirFrase()">
+      <button class="btn verde" onclick="corregirFrase()">🔍 Corregir</button>
+      <div id="resultadoCorrector" style="margin-top:16px;"></div>
+    </div>
+    <!-- Historial de correcciones -->
+    <div class="card" id="historialCorrector" style="display:none;">
+      <h2>📋 Últimas correcciones</h2>
+      <div id="listaCorrecciones"></div>
+    </div>
+  </div>
+
+  <!-- PRONUNCIACIÓN -->
+  <div id="secPronunciacion" class="seccion">
+    <div class="card">
+      <h2>🎤 Práctica de Pronunciación</h2>
+      <p style="font-size:13px;color:#00eaff88;margin-bottom:12px;">
+        El profesor dice una palabra. Vos la escribís como la escuchás. La IA evalúa tu pronunciación.
+      </p>
+      <!-- Palabra objetivo -->
+      <div id="pronunciacionPalabra" style="font-size:28px;font-weight:bold;color:#ffd700;text-align:center;padding:20px;letter-spacing:4px;">
+        —
+      </div>
+      <p style="text-align:center;font-size:12px;color:#00eaff66;">
+        (En una versión con micrófono, hablarías en voz alta. Por ahora: escribí la palabra tal como la pronunciarías.)
+      </p>
+      <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+        <button class="btn" onclick="nuevaPalabraPronunciacion()">🔄 Nueva palabra</button>
+        <button class="btn" id="btnVerTrad" onclick="verTraduccion()" style="display:none;">👁 Ver traducción</button>
+      </div>
+      <input id="inputPronunciacion" type="text" placeholder="Escribí la palabra como la pronunciás..." 
+        style="width:100%;background:#001f2e;border:1px solid #006688;color:#00eaff;padding:10px;border-radius:8px;font-size:14px;margin-bottom:10px;"
+        onkeydown="if(event.key==='Enter') evaluarPronunciacion()">
+      <button class="btn verde" onclick="evaluarPronunciacion()">✅ Evaluar</button>
+      <div id="resultadoPronunciacion" style="margin-top:16px;"></div>
+    </div>
+  </div>
   <div id="secDiagnostico" class="seccion">
     <div class="card">
       <h2>🔍 Evaluación inicial de nivel</h2>
@@ -1029,6 +1397,7 @@ async function cargarProgreso(){
   actualizarUIProgreso(p);
   if(nivelActual) cargarLeccionesNivel(nivelActual);
   mostrarResumenInicio(p);
+  cargarBienvenida();
 }
 
 function mostrarResumenInicio(p){
@@ -1092,11 +1461,13 @@ function cambiarModo(){
 // ===== SECCIONES =====
 function irA(id){
   document.querySelectorAll(".seccion").forEach(s => s.classList.remove("activa"));
-  document.getElementById(id).classList.add("activa");
+  const target = document.getElementById(id);
+  if(target) target.classList.add("activa");
   if(id === "secProgreso") cargarVistaProgreso();
   if(id === "secDiagnostico") renderDiagnostico();
   if(id === "secLecciones" && nivelActual) cargarLeccionesNivel(nivelActual);
   if(id === "secExamen") cargarLeccionesParaExamen();
+  if(id === "secClaseGuiada") cargarLeccionesClaseGuiada();
 }
 
 // ===== DIAGNÓSTICO =====
@@ -1372,6 +1743,225 @@ function verCertificado(texto){
   document.getElementById("bloqueCertificado").style.display = "block";
   document.getElementById("certTexto").textContent = texto;
 }
+
+// ===== BIENVENIDA DINÁMICA =====
+async function cargarBienvenida(){
+  try {
+    const r = await fetch("/ingles/api/bienvenida");
+    const d = await r.json();
+    if(!d.ok) return;
+    const dat = d.datos;
+    document.getElementById("bienNombre").textContent = dat.nombre;
+    document.getElementById("bienNivel").textContent = dat.nivel + " — " + dat.nombre_nivel;
+    document.getElementById("bienUltimaLeccion").textContent = dat.ultima_leccion;
+    document.getElementById("bienPorcentaje").textContent = dat.porcentaje + "%";
+    setTimeout(() => {
+      document.getElementById("bienBarra").style.width = dat.porcentaje + "%";
+    }, 200);
+    if(dat.lecciones_completadas > 0){
+      document.getElementById("cardBienvenida").style.display = "block";
+    }
+  } catch(e){}
+}
+
+// ===== CLASE GUIADA =====
+let claseGuiadaLeccionId = null;
+let claseHistorial = [];
+let claseActiva = false;
+
+async function cargarLeccionesClaseGuiada(){
+  if(!nivelActual) return;
+  const r = await fetch(`/ingles/api/lecciones_nivel?nivel=${nivelActual}`);
+  const d = await r.json();
+  if(!d.ok) return;
+  const div = document.getElementById("claseListaLecciones");
+  div.innerHTML = '<p style="font-size:13px;color:#00eaff88;margin-bottom:8px;">Elegí una lección para empezar la clase guiada:</p>';
+  d.lecciones.forEach(l => {
+    const badge = l.completada ? "✅" : "📖";
+    div.innerHTML += `<button class="btn" onclick="iniciarClaseGuiada('${l.id}','${l.titulo.replace(/'/g,"\\'")}')">${badge} ${l.titulo}</button> `;
+  });
+}
+
+async function iniciarClaseGuiada(leccionId, titulo){
+  claseGuiadaLeccionId = leccionId;
+  claseHistorial = [];
+  claseActiva = true;
+
+  const chat = document.getElementById("claseChat");
+  chat.style.display = "block";
+  chat.innerHTML = `<div class="msg-ai">⏳ Iniciando clase: <strong>${titulo}</strong>...</div>`;
+  document.getElementById("claseInput").style.display = "flex";
+  document.getElementById("claseInput").style.flexDirection = "column";
+  document.getElementById("claseFin").style.display = "none";
+  document.getElementById("claseListaLecciones").style.display = "none";
+
+  const r = await fetch("/ingles/api/clase_guiada",{
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({leccion_id:leccionId, historial:[], respuesta_alumno:null})
+  });
+  const d = await r.json();
+  if(d.ok){
+    chat.innerHTML = `<div class="msg-ai">🎓 ${d.mensaje.replace(/\\n/g,"<br>")}</div>`;
+    claseHistorial.push({rol:"profesor", texto:d.mensaje});
+    if(d.fin) terminarClase();
+  }
+  chat.scrollTop = chat.scrollHeight;
+}
+
+async function enviarClase(){
+  if(!claseActiva || !claseGuiadaLeccionId) return;
+  const inp = document.getElementById("claseRespuesta");
+  const respuesta = inp.value.trim();
+  if(!respuesta) return;
+  inp.value = "";
+
+  const chat = document.getElementById("claseChat");
+  chat.innerHTML += `<div class="msg-user">👤 ${respuesta}</div>`;
+  chat.innerHTML += `<div class="msg-ai" id="claseEspera">⏳ Foschi IA evaluando...</div>`;
+  chat.scrollTop = chat.scrollHeight;
+
+  claseHistorial.push({rol:"alumno", texto:respuesta});
+
+  const r = await fetch("/ingles/api/clase_guiada",{
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({leccion_id:claseGuiadaLeccionId, historial:claseHistorial, respuesta_alumno:respuesta})
+  });
+  const d = await r.json();
+
+  const espera = document.getElementById("claseEspera");
+  if(espera) espera.remove();
+
+  if(d.ok){
+    chat.innerHTML += `<div class="msg-ai">🎓 ${d.mensaje.replace(/\\n/g,"<br>")}</div>`;
+    claseHistorial.push({rol:"profesor", texto:d.mensaje});
+    if(d.fin){
+      terminarClase();
+    }
+  }
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function terminarClase(){
+  claseActiva = false;
+  document.getElementById("claseInput").style.display = "none";
+  document.getElementById("claseFin").style.display = "block";
+}
+
+// ===== CORRECTOR DE FRASES =====
+let historialCorrecciones = [];
+
+async function corregirFrase(){
+  const frase = document.getElementById("inputCorrector").value.trim();
+  if(!frase) return;
+
+  const res = document.getElementById("resultadoCorrector");
+  res.innerHTML = "⏳ Analizando...";
+
+  const r = await fetch("/ingles/api/corregir",{
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({frase})
+  });
+  const d = await r.json();
+
+  if(!d.ok){ res.innerHTML = "❌ Error."; return; }
+
+  if(d.correcta){
+    res.innerHTML = `
+      <div style="background:#002a00;border:1px solid #00ff88;border-radius:10px;padding:14px;">
+        <p style="color:#00ff88;font-size:16px;margin:0 0 8px 0;">✅ ¡Correcto!</p>
+        <p style="margin:0;font-size:15px;">"${d.original}"</p>
+        <p style="font-size:13px;color:#00eaff88;margin-top:8px;">${d.explicacion}</p>
+      </div>`;
+  } else {
+    res.innerHTML = `
+      <div style="background:#2a0000;border:1px solid #ff4444;border-radius:10px;padding:14px;margin-bottom:10px;">
+        <p style="color:#ff4444;font-size:15px;margin:0;">❌ Incorrecto</p>
+        <p style="margin:6px 0 0 0;font-size:14px;text-decoration:line-through;color:#ff444488;">${d.original}</p>
+      </div>
+      <div style="background:#002a00;border:1px solid #00ff88;border-radius:10px;padding:14px;">
+        <p style="color:#00ff88;font-size:15px;margin:0 0 6px 0;">✅ Corrección:</p>
+        <p style="margin:0;font-size:16px;font-weight:bold;">${d.correccion}</p>
+        <p style="font-size:13px;color:#00eaff88;margin-top:10px;border-top:1px solid #00ff8844;padding-top:8px;">
+          📖 ${d.explicacion}
+        </p>
+      </div>`;
+  }
+
+  historialCorrecciones.unshift({original:d.original, correccion:d.correccion, correcta:d.correcta});
+  if(historialCorrecciones.length > 10) historialCorrecciones.pop();
+  actualizarHistorialCorrector();
+  document.getElementById("inputCorrector").value = "";
+}
+
+function actualizarHistorialCorrector(){
+  if(!historialCorrecciones.length) return;
+  document.getElementById("historialCorrector").style.display = "block";
+  const lista = document.getElementById("listaCorrecciones");
+  lista.innerHTML = historialCorrecciones.map(c =>
+    `<div style="padding:8px 0;border-bottom:1px solid #00eaff22;font-size:13px;">
+      ${c.correcta ? "✅" : "❌"} <em>${c.original}</em>
+      ${!c.correcta ? `→ <strong>${c.correccion}</strong>` : ""}
+    </div>`
+  ).join("");
+}
+
+// ===== PRONUNCIACIÓN =====
+const PALABRAS_PRONUNCIACION = [
+  {palabra:"water", traduccion:"agua"}, {palabra:"world", traduccion:"mundo"},
+  {palabra:"three", traduccion:"tres"}, {palabra:"thought", traduccion:"pensamiento"},
+  {palabra:"through", traduccion:"a través"}, {palabra:"comfortable", traduccion:"cómodo"},
+  {palabra:"literally", traduccion:"literalmente"}, {palabra:"beautiful", traduccion:"hermoso/a"},
+  {palabra:"daughter", traduccion:"hija"}, {palabra:"sixth", traduccion:"sexto"},
+  {palabra:"clothes", traduccion:"ropa"}, {palabra:"squirrel", traduccion:"ardilla"},
+  {palabra:"brewery", traduccion:"cervecería"}, {palabra:"choir", traduccion:"coro"},
+  {palabra:"colonel", traduccion:"coronel"}, {palabra:"receipt", traduccion:"recibo"},
+];
+let palabraActualPron = null;
+
+function nuevaPalabraPronunciacion(){
+  const idx = Math.floor(Math.random() * PALABRAS_PRONUNCIACION.length);
+  palabraActualPron = PALABRAS_PRONUNCIACION[idx];
+  document.getElementById("pronunciacionPalabra").textContent = palabraActualPron.palabra;
+  document.getElementById("btnVerTrad").style.display = "inline-block";
+  document.getElementById("resultadoPronunciacion").innerHTML = "";
+  document.getElementById("inputPronunciacion").value = "";
+}
+
+function verTraduccion(){
+  if(!palabraActualPron) return;
+  const el = document.getElementById("resultadoPronunciacion");
+  el.innerHTML = `<p style="color:#ffd700;font-size:14px;">Traducción: <strong>${palabraActualPron.traduccion}</strong></p>`;
+}
+
+async function evaluarPronunciacion(){
+  if(!palabraActualPron){ alert("Primero generá una palabra."); return; }
+  const intento = document.getElementById("inputPronunciacion").value.trim();
+  if(!intento) return;
+
+  const r = await fetch("/ingles/api/pronunciacion",{
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({palabra:palabraActualPron.palabra, intento})
+  });
+  const d = await r.json();
+  if(!d.ok){ return; }
+
+  const color = d.porcentaje >= 80 ? "#00ff88" : d.porcentaje >= 50 ? "#ffd700" : "#ff4444";
+  document.getElementById("resultadoPronunciacion").innerHTML = `
+    <div style="background:#001122;border:1px solid ${color}44;border-radius:10px;padding:14px;text-align:center;">
+      <p style="font-size:13px;color:#00eaff88;margin:0 0 4px 0;">Pronunciación:</p>
+      <p style="font-size:36px;font-weight:bold;color:${color};margin:0;">${d.porcentaje}%</p>
+      <p style="font-size:14px;margin:8px 0 0 0;">${d.feedback}</p>
+      <p style="font-size:13px;color:#00eaff88;margin-top:6px;">
+        Correcto: <strong>${d.correcto}</strong> — Tu intento: <strong>${intento}</strong>
+      </p>
+      ${d.porcentaje < 80 ? `<button class="btn" style="margin-top:10px;" onclick="document.getElementById('inputPronunciacion').value='';document.getElementById('inputPronunciacion').focus()">🔄 Intentar de nuevo</button>` : `<button class="btn verde" style="margin-top:10px;" onclick="nuevaPalabraPronunciacion()">➡ Siguiente palabra</button>`}
+    </div>`;
+}
+
+// Palabras al cargar
+window.addEventListener("DOMContentLoaded", () => {
+  nuevaPalabraPronunciacion();
+});
 </script>
 </body>
 </html>
