@@ -1640,13 +1640,13 @@ z-index:999;
 </div>
 
 <script>
-// --- Variables críticas (deben estar primero) ---
+// --- Variables críticas primero ---
 let isPremium = {{ 'true' if premium else 'false' }};
 let isSuper = {{ 'true' if is_super else 'false' }};
 let rolUsuario = "{{ rol or '' }}";
 let nivelUsuario = {{ nivel or 0 }};
 
-// --- Variables y funciones generales ---
+// --- Variables generales ---
 let usuario_id="{{usuario_id}}";
 let documentoActual = null;
 let textoDocumento = "";
@@ -2568,10 +2568,7 @@ function mejorarTextoDictado(texto){
   // MAYÚSCULAS
   // =========================
 
-  if(
-    textoDictado.trim() === "" ||
-    /[.!?]\s*$/.test(textoDictado.trim())
-  ){
+  if( textoDictado.trim() === "" || /[.!?]\s*$/.test(textoDictado.trim()) ){
     texto =
       texto.charAt(0).toUpperCase() +
       texto.slice(1);
