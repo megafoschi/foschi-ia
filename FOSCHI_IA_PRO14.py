@@ -2540,7 +2540,7 @@ function mejorarTextoDictado(texto){
   texto = texto.replace(/abrir pregunta/gi, "¿");
   texto = texto.replace(/cerrar pregunta/gi, "?");
 
-  // admiración — sin \b con Unicode para evitar error en navegadores
+  // admiración
   texto = texto.replace(/abrir admiraci[oó]n/gi, "¡");
   texto = texto.replace(/cerrar admiraci[oó]n/gi, "!");
 
