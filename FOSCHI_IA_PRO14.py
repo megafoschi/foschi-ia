@@ -41,7 +41,7 @@ from usuarios import registrar_usuario, autenticar_usuario
 from suscripciones import usuario_premium, aviso_vencimiento
 from suscripciones import activar_premium
 
-from academia_ingles import init_academia_ingles
+from profesor_ingles import init_profesor_ingles
 
 from openai import OpenAI
 from io import BytesIO
@@ -89,7 +89,7 @@ app.config["SESSION_TYPE"] = "filesystem"
 Session(app)
 
 # ---------------- PROFESOR DE INGLÉS ----------------
-init_academia_ingles(app)
+init_profesor_ingles(app)
 
 # ---------------- UTIL / CACHE / HTTP ----------------
 HTTPS = requests.Session()
@@ -860,7 +860,7 @@ def generar_respuesta(mensaje, usuario, lat=None, lon=None, tz=None, max_hist=5)
     }
 
 # ---------------- Plantilla HTML (modificada para menu clip + subir pdf/docx) ----------------
-HTML_TEMPLATE = """  
+HTML_TEMPLATE = r"""  
 <!doctype html>
 <html>
 <head>
@@ -1594,7 +1594,7 @@ z-index:999;
 </button>
 
 <button onclick="checkIngles()">
-🎓 Academia de Inglés
+🎓 Profesor de Inglés
 </button>
 </div>
 
@@ -2049,7 +2049,7 @@ function abrirDictadoDesdeMenu(){
 
 function checkIngles(){
   if(!isPremium && !isSuper){
-    alert("⚠️ La Academia de Inglés es una función Premium. Activá Foschi IA Premium para usarla.");
+    alert("⚠️ El Profesor de Inglés es una función Premium. Activá Foschi IA Premium para usarla.");
     return;
   }
   window.location.href = "/ingles";
