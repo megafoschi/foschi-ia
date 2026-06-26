@@ -433,34 +433,6 @@ textarea:focus{border-color:var(--pur)}
   <span style="font-size:.6rem;color:#6b7280;font-weight:700;text-align:center;max-width:60px">Hablar</span>
 </div>
 
-<!-- 🤖 FOSCHI IA — Chat flotante dentro de la academia -->
-<div id="foschiPanel" style="position:fixed;bottom:24px;left:16px;z-index:1000;width:320px;display:none;flex-direction:column;border-radius:18px;overflow:hidden;box-shadow:0 8px 36px rgba(0,0,0,.25);border:2px solid #00ff8844;font-family:'Segoe UI',sans-serif">
-  <!-- Header -->
-  <div style="background:linear-gradient(135deg,#001800,#003300);color:#00ff88;padding:11px 14px;display:flex;align-items:center;justify-content:space-between">
-    <div style="display:flex;align-items:center;gap:8px">
-      <span style="font-size:1.5rem">🤖</span>
-      <div>
-        <div style="font-weight:800;font-size:.92rem;letter-spacing:.3px">FOSCHI IA</div>
-        <div style="font-size:.68rem;opacity:.7">Consultas extras · Siempre disponible</div>
-      </div>
-    </div>
-    <div style="display:flex;gap:6px;align-items:center">
-      <a href="/" target="_blank" style="background:rgba(0,255,136,.15);border:1px solid #00ff8844;color:#00ff88;border-radius:12px;padding:3px 8px;font-size:.68rem;font-weight:700;text-decoration:none">🏠 Ir a Foschi IA</a>
-      <button onclick="toggleFoschiPanel()" style="background:none;border:none;color:#00ff88;font-size:1.1rem;cursor:pointer;opacity:.7">✕</button>
-    </div>
-  </div>
-  <!-- Chat box -->
-  <div id="foschiChatBox" style="height:260px;overflow-y:auto;background:#0a0f0a;padding:10px;display:flex;flex-direction:column;gap:7px"></div>
-  <!-- Input -->
-  <div style="background:#0d150d;padding:8px 10px;border-top:1px solid #00ff8822;display:flex;gap:6px;align-items:center">
-    <button id="btnMicFoschi" onclick="toggleMicFoschi()" style="width:36px;height:36px;border-radius:50%;border:1px solid #00ff8844;background:#001a00;color:#00ff88;font-size:.9rem;cursor:pointer;flex-shrink:0">🎤</button>
-    <input id="foschiIn" placeholder="Preguntale algo a Foschi IA..." onkeydown="if(event.key==='Enter')sendFoschi()" style="flex:1;padding:7px 12px;border-radius:20px;border:1px solid #00ff8833;background:#001a00;color:#00ff88;font-size:.8rem;outline:none;font-family:inherit"/>
-    <button onclick="sendFoschi()" style="padding:7px 13px;border-radius:20px;border:1px solid #00ff8844;background:linear-gradient(135deg,#003300,#005500);color:#00ff88;font-weight:700;font-size:.78rem;cursor:pointer">→</button>
-  </div>
-</div>
-<!-- Botón para abrir Foschi IA panel -->
-<button onclick="toggleFoschiPanel()" style="position:fixed;bottom:24px;left:20px;z-index:1001;width:58px;height:58px;border-radius:50%;border:2px solid #00ff8866;background:linear-gradient(135deg,#001a00,#003300);color:#00ff88;font-size:1.4rem;cursor:pointer;box-shadow:0 4px 18px rgba(0,255,136,.25);transition:all .2s" title="Abrir Foschi IA">🤖</button>
-
 <!-- 🙋 Preguntas al profe — siempre visible -->
 <div id="askTeacherPanel" style="position:fixed;bottom:96px;right:16px;z-index:998;width:300px;display:none;background:#fff;border-radius:16px;box-shadow:0 8px 32px rgba(108,63,197,.22);border:2px solid #ede9fe">
   <div style="background:linear-gradient(135deg,#6c3fc5,#a855f7);color:#fff;padding:10px 14px;border-radius:14px 14px 0 0;display:flex;justify-content:space-between;align-items:center">
@@ -1480,88 +1452,6 @@ function activateFloatMic(){
   try{micRecognizer.start();}catch(e){floatMicActive=false;}
 }
 
-// ──────────────────────────────────────────
-// 🤖 FOSCHI IA — CHAT DENTRO DE LA ACADEMIA
-// ──────────────────────────────────────────
-var foschiOpen=false;
-var foschiBienvenida=false;
-var micFoschiActive=false;
-
-function toggleFoschiPanel(){
-  foschiOpen=!foschiOpen;
-  document.getElementById('foschiPanel').style.display=foschiOpen?'flex':'none';
-  if(foschiOpen && !foschiBienvenida){
-    foschiBienvenida=true;
-    addFoschiMsg('ai','¡Hola! Soy <strong>Foschi IA</strong> 🤖<br>Podés preguntarme cualquier cosa — no solo inglés. Clima, noticias, ayuda con documentos, lo que necesites.<br><small style="opacity:.6">También podés ir a la app completa ↗️</small>');
-  }
-}
-
-function sendFoschi(){
-  var inp=document.getElementById('foschiIn');
-  var txt=inp.value.trim();if(!txt)return;
-  inp.value='';
-  addFoschiMsg('usr',txt);
-  var box=document.getElementById('foschiChatBox');
-  var loading=document.createElement('div');
-  loading.id='foschiLoading';
-  loading.style.cssText='color:#00ff8866;font-size:.78rem;padding:4px 8px';
-  loading.textContent='⏳ Pensando...';
-  box.appendChild(loading);box.scrollTop=box.scrollHeight;
-
-  fetch('/academia/foschi-chat',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({mensaje:txt})
-  })
-  .then(function(r){return r.json();})
-  .then(function(data){
-    var el=document.getElementById('foschiLoading');if(el)el.remove();
-    var reply=data.texto||data.reply||'No pude responder. Intentá de nuevo.';
-    addFoschiMsg('ai',reply.replace(/\n/g,'<br>'));
-  })
-  .catch(function(){
-    var el=document.getElementById('foschiLoading');if(el)el.remove();
-    addFoschiMsg('ai','❌ Error de conexión. Verificá que Foschi IA esté activa.');
-  });
-}
-
-function addFoschiMsg(cls,html){
-  var box=document.getElementById('foschiChatBox');
-  var d=document.createElement('div');
-  var isAI=cls==='ai';
-  d.style.cssText='max-width:90%;padding:8px 11px;border-radius:12px;font-size:.79rem;line-height:1.5;'
-    +(isAI?'background:#001a00;border:1px solid #00ff8822;color:#b0ffb0;align-self:flex-start'
-           :'background:#003300;color:#00ff88;align-self:flex-end;margin-left:auto');
-  d.innerHTML=html;
-  box.appendChild(d);box.scrollTop=box.scrollHeight;
-}
-
-function toggleMicFoschi(){
-  if(!('webkitSpeechRecognition' in window||'SpeechRecognition' in window))return;
-  if(micFoschiActive){
-    micFoschiActive=false;
-    document.getElementById('btnMicFoschi').textContent='🎤';
-    document.getElementById('btnMicFoschi').style.color='#00ff88';
-    if(micRecognizer){try{micRecognizer.stop();}catch(e){}}
-    return;
-  }
-  micFoschiActive=true;
-  document.getElementById('btnMicFoschi').textContent='🔴';
-  document.getElementById('btnMicFoschi').style.color='#ef4444';
-  micRecognizer=createRecognizer('es-AR',function(txt){
-    document.getElementById('foschiIn').value=txt;
-    micFoschiActive=false;
-    document.getElementById('btnMicFoschi').textContent='🎤';
-    document.getElementById('btnMicFoschi').style.color='#00ff88';
-    setTimeout(sendFoschi,400);
-  },function(){
-    micFoschiActive=false;
-    document.getElementById('btnMicFoschi').textContent='🎤';
-    document.getElementById('btnMicFoschi').style.color='#00ff88';
-  });
-  try{micRecognizer.start();}catch(e){micFoschiActive=false;}
-}
-
 // ─── PANEL PREGUNTÁ AL PROFE ───
 var micAskActive=false;
 var askHist=[];
@@ -1879,51 +1769,7 @@ def init_academia_ingles(app):
         except Exception as e:
             return jsonify({"error": str(e), "reply": "❌ Error. Intentá de nuevo."}), 500
 
-    @app.route("/academia/foschi-chat", methods=["POST"])
-    def academia_foschi_chat():
-        """
-        Proxy: recibe consultas desde la Academia y las reenvía al endpoint
-        principal /preguntar de Foschi IA, usando la sesión activa del usuario.
-        Si por algún motivo no puede conectarse, responde con Claude directamente.
-        """
-        import requests as req_lib
-        data = request.get_json(force=True)
-        mensaje = data.get("mensaje", "").strip()
-        if not mensaje:
-            return jsonify({"texto": "¿Qué querés consultarme?"})
-
-        # Intentar llamar al /preguntar interno de Foschi IA
-        try:
-            # Llamada interna a la misma app Flask (mismo proceso)
-            with app.test_client() as c:
-                # Pasar las cookies de sesión para mantener identidad del usuario
-                resp = c.post(
-                    "/preguntar",
-                    json={"mensaje": mensaje},
-                    headers={"Content-Type": "application/json"}
-                )
-                if resp.status_code == 200:
-                    return jsonify(resp.get_json())
-        except Exception:
-            pass
-
-        # Fallback: Claude responde como Foschi IA si el proxy falla
-        try:
-            SYSTEM_FOSCHI = """Sos FOSCHI IA, una inteligencia amable, directa y con humor ligero.
-Sos el asistente general de la plataforma educativa de Gustavo Foschi.
-Respondé de forma clara y natural en español argentino.
-El usuario te escribe desde la Academia de Inglés — podés ayudar con cualquier consulta,
-no solo inglés. Sé conciso (máximo 150 palabras)."""
-            full = call_claude(
-                SYSTEM_FOSCHI,
-                [{"role": "user", "content": mensaje}],
-                max_tokens=600
-            )
-            return jsonify({"texto": full or "¡Preguntame lo que necesites!"})
-        except Exception as e:
-            return jsonify({"texto": f"Error al conectar con Foschi IA: {e}"}), 500
-
-
+    @app.route("/academia/preguntar", methods=["POST"])
     def academia_preguntar():
         """Endpoint para preguntas libres del alumno en cualquier momento."""
         data = request.get_json(force=True)
