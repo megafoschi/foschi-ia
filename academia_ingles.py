@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
 # coding: utf-8
 """
-academia_ingles.py — Academia de Inglés Foschi IA v2
-Mejoras v2:
-  - 🎙️ Voz bidireccional: el alumno habla y la IA responde con voz
-  - 🔁 Repetición obligatoria: no avanza hasta corregir el error
-  - 🧠 Memoria de errores: el profesor recuerda qué falla el alumno
-  - 🗣️ Situaciones reales: restaurante, aeropuerto, hotel, médico, etc.
-  - 📊 Nivel adaptativo: bilingüismo ajustado por nivel del alumno
+academia_ingles.py — Academia de Inglés Foschi IA
+Integra modo Adultos y modo Niños con IA Anthropic, pronunciación,
+juegos, lecciones desde cero y seguimiento de progreso.
 Requiere: pip install flask anthropic
 Configurar: variable de entorno ANTHROPIC_API_KEY
 """
@@ -55,28 +51,19 @@ body{font-family:'Segoe UI',sans-serif;background:#f0f4ff;min-height:100vh;overf
 .card{background:#fff;border-radius:var(--rad);padding:18px;box-shadow:var(--shadow);margin-bottom:14px}
 .card h2{color:var(--pur);font-size:1rem;margin-bottom:12px}
 .sec{display:none}.sec.on{display:block}
-#chatBox,#kidsChatBox{height:300px;overflow-y:auto;background:#f5f3ff;border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
+#chatBox,#kidsChatBox{height:280px;overflow-y:auto;background:#f5f3ff;border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
 #kidsChatBox{background:#fff7ed}
 .msg{max-width:82%;padding:9px 13px;border-radius:10px;line-height:1.5;font-size:.88rem}
 .msg.ai{background:#fff;border:1.5px solid #e0d6fa;align-self:flex-start;color:#2d1b69}
 .msg.usr{background:var(--pur);color:#fff;align-self:flex-end}
-.msg.corr{background:#fff8e1;border:1.5px solid #f59e0b;color:#78350f;align-self:flex-start;font-size:.82rem;font-weight:600}
-.msg.repeat-req{background:#fff1f2;border:2px solid #ef4444;color:#881337;align-self:flex-start;font-size:.85rem;font-weight:700;border-radius:10px;padding:10px 14px}
+.msg.corr{background:#fffbeb;border:1.5px solid #f59e0b;color:#78350f;align-self:flex-start;font-size:.82rem}
 .msg.kid-ai{background:#fff3e0;border:1.5px solid #fed7aa;align-self:flex-start;color:#78350f}
-.row{display:flex;gap:8px;align-items:center}
+.row{display:flex;gap:8px}
 .row input{flex:1;padding:9px 13px;border-radius:30px;border:2px solid #d1c4e9;font-size:.9rem;outline:none;transition:border .2s;font-family:inherit}
 .row input:focus{border-color:var(--pur)}
-.row input:disabled{background:#f3f4f6;color:#9ca3af;cursor:not-allowed}
 .btn{padding:9px 18px;border-radius:30px;border:none;background:var(--pur);color:#fff;font-weight:700;cursor:pointer;font-size:.85rem;transition:background .2s;white-space:nowrap}
 .btn:hover{opacity:.9}.btn:disabled{opacity:.5;cursor:default}
 .btn.grn{background:var(--grn)}.btn.org{background:#f59e0b;color:#fff}.btn.red{background:var(--red)}
-.btn-mic{width:46px;height:46px;border-radius:50%;border:none;background:var(--grn);color:#fff;font-size:1.2rem;cursor:pointer;flex-shrink:0;transition:all .2s;display:flex;align-items:center;justify-content:center}
-.btn-mic:hover{opacity:.9}
-.btn-mic.recording{background:var(--red);animation:pulse 1s infinite}
-.btn-mic:disabled{opacity:.5;cursor:default}
-@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
-.mic-hint{font-size:.7rem;color:#9ca3af;text-align:center;margin-top:3px}
-.voice-badge{display:inline-block;background:#d1fae5;color:#065f46;border-radius:20px;padding:2px 8px;font-size:.72rem;font-weight:700;margin-left:6px;vertical-align:middle}
 .pronword{font-size:2rem;font-weight:800;color:var(--pur);text-align:center;padding:16px;letter-spacing:2px}
 .pronemi{font-size:3rem;text-align:center;display:block;margin:6px 0}
 .bar-wrap{background:#e5e7eb;border-radius:30px;height:14px;overflow:hidden;margin:6px 0}
@@ -129,15 +116,6 @@ textarea:focus{border-color:var(--pur)}
 .word-card .word-en{font-size:2.2rem;font-weight:800;color:var(--pur)}
 .word-card .word-es{font-size:1rem;color:#7c3aed;margin-top:4px}
 .word-card .word-ipa{font-size:.9rem;color:#a78bfa;margin-top:2px}
-.error-mem{background:#fff8e1;border-radius:10px;padding:10px 14px;font-size:.78rem;color:#78350f;margin-bottom:10px;border:1px solid #f59e0b}
-.error-mem strong{color:#92400e}
-.situation-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
-.sit-chip{padding:7px 12px;border-radius:30px;border:2px solid #d1c4e9;background:#fff;cursor:pointer;font-weight:600;color:#4c1d95;font-size:.78rem;transition:all .2s}
-.sit-chip.on,.sit-chip:hover{background:var(--pur);color:#fff;border-color:var(--pur)}
-.level-selector{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center}
-.level-selector span{font-size:.8rem;color:#6b7280;font-weight:600}
-.nlvl{padding:4px 12px;border-radius:20px;border:2px solid #d1c4e9;font-size:.75rem;font-weight:700;cursor:pointer;color:#6b7280;transition:all .2s}
-.nlvl.on{background:var(--pur);color:#fff;border-color:var(--pur)}
 @media(max-width:580px){.opts{grid-template-columns:1fr}.memo-grid{grid-template-columns:repeat(3,1fr)}.mbtn{max-width:100%;width:100%}.mode-bar{flex-direction:column;align-items:center}}
 </style>
 </head>
@@ -146,10 +124,6 @@ textarea:focus{border-color:var(--pur)}
 <div class="header">
   <h1>🎓 Academia Foschi IA</h1>
   <p>Aprendé inglés de verdad — desde cero hasta avanzado</p>
-  <div style="margin-top:8px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-    <button onclick="window.history.back()" style="background:rgba(255,255,255,0.18);border:1.5px solid rgba(255,255,255,0.5);color:#fff;border-radius:20px;padding:5px 14px;font-size:.78rem;font-weight:700;cursor:pointer">⬅ Volver a Foschi IA</button>
-    <span style="background:rgba(255,255,255,0.18);border:1.5px solid rgba(255,255,255,0.5);color:#fff;border-radius:20px;padding:5px 14px;font-size:.78rem;font-weight:700">🎙️ ¡Usá el micrófono para hablar en todo momento!</span>
-  </div>
 </div>
 
 <div class="mode-bar">
@@ -163,10 +137,7 @@ textarea:focus{border-color:var(--pur)}
 <div id="mAdult">
   <div class="tabs">
     <button class="tab on" onclick="aTab('conv',this)">💬 Conversación</button>
-    <button class="tab" onclick="aTab('situaciones',this)">🎭 Situaciones</button>
     <button class="tab" onclick="aTab('lecciones',this)">📖 Lecciones</button>
-    <button class="tab" onclick="aTab('temario',this)">📋 Temario</button>
-    <button class="tab" onclick="aTab('oral',this)">🗣️ Práctica Oral</button>
     <button class="tab" onclick="aTab('pron',this)">🎤 Pronunciación</button>
     <button class="tab" onclick="aTab('corrector',this)">✍️ Corrector</button>
     <button class="tab" onclick="aTab('prog',this)">📈 Progreso</button>
@@ -175,16 +146,6 @@ textarea:focus{border-color:var(--pur)}
   <div id="t-conv" class="sec on">
     <div class="card">
       <h2>💬 Conversá con tu Profe</h2>
-
-      <!-- Selector de nivel -->
-      <div class="level-selector">
-        <span>Mi nivel:</span>
-        <div class="nlvl on" onclick="setNivel(this,1)" id="nl1">🌱 Básico</div>
-        <div class="nlvl" onclick="setNivel(this,2)" id="nl2">📘 Intermedio</div>
-        <div class="nlvl" onclick="setNivel(this,3)" id="nl3">🚀 Avanzado</div>
-      </div>
-
-      <!-- Temas -->
       <div class="chips" id="topicChips">
         <div class="chip on" onclick="setTopic(this,'greetings')">👋 Saludos</div>
         <div class="chip" onclick="setTopic(this,'work')">💼 Trabajo</div>
@@ -193,47 +154,12 @@ textarea:focus{border-color:var(--pur)}
         <div class="chip" onclick="setTopic(this,'shopping')">🛒 Compras</div>
         <div class="chip" onclick="setTopic(this,'free')">🗣️ Libre</div>
       </div>
-
-      <!-- Memoria de errores visible -->
-      <div id="errorMemBox" style="display:none" class="error-mem">
-        🧠 <strong>Tu profe recuerda:</strong> <span id="errorMemTxt"></span>
-      </div>
-
       <div id="chatBox"></div>
-
-      <!-- Input con mic -->
-      <div class="row" id="chatInputRow">
-        <button class="btn-mic" id="btnMic" onclick="toggleMic()" title="Hablar con el profe">🎤</button>
-        <input id="chatIn" placeholder="Escribí o usá el micrófono 🎤..." onkeydown="if(event.key==='Enter'&&!chatBlocked)sendChat()"/>
-        <button class="btn" onclick="sendChat()" id="btnSend">Enviar</button>
-      </div>
-      <div class="mic-hint" id="micHint">Presioná 🎤 para hablar con el profe</div>
-    </div>
-  </div>
-
-  <!-- ═══ TAB SITUACIONES ═══ -->
-  <div id="t-situaciones" class="sec">
-    <div class="card">
-      <h2>🎭 Conversaciones por Situación</h2>
-      <p style="color:#6b7280;font-size:.82rem;margin-bottom:12px">Practicá inglés en situaciones reales. La IA toma el rol del personaje.</p>
-      <div class="situation-chips" id="sitChips">
-        <div class="sit-chip on" onclick="setSit(this,'restaurant')">🍽️ Restaurante</div>
-        <div class="sit-chip" onclick="setSit(this,'airport')">✈️ Aeropuerto</div>
-        <div class="sit-chip" onclick="setSit(this,'hotel')">🏨 Hotel</div>
-        <div class="sit-chip" onclick="setSit(this,'doctor')">🏥 Médico</div>
-        <div class="sit-chip" onclick="setSit(this,'interview')">💼 Entrevista</div>
-        <div class="sit-chip" onclick="setSit(this,'police')">👮 Policía</div>
-        <div class="sit-chip" onclick="setSit(this,'pharmacy')">💊 Farmacia</div>
-        <div class="sit-chip" onclick="setSit(this,'bank')">🏦 Banco</div>
-      </div>
-      <div id="sitDesc" style="background:#f0f4ff;border-radius:10px;padding:10px;margin-bottom:12px;font-size:.82rem;color:#4c1d95"></div>
-      <div id="sitBox" style="height:280px;overflow-y:auto;background:#f5f3ff;border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;margin-bottom:10px"></div>
       <div class="row">
-        <button class="btn-mic" id="btnMicSit" onclick="toggleMicSit()" title="Hablar">🎤</button>
-        <input id="sitIn" placeholder="Respondé al personaje..." onkeydown="if(event.key==='Enter')sendSit()"/>
-        <button class="btn" onclick="sendSit()">Enviar</button>
+        <input id="chatIn" placeholder="Escribí en inglés..." onkeydown="if(event.key==='Enter')sendChat()"/>
+        <button class="btn" onclick="sendChat()" id="btnSend">Enviar</button>
+        <button class="btn grn" onclick="speakInput()" title="Pronunciar mi texto">🔊</button>
       </div>
-      <div class="mic-hint">Presioná 🎤 para hablar en la situación</div>
     </div>
   </div>
 
@@ -275,51 +201,11 @@ textarea:focus{border-color:var(--pur)}
     </div>
   </div>
 
-  <div id="t-temario" class="sec">
-    <div class="card">
-      <h2>📋 Temario Completo — 6 Niveles</h2>
-      <p style="color:#6b7280;font-size:.82rem;margin-bottom:14px">Hacé clic en cualquier nivel para ver el contenido y escuchar la explicación en español.</p>
-      <div id="temarioList"></div>
-    </div>
-  </div>
-
-  <div id="t-oral" class="sec">
-    <div class="card">
-      <h2>🗣️ Práctica Oral Guiada</h2>
-      <p style="color:#6b7280;font-size:.82rem;margin-bottom:10px">El profe te hace preguntas en voz alta. ¡Respondé hablando! Presioná 🎤 cuando quieras hablar.</p>
-      <div class="level-selector" style="margin-bottom:12px">
-        <span>Nivel:</span>
-        <div class="nlvl on" onclick="setOralNivel(this,1)" id="onl1">🌱 Básico</div>
-        <div class="nlvl" onclick="setOralNivel(this,2)" id="onl2">📘 Intermedio</div>
-        <div class="nlvl" onclick="setOralNivel(this,3)" id="onl3">🚀 Avanzado</div>
-      </div>
-      <div class="chips" id="oralTopics">
-        <div class="chip on" onclick="setOralTopic(this,'presentacion')">👋 Presentación</div>
-        <div class="chip" onclick="setOralTopic(this,'rutina')">⏰ Rutina diaria</div>
-        <div class="chip" onclick="setOralTopic(this,'familia')">👨‍👩‍👧 Familia</div>
-        <div class="chip" onclick="setOralTopic(this,'trabajo')">💼 Trabajo</div>
-        <div class="chip" onclick="setOralTopic(this,'viaje')">✈️ Viaje</div>
-        <div class="chip" onclick="setOralTopic(this,'libre')">🎲 Libre</div>
-      </div>
-      <div id="oralBox" style="height:280px;overflow-y:auto;background:#f5f3ff;border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;margin-bottom:10px"></div>
-      <div style="background:#fef3c7;border-radius:10px;padding:10px;margin-bottom:10px;font-size:.82rem;color:#92400e">
-        💡 <strong>Tip:</strong> El profe habla primero en español (nivel básico) y después en inglés. ¡Respondé hablando!
-      </div>
-      <div class="row">
-        <button class="btn-mic" id="btnMicOral" onclick="toggleMicOral()" title="Hablar con el profe oral">🎤</button>
-        <input id="oralIn" placeholder="O escribí tu respuesta aquí..." onkeydown="if(event.key==='Enter')sendOral()"/>
-        <button class="btn grn" onclick="sendOral()">Responder</button>
-      </div>
-      <div class="mic-hint" id="oralMicHint">Presioná 🎤 para responder hablando — ¡el profe escucha!</div>
-    </div>
-  </div>
-
-
+  <div id="t-prog" class="sec">
     <div class="card">
       <h2>📈 Tu Progreso</h2>
       <p style="color:#6b7280;font-size:.82rem;margin-bottom:14px">Temas bajo 80% necesitan repaso.</p>
       <div id="progList"></div>
-      <div id="errorProgBox" style="margin-top:14px"></div>
       <button class="btn" style="margin-top:12px" onclick="loadProg()">🔄 Actualizar</button>
     </div>
   </div>
@@ -408,11 +294,9 @@ textarea:focus{border-color:var(--pur)}
         <h2>🧑‍🏫 Hablá con el Profe</h2>
         <div id="kidsChatBox"></div>
         <div class="row">
-          <button class="btn-mic" id="btnMicKids" onclick="toggleMicKids()" title="Hablar">🎤</button>
-          <input id="kChatIn" placeholder="Escribí o usá el micrófono 🎤..." onkeydown="if(event.key==='Enter')sendKChat()"/>
+          <input id="kChatIn" placeholder="Escribí en inglés o español..." onkeydown="if(event.key==='Enter')sendKChat()"/>
           <button class="btn org" onclick="sendKChat()">Enviar</button>
         </div>
-        <div class="mic-hint">Presioná 🎤 para hablar con el profe</div>
       </div>
     </div>
 
@@ -427,30 +311,7 @@ textarea:focus{border-color:var(--pur)}
 
 </div><!-- main -->
 
-<!-- 🎤 Botón flotante de micrófono siempre visible -->
-<div id="floatMicWrap" style="position:fixed;bottom:24px;right:20px;z-index:999;display:flex;flex-direction:column;align-items:center;gap:4px">
-  <button id="floatMicBtn" onclick="activateFloatMic()" style="width:58px;height:58px;border-radius:50%;border:none;background:#10b981;color:#fff;font-size:1.5rem;cursor:pointer;box-shadow:0 4px 18px rgba(16,185,129,0.45);transition:all .2s" title="Hablar en cualquier momento">🎤</button>
-  <span style="font-size:.6rem;color:#6b7280;font-weight:700;text-align:center;max-width:60px">Hablar</span>
-</div>
-
-<!-- 🙋 Preguntas al profe — siempre visible -->
-<div id="askTeacherPanel" style="position:fixed;bottom:96px;right:16px;z-index:998;width:300px;display:none;background:#fff;border-radius:16px;box-shadow:0 8px 32px rgba(108,63,197,.22);border:2px solid #ede9fe">
-  <div style="background:linear-gradient(135deg,#6c3fc5,#a855f7);color:#fff;padding:10px 14px;border-radius:14px 14px 0 0;display:flex;justify-content:space-between;align-items:center">
-    <span style="font-weight:800;font-size:.9rem">🙋 Preguntá al Profe</span>
-    <button onclick="document.getElementById('askTeacherPanel').style.display='none'" style="background:none;border:none;color:#fff;font-size:1.1rem;cursor:pointer">✕</button>
-  </div>
-  <div id="askBox" style="height:160px;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:6px"></div>
-  <div style="padding:8px 10px;border-top:1px solid #ede9fe">
-    <div style="display:flex;gap:6px;align-items:center">
-      <button id="btnMicAsk" onclick="toggleMicAsk()" style="width:38px;height:38px;border-radius:50%;border:none;background:#10b981;color:#fff;font-size:1rem;cursor:pointer;flex-shrink:0">🎤</button>
-      <input id="askIn" placeholder="¿Tenés una duda? Escribila o hablá..." style="flex:1;padding:7px 12px;border-radius:20px;border:2px solid #d1c4e9;font-size:.82rem;outline:none;font-family:inherit" onkeydown="if(event.key==='Enter')sendAsk()"/>
-      <button onclick="sendAsk()" style="padding:7px 12px;border-radius:20px;border:none;background:#6c3fc5;color:#fff;font-weight:700;font-size:.78rem;cursor:pointer">→</button>
-    </div>
-  </div>
-</div>
-<button onclick="toggleAskPanel()" style="position:fixed;bottom:92px;right:84px;z-index:998;width:52px;height:52px;border-radius:50%;border:none;background:#6c3fc5;color:#fff;font-size:1.2rem;cursor:pointer;box-shadow:0 4px 16px rgba(108,63,197,.4)" title="Preguntá al profe">🙋</button>
-
-
+<div class="popup" id="popup">
   <span class="pe" id="pEmi">⭐</span>
   <h3 id="pTit">¡Muy bien!</h3>
   <p id="pMsg">+10 puntos</p>
@@ -497,47 +358,17 @@ const BADGES=[
   {id:"master",e:"🎓",n:"Maestro",d:"500 puntos",pts:500},
 ];
 
-const SIT_DATA = {
-  restaurant:{icon:'🍽️',role:'Waiter/Waitress',desc:'Practicá pedir comida y hablar en un restaurante. La IA es el/la mesero/a.',start:"Hello! Welcome to La Bella Italia. How many people are dining with us today?"},
-  airport:{icon:'✈️',role:'Check-in Agent',desc:'Practicá hacer el check-in y moverse por el aeropuerto. La IA es el/la agente.',start:"Good morning! Welcome to the airport. May I see your passport and booking confirmation, please?"},
-  hotel:{icon:'🏨',role:'Receptionist',desc:'Practicá hacer el check-in y pedir cosas en un hotel. La IA es el/la recepcionista.',start:"Good evening! Welcome to the Grand Hotel. Do you have a reservation with us?"},
-  doctor:{icon:'🏥',role:'Doctor',desc:'Practicá describir síntomas y hablar con un médico. La IA es el/la doctor/a.',start:"Hello! I'm Dr. Smith. Please, have a seat. What brings you in today? What seems to be the problem?"},
-  interview:{icon:'💼',role:'Interviewer',desc:'Practicá una entrevista laboral en inglés. La IA es el/la entrevistador/a.',start:"Good morning! Please, sit down. I'm the HR Manager. Can you start by telling me a little about yourself?"},
-  police:{icon:'👮',role:'Police Officer',desc:'Practicá hablar con un policía (por ejemplo, si te para en la calle). La IA es el/la oficial.',start:"Good evening, sir/ma\'am. I\'m Officer Johnson. May I see your ID, please?"},
-  pharmacy:{icon:'💊',role:'Pharmacist',desc:'Practicá comprar medicamentos y explicar síntomas en una farmacia.',start:"Hello! How can I help you today? Are you looking for something specific, or do you need some advice?"},
-  bank:{icon:'🏦',role:'Bank Teller',desc:'Practicá hacer trámites bancarios en inglés. La IA es el/la cajero/a.',start:"Good morning! Welcome to City Bank. How can I assist you today?"}
-};
-
-// ─── ESTADO GLOBAL ───
 let mode='adult',topic='greetings',kTopic='animals';
-let chatHist=[],kChatHist=[],sitHist=[];
+let chatHist=[],kChatHist=[];
 let pronIdx=0,kWordIdx=0,kGIdx=0,lvl=0;
 let stars=parseInt(localStorage.getItem('fa_stars')||'0');
 let badges=JSON.parse(localStorage.getItem('fa_badges')||'[]');
 let voiceCount=parseInt(localStorage.getItem('fa_vc')||'0');
 let memoFlipped=[],memoMatched=0,memoCards=[];
 let curLetter='A';
-let curSit='restaurant';
-let nivelAlumno=1; // 1=básico, 2=intermedio, 3=avanzado
-
-// ─── MEMORIA DE ERRORES ───
-// Estructura: {past_simple:5, articles:3, to_be:2, spelling:1, ...}
-let errorMemory=JSON.parse(localStorage.getItem('fa_errors')||'{}');
-
 let progress=JSON.parse(localStorage.getItem('fa_prog')||JSON.stringify({
-  greetings:0,work:0,travel:0,family:0,shopping:0,free:0,pronunciation:0,corrector:0,
-  restaurant:0,airport:0,hotel:0,doctor:0,interview:0,police:0,pharmacy:0,bank:0
+  greetings:0,work:0,travel:0,family:0,shopping:0,free:0,pronunciation:0,corrector:0
 }));
-
-// ─── CONTROL DE REPETICIÓN OBLIGATORIA ───
-let chatBlocked = false; // true cuando esperamos que el alumno corrija
-let repeatTarget = '';   // la frase que debe repetir
-
-// ─── SPEECH RECOGNITION GLOBAL ───
-let micRecognizer = null;
-let micActive = false;
-let micSitActive = false;
-let micKidsActive = false;
 
 function speak(text,rate,lang){
   rate=rate||0.85;lang=lang||'en-US';
@@ -547,97 +378,6 @@ function speak(text,rate,lang){
   window.speechSynthesis.speak(u);
 }
 
-// ─── HELPER: crear reconocedor de voz ───
-function createRecognizer(lang, onResult, onEnd){
-  if(!('webkitSpeechRecognition' in window||'SpeechRecognition' in window)) return null;
-  var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  var rec=new SR();
-  rec.lang=lang||'en-US';
-  rec.interimResults=false;
-  rec.continuous=false;
-  rec.onresult=function(e){
-    var transcript=e.results[0][0].transcript.trim();
-    onResult(transcript);
-  };
-  rec.onerror=function(e){console.log('mic error',e.error);if(onEnd)onEnd();};
-  rec.onend=function(){if(onEnd)onEnd();};
-  return rec;
-}
-
-// ─── MIC CONVERSACIÓN ADULTOS ───
-function toggleMic(){
-  if(!('webkitSpeechRecognition' in window||'SpeechRecognition' in window)){
-    document.getElementById('micHint').textContent='⚠️ Tu navegador no soporta micrófono. Usá Chrome.';
-    return;
-  }
-  if(chatBlocked){
-    document.getElementById('micHint').textContent='⚠️ Primero corregí el error antes de continuar.';
-    return;
-  }
-  if(micActive){
-    micActive=false;
-    if(micRecognizer){try{micRecognizer.stop();}catch(e){}}
-    setBtnMic('btnMic',false);
-    return;
-  }
-  micActive=true;
-  setBtnMic('btnMic',true);
-  document.getElementById('micHint').textContent='🔴 Escuchando... hablá en inglés';
-  micRecognizer=createRecognizer('en-US',function(txt){
-    document.getElementById('chatIn').value=txt;
-    micActive=false;
-    setBtnMic('btnMic',false);
-    document.getElementById('micHint').textContent='✅ Escuché: "'+txt+'" — enviando...';
-    setTimeout(sendChat,400);
-  },function(){
-    micActive=false;
-    setBtnMic('btnMic',false);
-    document.getElementById('micHint').textContent='Presioná 🎤 para hablar con el profe';
-  });
-  try{micRecognizer.start();}catch(e){micActive=false;setBtnMic('btnMic',false);}
-}
-
-// ─── MIC SITUACIONES ───
-function toggleMicSit(){
-  if(!('webkitSpeechRecognition' in window||'SpeechRecognition' in window)) return;
-  if(micSitActive){
-    micSitActive=false;setBtnMic('btnMicSit',false);
-    if(micRecognizer){try{micRecognizer.stop();}catch(e){}}
-    return;
-  }
-  micSitActive=true;setBtnMic('btnMicSit',true);
-  micRecognizer=createRecognizer('en-US',function(txt){
-    document.getElementById('sitIn').value=txt;
-    micSitActive=false;setBtnMic('btnMicSit',false);
-    setTimeout(sendSit,400);
-  },function(){micSitActive=false;setBtnMic('btnMicSit',false);});
-  try{micRecognizer.start();}catch(e){micSitActive=false;setBtnMic('btnMicSit',false);}
-}
-
-// ─── MIC KIDS ───
-function toggleMicKids(){
-  if(!('webkitSpeechRecognition' in window||'SpeechRecognition' in window)) return;
-  if(micKidsActive){
-    micKidsActive=false;setBtnMic('btnMicKids',false);
-    if(micRecognizer){try{micRecognizer.stop();}catch(e){}}
-    return;
-  }
-  micKidsActive=true;setBtnMic('btnMicKids',true);
-  micRecognizer=createRecognizer('en-US',function(txt){
-    document.getElementById('kChatIn').value=txt;
-    micKidsActive=false;setBtnMic('btnMicKids',false);
-    setTimeout(sendKChat,400);
-  },function(){micKidsActive=false;setBtnMic('btnMicKids',false);});
-  try{micRecognizer.start();}catch(e){micKidsActive=false;setBtnMic('btnMicKids',false);}
-}
-
-function setBtnMic(id,active){
-  var b=document.getElementById(id);if(!b)return;
-  if(active){b.classList.add('recording');b.textContent='🔴';}
-  else{b.classList.remove('recording');b.textContent='🎤';}
-}
-
-// ─── MODO ───
 function setMode(m){
   mode=m;
   document.getElementById('mAdult').style.display=m==='adult'?'block':'none';
@@ -655,7 +395,6 @@ function aTab(n,el){
   el.classList.add('on');
   if(n==='prog')loadProg();
   if(n==='lecciones')loadLesson();
-  if(n==='situaciones'){setSit(document.querySelector('.sit-chip.on')||document.querySelector('.sit-chip'),'restaurant',true);}
 }
 function kTab(n,el){
   document.querySelectorAll('#mKids .sec').forEach(function(s){s.classList.remove('on');});
@@ -668,42 +407,15 @@ function kTab(n,el){
   if(n==='abcLearn')buildABC();
 }
 
-// ─── NIVEL DEL ALUMNO ───
-function setNivel(el,n){
-  document.querySelectorAll('.nlvl').forEach(function(x){x.classList.remove('on');});
-  el.classList.add('on');nivelAlumno=n;
-}
-
-// ─── MEMORIA ERRORES UI ───
-function updateErrorMemUI(){
-  var box=document.getElementById('errorMemBox');
-  var txt=document.getElementById('errorMemTxt');
-  var keys=Object.keys(errorMemory).filter(function(k){return errorMemory[k]>0;});
-  if(keys.length===0){box.style.display='none';return;}
-  var sorted=keys.sort(function(a,b){return errorMemory[b]-errorMemory[a];}).slice(0,3);
-  txt.textContent=sorted.map(function(k){return k+' (×'+errorMemory[k]+')';}).join(' · ');
-  box.style.display='block';
-}
-
-function saveError(type){
-  if(!type)return;
-  errorMemory[type]=(errorMemory[type]||0)+1;
-  localStorage.setItem('fa_errors',JSON.stringify(errorMemory));
-  updateErrorMemUI();
-}
-
 // ─── CHAT ADULTOS ───
 function setTopic(el,t){
   document.querySelectorAll('#topicChips .chip').forEach(function(c){c.classList.remove('on');});
-  el.classList.add('on');topic=t;chatHist=[];chatBlocked=false;repeatTarget='';
-  document.getElementById('chatBox').innerHTML='';
-  unblockInput();
-  startChat();
+  el.classList.add('on');topic=t;chatHist=[];
+  document.getElementById('chatBox').innerHTML='';startChat();
 }
-
 function startChat(){
   var greets={
-    greetings:"Hello! I'm your English teacher at Academia Foschi! 😊 Today we practice greetings. Let's begin: Can you say 'Hello, my name is...'? Try it!",
+    greetings:"Hello! I'm your English teacher at Academia Foschi! 😊 Today we practice greetings. Let's begin super easy: Can you say 'Hello, my name is...'? Try it!",
     work:"Welcome! Let's practice work vocabulary. Tell me: What do you do for work? Don't worry if it's not perfect — I'll help you!",
     travel:"Great! Travel English is super useful! Imagine you're at the airport. The agent asks: 'Where are you flying today?' What do you answer?",
     family:"Wonderful! Let's talk about family. Start simple: How many people are in your family? Say it in English!",
@@ -713,90 +425,25 @@ function startChat(){
   addMsg(greets[topic]||greets.free,'ai');
   chatHist.push({role:'assistant',content:greets[topic]||greets.free});
   speak((greets[topic]||greets.free).split('?')[0]);
-  updateErrorMemUI();
-}
-
-function blockInput(target){
-  chatBlocked=true;repeatTarget=target||'';
-  var inp=document.getElementById('chatIn');
-  inp.disabled=false; // sigue habilitado para escribir la repetición
-  inp.placeholder='✍️ Repetí la frase correcta arriba...';
-  inp.style.borderColor='#ef4444';
-  document.getElementById('btnSend').textContent='Corregir ↩';
-}
-function unblockInput(){
-  chatBlocked=false;repeatTarget='';
-  var inp=document.getElementById('chatIn');
-  inp.disabled=false;
-  inp.placeholder='Escribí o usá el micrófono 🎤...';
-  inp.style.borderColor='';
-  document.getElementById('btnSend').textContent='Enviar';
 }
 
 function sendChat(){
   var inp=document.getElementById('chatIn');
   var txt=inp.value.trim();if(!txt)return;
-
-  // Si estamos bloqueados, verificar si el alumno repitió bien
-  if(chatBlocked && repeatTarget){
-    var clean=function(s){return s.toLowerCase().replace(/[^a-z0-9 ']/g,'').trim();};
-    var similarity=clean(txt)===clean(repeatTarget);
-    inp.value='';
-    addMsg(txt,'usr');
-    if(similarity){
-      unblockInput();
-      addMsg('✅ Perfect! Well done! Now let\'s continue. 🌟','ai');
-      speak('Perfect! Well done! Now let us continue.');
-      chatHist.push({role:'user',content:txt});
-      chatHist.push({role:'assistant',content:'Perfect! Well done! Let\'s continue.'});
-      return;
-    } else {
-      addMsg('🔁 Almost! Please try again. Repeat exactly:\n👉 '+repeatTarget,'repeat-req');
-      speak('Try again. Repeat: '+repeatTarget,0.8);
-      return;
-    }
-  }
-
-  inp.value='';
-  addMsg(txt,'usr');
-  chatHist.push({role:'user',content:txt});
+  inp.value='';addMsg(txt,'usr');chatHist.push({role:'user',content:txt});
   var btn=document.getElementById('btnSend');
   btn.disabled=true;btn.innerHTML='<span class="spin"></span>Pensando...';
   addMsg('...','ai','loadingA');
-
-  // Armar contexto de errores para el backend
-  var errCtx='';
-  var topErrors=Object.keys(errorMemory).sort(function(a,b){return errorMemory[b]-errorMemory[a];}).slice(0,3);
-  if(topErrors.length)errCtx=topErrors.join(', ');
-
   fetch('/academia/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({history:chatHist.slice(-12),topic:topic,nivel:nivelAlumno,error_memory:errCtx})})
+    body:JSON.stringify({history:chatHist.slice(-12),topic:topic})})
   .then(function(r){return r.json();})
   .then(function(data){
     var el=document.getElementById('loadingA');if(el)el.remove();
-    if(data.reply){
-      addMsg(data.reply,'ai');
-      // Hablar solo la parte en inglés (antes de [)
-      var toSpeak=data.reply.replace(/\[✅[^\]]+\]/g,'').replace(/\*\*/g,'').split('[')[0].trim();
-      speak(toSpeak);
-    }
-    if(data.correction){
-      addMsg(data.correction,'corr');
-    }
-    // Si hay error que requiere repetición
-    if(data.repeat_target){
-      blockInput(data.repeat_target);
-      addMsg('🔁 Antes de continuar, repetí esta frase:\n👉 '+data.repeat_target,'repeat-req');
-      speak('Before we continue, please repeat: '+data.repeat_target,0.85);
-    }
-    // Guardar errores en memoria
-    if(data.error_type){
-      saveError(data.error_type);
-    }
+    if(data.reply){addMsg(data.reply,'ai');speak(data.reply.replace(/\[✅[^\]]+\]/g,'').replace(/\*\*/g,'').split('[')[0]);}
+    if(data.correction)addMsg(data.correction,'corr');
     chatHist.push({role:'assistant',content:data.reply||''});
     if(data.score)updateProg(topic,data.score);
-    btn.disabled=false;
-    btn.textContent=chatBlocked?'Corregir ↩':'Enviar';
+    btn.disabled=false;btn.textContent='Enviar';
   })
   .catch(function(){
     var el=document.getElementById('loadingA');if(el)el.remove();
@@ -809,60 +456,24 @@ function addMsg(txt,cls,id){
   var box=document.getElementById('chatBox');
   var d=document.createElement('div');d.className='msg '+cls;
   if(id)d.id=id;
-  d.innerHTML=txt.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>');
+  d.innerHTML=txt.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
   box.appendChild(d);box.scrollTop=box.scrollHeight;
 }
-
-// ─── SITUACIONES REALES ───
-function setSit(el,sitKey,skipClear){
-  if(!sitKey){sitKey='restaurant';}
-  document.querySelectorAll('.sit-chip').forEach(function(c){c.classList.remove('on');});
-  if(el)el.classList.add('on');
-  curSit=sitKey;
-  sitHist=[];
-  var s=SIT_DATA[sitKey];
-  if(!s)return;
-  document.getElementById('sitDesc').innerHTML='<strong>'+s.icon+' '+s.role+'</strong> — '+s.desc;
-  var box=document.getElementById('sitBox');box.innerHTML='';
-  addSitMsg(s.start,'ai');
-  sitHist.push({role:'assistant',content:s.start});
-  speak(s.start,0.85);
-}
-
-function sendSit(){
-  var inp=document.getElementById('sitIn');
-  var txt=inp.value.trim();if(!txt)return;
-  inp.value='';
-  addSitMsg(txt,'usr');
-  sitHist.push({role:'user',content:txt});
-  fetch('/academia/chat-sit',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({history:sitHist.slice(-14),situation:curSit,nivel:nivelAlumno})})
-  .then(function(r){return r.json();})
-  .then(function(data){
-    var reply=data.reply||'I see. Please go on.';
-    addSitMsg(reply,'ai');
-    sitHist.push({role:'assistant',content:reply});
-    speak(reply.split('[')[0].trim());
-    if(data.correction)addSitMsg(data.correction,'corr');
-    if(data.score)updateProg(curSit,data.score);
-  })
-  .catch(function(){addSitMsg('❌ Error. Intentá de nuevo.','ai');});
-}
-
-function addSitMsg(txt,cls){
-  var box=document.getElementById('sitBox');
-  var d=document.createElement('div');
-  d.className='msg '+(cls==='ai'?'ai':cls==='usr'?'usr':'corr');
-  d.innerHTML=txt.replace(/\n/g,'<br>');
-  box.appendChild(d);box.scrollTop=box.scrollHeight;
-}
+function speakInput(){var t=document.getElementById('chatIn').value.trim();if(t)speak(t);}
 
 // ─── LECCIONES ───
 var LESSONS=[
-  {level:0,title:"🌱 Absoluto Cero — Primeras Palabras",content:'<div class="word-card"><div class="word-en" style="font-size:1.3rem">Bienvenido al inglés desde cero ✅</div><div class="word-es" style="margin-top:8px">Estas son las 8 palabras más importantes para comenzar</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+[['Hello','Hola'],['Goodbye','Adiós'],['Yes','Sí'],['No','No'],['Please','Por favor'],['Thank you','Gracias'],['Sorry','Perdón'],['Help','Ayuda']].map(function(x){return '<div style="background:#ede9fe;border-radius:10px;padding:10px"><div style="font-weight:800;font-size:1.1rem;color:#6c3fc5">'+x[0]+'</div><div style="color:#7c3aed;font-size:.88rem">'+x[1]+'</div></div>';}).join('')+'</div><button class="btn" style="margin-top:14px;width:100%" onclick="practiceWords([\'Hello\',\'Goodbye\',\'Yes\',\'No\',\'Please\',\'Thank you\',\'Sorry\',\'Help\'])">🔊 Escuchar todas</button>'},
-  {level:1,title:"🔤 Básico — Presentarte",content:'<div class="word-card"><div class="word-en">My name is...</div><div class="word-es">Me llamo...</div><div class="word-ipa">/maɪ neɪm ɪz.../</div></div><div style="display:flex;flex-direction:column;gap:8px">'+[['My name is [nombre]','Me llamo [nombre]'],['I am [edad] years old','Tengo [edad] años'],['I am from Argentina','Soy de Argentina'],['I live in Buenos Aires','Vivo en Buenos Aires'],['Nice to meet you','Mucho gusto'],['I speak a little English','Hablo un poco de inglés']].map(function(x){return '<div style="background:#f0f4ff;border-radius:10px;padding:10px;display:flex;justify-content:space-between;align-items:center;gap:8px"><div><div style="font-weight:700;color:#4c1d95">'+x[0]+'</div><div style="color:#7c3aed;font-size:.82rem">'+x[1]+'</div></div><button class="btn" style="padding:5px 10px;font-size:.75rem" onclick="speak(\''+x[0]+'\')">🔊</button></div>';}).join('')+'</div>'},
-  {level:2,title:"📘 Intermedio — Tiempos Verbales",content:'<div class="word-card"><div class="word-en">The Verb "To Be"</div><div class="word-es">El verbo Ser/Estar — el más importante</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">'+[['I am','Yo soy/estoy'],['You are','Vos sos/estás'],['He/She is','Él/Ella es/está'],['We are','Nosotros somos'],['They are','Ellos son/están']].map(function(x){return '<div style="background:#ede9fe;border-radius:10px;padding:10px"><div style="font-weight:800;color:#6c3fc5">'+x[0]+'</div><div style="color:#7c3aed;font-size:.82rem">'+x[1]+'</div></div>';}).join('')+'</div><div style="background:#f0fdf4;border-radius:10px;padding:12px;font-size:.88rem;line-height:1.8"><strong>I work</strong> → Trabajo (presente)<br><strong>I worked</strong> → Trabajé (pasado)<br><strong>I will work</strong> → Voy a trabajar (futuro)</div>'},
-  {level:3,title:"🚀 Avanzado — Modales y Condicionales",content:'<div class="word-card"><div class="word-en">Modal Verbs</div><div class="word-es">Posibilidad, obligación, permiso</div></div><div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">'+[['Can / Could','Puedo / Podría'],['Must / Have to','Debo / Tengo que'],['Should','Debería'],['Would','Haría / Gustaría'],['May / Might','Puedo / Podría — permiso']].map(function(x){return '<div style="background:#f0f4ff;border-radius:10px;padding:10px"><div style="font-weight:800;color:#4c1d95">'+x[0]+'</div><div style="color:#7c3aed;font-size:.82rem">'+x[1]+'</div></div>';}).join('')+'</div><div style="background:#fef9c3;border-radius:10px;padding:12px;font-size:.85rem;line-height:2"><strong>If I study, I will pass.</strong> → real<br><strong>If I studied, I would pass.</strong> → hipotético<br><strong>If I had studied, I would have passed.</strong> → irreal pasado</div>'}
+  {level:0,title:"🌱 Absoluto Cero — Primeras Palabras",content:'<div class="word-card"><div class="word-en" style="font-size:1.3rem">Bienvenido al inglés desde cero ✅</div><div class="word-es" style="margin-top:8px">Estas son las 8 palabras más importantes para comenzar</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+    [['Hello','Hola'],['Goodbye','Adiós'],['Yes','Sí'],['No','No'],['Please','Por favor'],['Thank you','Gracias'],['Sorry','Perdón'],['Help','Ayuda']].map(function(x){return '<div style="background:#ede9fe;border-radius:10px;padding:10px"><div style="font-weight:800;font-size:1.1rem;color:#6c3fc5">'+x[0]+'</div><div style="color:#7c3aed;font-size:.88rem">'+x[1]+'</div></div>';}).join('') +
+    '</div><button class="btn" style="margin-top:14px;width:100%" onclick="practiceWords([\'Hello\',\'Goodbye\',\'Yes\',\'No\',\'Please\',\'Thank you\',\'Sorry\',\'Help\'])">🔊 Escuchar todas</button>'},
+  {level:1,title:"🔤 Básico — Presentarte",content:'<div class="word-card"><div class="word-en">My name is...</div><div class="word-es">Me llamo...</div><div class="word-ipa">/maɪ neɪm ɪz.../</div></div><div style="display:flex;flex-direction:column;gap:8px">' +
+    [['My name is [nombre]','Me llamo [nombre]'],['I am [edad] years old','Tengo [edad] años'],['I am from Argentina','Soy de Argentina'],['I live in Buenos Aires','Vivo en Buenos Aires'],['Nice to meet you','Mucho gusto'],['I speak a little English','Hablo un poco de inglés']].map(function(x){return '<div style="background:#f0f4ff;border-radius:10px;padding:10px;display:flex;justify-content:space-between;align-items:center;gap:8px"><div><div style="font-weight:700;color:#4c1d95">'+x[0]+'</div><div style="color:#7c3aed;font-size:.82rem">'+x[1]+'</div></div><button class="btn" style="padding:5px 10px;font-size:.75rem" onclick="speak(\''+x[0]+'\')">🔊</button></div>';}).join('') + '</div>'},
+  {level:2,title:"📘 Intermedio — Tiempos Verbales",content:'<div class="word-card"><div class="word-en">The Verb "To Be"</div><div class="word-es">El verbo Ser/Estar — el más importante</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">' +
+    [['I am','Yo soy/estoy'],['You are','Vos sos/estás'],['He/She is','Él/Ella es/está'],['We are','Nosotros somos'],['They are','Ellos son/están']].map(function(x){return '<div style="background:#ede9fe;border-radius:10px;padding:10px"><div style="font-weight:800;color:#6c3fc5">'+x[0]+'</div><div style="color:#7c3aed;font-size:.82rem">'+x[1]+'</div></div>';}).join('') +
+    '</div><div style="background:#f0fdf4;border-radius:10px;padding:12px;font-size:.88rem;line-height:1.8"><strong>I work</strong> → Trabajo (presente)<br><strong>I worked</strong> → Trabajé (pasado)<br><strong>I will work</strong> → Voy a trabajar (futuro)</div>'},
+  {level:3,title:"🚀 Avanzado — Modales y Condicionales",content:'<div class="word-card"><div class="word-en">Modal Verbs</div><div class="word-es">Posibilidad, obligación, permiso</div></div><div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">' +
+    [['Can / Could','Puedo / Podría'],['Must / Have to','Debo / Tengo que'],['Should','Debería'],['Would','Haría / Gustaría'],['May / Might','Puedo / Podría — permiso']].map(function(x){return '<div style="background:#f0f4ff;border-radius:10px;padding:10px"><div style="font-weight:800;color:#4c1d95">'+x[0]+'</div><div style="color:#7c3aed;font-size:.82rem">'+x[1]+'</div></div>';}).join('') +
+    '</div><div style="background:#fef9c3;border-radius:10px;padding:12px;font-size:.85rem;line-height:2"><strong>If I study, I will pass.</strong> → real<br><strong>If I studied, I would pass.</strong> → hipotético<br><strong>If I had studied, I would have passed.</strong> → irreal pasado</div>'}
 ];
 
 function setLvl(el,n){
@@ -928,8 +539,6 @@ function correctText(){
     updateProg('corrector',data.score||70);
     if((data.score||0)>=90)speak('Excellent! Your English is very good!');
     else speak('Good effort! Keep practicing!');
-    // Guardar tipo de error si vino del corrector
-    if(data.error_type)saveError(data.error_type);
     btn.disabled=false;btn.textContent='🔍 Corregir';
   })
   .catch(function(){
@@ -945,30 +554,15 @@ function updateProg(t,s){
   localStorage.setItem('fa_prog',JSON.stringify(progress));
 }
 function loadProg(){
-  var topics={greetings:'👋 Saludos',work:'💼 Trabajo',travel:'✈️ Viajes',family:'👨‍👩‍👧 Familia',shopping:'🛒 Compras',free:'🗣️ Libre',pronunciation:'🎤 Pronunciación',corrector:'✍️ Corrector',restaurant:'🍽️ Restaurante',airport:'✈️ Aeropuerto',hotel:'🏨 Hotel',doctor:'🏥 Médico'};
+  var topics={greetings:'👋 Saludos',work:'💼 Trabajo',travel:'✈️ Viajes',family:'👨‍👩‍👧 Familia',shopping:'🛒 Compras',free:'🗣️ Libre',pronunciation:'🎤 Pronunciación',corrector:'✍️ Corrector'};
   var list=document.getElementById('progList');list.innerHTML='';
   Object.keys(topics).forEach(function(k){
-    var p=progress[k]||0;if(!p)return;
     var lbl=topics[k];
-    var cls=p>=80?'pct-g':p>=50?'pct-m':'pct-l';
+    var p=progress[k]||0,cls=p>=80?'pct-g':p>=50?'pct-m':'pct-l';
     var rep=p<80&&p>0?'<span class="rb">↩ Repaso</span>':'';
     var col=p>=80?'#10b981':p>=50?'#f59e0b':'#ef4444';
     list.innerHTML+='<div class="prog-item"><div class="lbl"><span style="font-size:.85rem;font-weight:600">'+lbl+rep+'</span><span class="'+cls+'">'+p+'%</span></div><div class="bar-wrap"><div class="bar" style="width:'+p+'%;background:'+col+'"></div></div></div>';
   });
-
-  // Mostrar errores frecuentes en progreso
-  var errBox=document.getElementById('errorProgBox');
-  var topE=Object.keys(errorMemory).filter(function(k){return errorMemory[k]>0;}).sort(function(a,b){return errorMemory[b]-errorMemory[a];});
-  if(topE.length){
-    errBox.innerHTML='<div class="error-mem"><strong>🧠 Errores frecuentes del profe:</strong><br>'+topE.map(function(k){return '&bull; '+k+': '+errorMemory[k]+' veces';}).join('<br>')+'<br><button class="btn" style="margin-top:8px;padding:5px 12px;font-size:.75rem;background:#ef4444" onclick="clearErrors()">🗑️ Limpiar historial</button></div>';
-  } else {
-    errBox.innerHTML='';
-  }
-}
-
-function clearErrors(){
-  errorMemory={};localStorage.setItem('fa_errors','{}');
-  loadProg();updateErrorMemUI();
 }
 
 // ─── ABC NIÑOS ───
@@ -1046,9 +640,11 @@ function nextGame(){
 function checkAns(btn,chosen,cor,corEs){
   document.querySelectorAll('.opt').forEach(function(b){b.disabled=true;});
   if(chosen===cor){
-    btn.classList.add('ok');addKidsStars(10);
+    btn.classList.add('ok');
+    addKidsStars(10);
     speak('Yes! Correct! '+cor+' means '+corEs+' in Spanish. Excellent!',0.85);
-    showPopup('⭐','¡Correcto!',cor+' = '+corEs+' 🎉 +10 puntos');checkBadges();
+    showPopup('⭐','¡Correcto!',cor+' = '+corEs+' 🎉 +10 puntos');
+    checkBadges();
   }else{
     btn.classList.add('ng');
     document.querySelectorAll('.opt').forEach(function(b){if(b.textContent===cor)b.classList.add('ok');});
@@ -1080,7 +676,8 @@ function flipMemo(div,idx){
     var match=a.dataset.pair===b.dataset.val||b.dataset.pair===a.dataset.val;
     setTimeout(function(){
       if(match){
-        a.classList.add('match');b.classList.add('match');memoMatched+=2;addKidsStars(20);
+        a.classList.add('match');b.classList.add('match');
+        memoMatched+=2;addKidsStars(20);
         if(memoMatched===memoCards.length){speak('Amazing! You matched all the cards! You are a memory champion!',0.85);showPopup('🎉','¡Ganaste!','¡Completaste el Memotest! +20 pts');}
         else speak('Great match!',0.9);
       }else{a.textContent='?';b.textContent='?';}
@@ -1153,7 +750,7 @@ function addKMsg(txt,cls){
 }
 
 // ─── ESTRELLAS Y LOGROS ───
-function addKidsStars(n){stars+=n;localStorage.setItem('fa_stars',stars);updateStars();}
+function addKidsStars(n){stars+=n;localStorage.setItem('fa_stars',stars);updateStars();checkBadges();}
 function updateStars(){document.getElementById('stC').textContent=stars;}
 function checkBadges(){
   BADGES.forEach(function(b){
@@ -1182,349 +779,8 @@ function showPopup(emi,tit,msg){
   setTimeout(function(){p.classList.remove('show');},2500);
 }
 
-
-// ──────────────────────────────────────────
-// 📋 TEMARIO COMPLETO 6 NIVELES
-// ──────────────────────────────────────────
-const TEMARIO = [
-  {nivel:"A1", titulo:"🌱 Nivel 1 — Principiante Absoluto (A1)", color:"#d1fae5", colorT:"#065f46", temas:[
-    {t:"🔤 Abecedario", d:"Pronunciación de letras y deletreo. Cómo se lee cada letra en inglés."},
-    {t:"👋 Presentaciones", d:"Saludos, despedidas y frases de cortesía esenciales."},
-    {t:"🔵 Verbo To Be", d:"Ser/Estar: I am, you are, he is — afirmación, negación y preguntas."},
-    {t:"👤 Pronombres personales", d:"I, you, he, she, it, we, they — quién es quién."},
-    {t:"🔢 Vocabulario inicial", d:"Números 1-100, colores, días de la semana y meses del año."},
-    {t:"📌 Artículos y demostrativos", d:"a, an, the, this, that, these, those — señalar cosas."},
-    {t:"⏱️ Presente Simple", d:"Estructura básica y la regla de la tercera persona (-s/-es)."},
-    {t:"❓ Preguntas básicas", d:"Who, What, Where, When, Why, How — las 6 preguntas clave."},
-  ]},
-  {nivel:"A2", titulo:"📗 Nivel 2 — Principiante Intermedio (A2)", color:"#dbeafe", colorT:"#1e40af", temas:[
-    {t:"⏰ Rutinas diarias", d:"Adverbios de frecuencia: always, sometimes, usually, never."},
-    {t:"🔄 Presente Continuo", d:"Acciones que ocurren ahora mismo: I am working, she is eating."},
-    {t:"📍 Preposiciones", d:"In, on, at para tiempo y lugar — cuándo y dónde."},
-    {t:"📅 Pasado Simple", d:"Verbos regulares (-ed) e irregulares: go→went, see→saw."},
-    {t:"⏪ Pasado Continuo", d:"Acciones que estaban pasando cuando algo las interrumpió."},
-    {t:"🔮 Futuro básico", d:"Planes (be going to) vs decisiones espontáneas (will)."},
-    {t:"📦 Sustantivos contables", d:"many, much, some, any, a lot of — cuánto y cuántos."},
-  ]},
-  {nivel:"B1", titulo:"📘 Nivel 3 — Intermedio Bajo (B1)", color:"#ede9fe", colorT:"#4c1d95", temas:[
-    {t:"✅ Presente Perfecto", d:"Acciones pasadas relevantes hoy: ever, never, already, yet, since, for."},
-    {t:"📊 Comparativos y superlativos", d:"Bigger, the biggest — comparar cosas y personas."},
-    {t:"🎯 Verbos modales I", d:"Can, could, may, must, should — habilidad, permiso, obligación."},
-    {t:"📐 Condicionales 0 y 1", d:"Verdades generales y situaciones futuras reales probables."},
-    {t:"➕ Gerundios e infinitivos", d:"Cuándo usar -ing (enjoying) o to (to enjoy)."},
-    {t:"🔗 Pronombres relativos", d:"Who, which, that, where — conectar frases y dar más información."},
-  ]},
-  {nivel:"B2", titulo:"📙 Nivel 4 — Intermedio Alto (B2)", color:"#fef3c7", colorT:"#92400e", temas:[
-    {t:"⬅️ Pasado Perfecto", d:"Acciones que ocurrieron antes de otro momento pasado."},
-    {t:"🔭 Futuro Continuo y Perfecto", d:"Eventos en progreso o terminados en el futuro."},
-    {t:"🔄 Voz Pasiva", d:"The book was written — el foco está en el objeto, no en quien actúa."},
-    {t:"💭 Condicionales 2 y 3", d:"Hipotéticos del presente y arrepentimientos del pasado."},
-    {t:"🧩 Verbos modales II", d:"Must have, might have, can't be — deducción y especulación."},
-    {t:"🔧 Phrasal Verbs", d:"Get up, look for, turn off — verbos compuestos del día a día."},
-  ]},
-  {nivel:"C1", titulo:"🚀 Nivel 5 — Avanzado Operativo (C1)", color:"#fee2e2", colorT:"#7f1d1d", temas:[
-    {t:"🔃 Inversión gramatical", d:"Estructuras formales para énfasis: Seldom have I seen..."},
-    {t:"💬 Estilo Indirecto Avanzado", d:"Reported Speech: órdenes, sugerencias y peticiones."},
-    {t:"🌀 Condicionales mixtos", d:"Condiciones pasadas con consecuencias presentes (y viceversa)."},
-    {t:"📢 Voz Pasiva Avanzada", d:"It is said that... — verbos de opinión en voz pasiva."},
-    {t:"🔀 Conectores discursivos", d:"Nevertheless, furthermore, whereas — conectar ideas complejas."},
-    {t:"✂️ Cleft Sentences", d:"What I need is... — oraciones hendidas para enfatizar ideas."},
-  ]},
-  {nivel:"C2", titulo:"🎓 Nivel 6 — Maestría y Fluidez Nativa (C2)", color:"#f0fdf4", colorT:"#14532d", temas:[
-    {t:"🗣️ Idioms y Modismos", d:"Expresiones culturales y lenguaje metafórico avanzado."},
-    {t:"🎯 Verbos modales complejos", d:"Should have, needn't have — matices de probabilidad y pasado."},
-    {t:"📜 Subjuntivo en inglés", d:"I insist that he be present — deseos formales e importancia."},
-    {t:"📚 Matices de vocabulario", d:"Sinónimos exactos para registro literario, legal y académico."},
-    {t:"✂️ Estructuras elípticas", d:"Omisión de palabras obvias para mayor fluidez nativa."},
-    {t:"🎵 Reducción y acento", d:"Comprensión de la entonación y el inglés conectado conversacional."},
-  ]},
-];
-
-function buildTemario(){
-  var el=document.getElementById('temarioList');
-  if(!el)return;
-  el.innerHTML='';
-  TEMARIO.forEach(function(niv){
-    var sec=document.createElement('div');
-    sec.style.cssText='margin-bottom:14px;border-radius:12px;overflow:hidden;border:2px solid '+niv.color;
-    var hdr=document.createElement('div');
-    hdr.style.cssText='background:'+niv.color+';padding:12px 16px;cursor:pointer;display:flex;justify-content:space-between;align-items:center';
-    hdr.innerHTML='<span style="font-weight:800;color:'+niv.colorT+';font-size:.95rem">'+niv.titulo+'</span>'
-      +'<div style="display:flex;gap:8px;align-items:center">'
-      +'<button onclick="speakTemario(\''+niv.nivel+'\',event)" style="background:rgba(0,0,0,.1);border:none;border-radius:20px;padding:4px 10px;font-size:.75rem;font-weight:700;cursor:pointer;color:'+niv.colorT+'">🔊 Escuchar</button>'
-      +'<span style="color:'+niv.colorT+'">▼</span></div>';
-    var body=document.createElement('div');
-    body.style.cssText='display:none;padding:12px 16px;background:#fff';
-    body.id='temBody_'+niv.nivel;
-    niv.temas.forEach(function(t){
-      body.innerHTML+='<div style="padding:8px 0;border-bottom:1px solid #f3f4f6">'
-        +'<div style="font-weight:700;color:#4c1d95;font-size:.88rem">'+t.t+'</div>'
-        +'<div style="color:#6b7280;font-size:.82rem;margin-top:2px">'+t.d+'</div>'
-        +'</div>';
-    });
-    body.innerHTML+='<button class="btn" style="margin-top:10px;width:100%;font-size:.82rem" onclick="practicarNivel(\''+niv.nivel+'\')">💬 Practicar este nivel ahora</button>';
-    hdr.onclick=function(e){
-      if(e.target.tagName==='BUTTON')return;
-      var vis=body.style.display==='block';body.style.display=vis?'none':'block';
-      hdr.querySelector('span:last-child').textContent=vis?'▼':'▲';
-    };
-    sec.appendChild(hdr);sec.appendChild(body);el.appendChild(sec);
-  });
-}
-
-function speakTemario(nivel,e){
-  e.stopPropagation();
-  var niv=TEMARIO.find(function(n){return n.nivel===nivel;});
-  if(!niv)return;
-  var txt='Nivel '+niv.nivel+'. '+niv.titulo.replace(/[🌱📗📘📙🚀🎓]/g,'')+'. Los temas de este nivel son: ';
-  txt+=niv.temas.map(function(t){return t.t.replace(/[🔤👋🔵👤🔢📌⏱️❓⏰🔄📍📅⏪🔮📦✅📊🎯📐➕🔗⬅️🔭🔄💭🧩🔧🔃💬🌀📢🔀✂️🗣️🎯📜📚✂️🎵]/g,'').trim();}).join(', ');
-  speak(txt, 0.8, 'es-AR');
-}
-
-function practicarNivel(nivel){
-  var mapa={A1:1,A2:1,B1:2,B2:2,C1:3,C2:3};
-  var n=mapa[nivel]||1;
-  // Cambiar al tab de conversación con ese nivel
-  document.querySelectorAll('#mAdult .nlvl').forEach(function(x){x.classList.remove('on');});
-  var nl=document.getElementById('nl'+n);if(nl)nl.classList.add('on');
-  nivelAlumno=n;
-  // Activar tab conversación
-  var convTab=document.querySelector('#mAdult .tab');
-  aTab('conv',convTab);
-  convTab.classList.add('on');
-}
-
-// ──────────────────────────────────────────
-// 🗣️ PRÁCTICA ORAL GUIADA
-// ──────────────────────────────────────────
-var oralTopic='presentacion';
-var oralNivel=1;
-var oralHist=[];
-var micOralActive=false;
-
-function setOralNivel(el,n){
-  document.querySelectorAll('#t-oral .nlvl').forEach(function(x){x.classList.remove('on');});
-  el.classList.add('on');oralNivel=n;
-  oralHist=[];document.getElementById('oralBox').innerHTML='';
-  startOral();
-}
-function setOralTopic(el,t){
-  document.querySelectorAll('#oralTopics .chip').forEach(function(c){c.classList.remove('on');});
-  el.classList.add('on');oralTopic=t;oralHist=[];
-  document.getElementById('oralBox').innerHTML='';
-  startOral();
-}
-function startOral(){
-  var preguntas={
-    presentacion:{1:"¡Hola! Soy tu profe. Empecemos. En inglés, ¿cómo decís 'Me llamo...'? — In English: Can you say your name? 😊",2:"Hello! Let's practice introductions. Tell me your name, where you're from, and what you do.",3:"Hello! Let's start with a full self-introduction — name, background, profession and one interesting fact about yourself."},
-    rutina:{1:"Bien. Hablemos de tu día. ¿Qué hacés todos los días por la mañana? — In English: What do you do every morning?",2:"Let's talk about your daily routine! What time do you usually wake up and what's the first thing you do?",3:"Describe your typical weekday from morning to night. Use a variety of time expressions."},
-    familia:{1:"Genial. Tu familia. ¿Cuántas personas hay en tu familia? — In English: How many people are in your family?",2:"Tell me about your family — how many people, names, and what they do.",3:"Describe your family dynamics — who you're closest to and why."},
-    trabajo:{1:"Hablemos del trabajo. ¿A qué te dedicás? — In English: What do you do for work?",2:"Tell me about your job. What do you do, where do you work, and do you like it?",3:"Describe your professional background, your current role, and your career goals."},
-    viaje:{1:"¡Viajes! ¿Fuiste a algún lugar interesante? — In English: Have you been anywhere interesting?",2:"Tell me about a trip you took. Where did you go, when, and what did you do?",3:"Describe the most memorable trip you've ever taken and explain what made it special."},
-    libre:{1:"Genial, conversación libre. Contame algo sobre vos en inglés. ¡Yo te ayudo! — Something about yourself in English 😊",2:"Let's just talk! Tell me something interesting that happened to you recently.",3:"Let's have a free conversation. Start with any topic you find interesting."},
-  };
-  var msg=preguntas[oralTopic]?preguntas[oralTopic][oralNivel]||preguntas[oralTopic][1]:"Let's practice! Tell me something in English.";
-  addOralMsg(msg,'ai');
-  oralHist.push({role:'assistant',content:msg});
-  // En nivel básico: hablar primero en español
-  if(oralNivel===1){
-    var esMsg=msg.split('—')[0].trim();
-    speak(esMsg,0.82,'es-AR');
-    setTimeout(function(){
-      var enMsg=msg.includes('—')?msg.split('—')[1].trim():msg;
-      speak(enMsg,0.82,'en-US');
-    },2200);
-  } else {
-    speak(msg,0.85,'en-US');
-  }
-}
-
-function sendOral(){
-  var inp=document.getElementById('oralIn');
-  var txt=inp.value.trim();if(!txt)return;
-  inp.value='';
-  addOralMsg(txt,'usr');
-  oralHist.push({role:'user',content:txt});
-  var btn=document.querySelector('#t-oral .btn.grn');
-  if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span>...';}
-  fetch('/academia/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({history:oralHist.slice(-10),topic:oralTopic,nivel:oralNivel,error_memory:''})})
-  .then(function(r){return r.json();})
-  .then(function(data){
-    var reply=data.reply||'Good! Keep going!';
-    addOralMsg(reply,'ai');
-    oralHist.push({role:'assistant',content:reply});
-    if(data.correction)addOralMsg(data.correction,'corr');
-    if(data.repeat_target){
-      addOralMsg('🔁 Decilo en voz alta: 👉 '+data.repeat_target,'repeat-req');
-      if(oralNivel===1){
-        speak('Repetí en voz alta: ',0.82,'es-AR');
-        setTimeout(function(){speak(data.repeat_target,0.82,'en-US');},1500);
-      } else {
-        speak('Please say out loud: '+data.repeat_target,0.82,'en-US');
-      }
-    } else {
-      var toSpeak=reply.replace(/\[✅[^\]]+\]/g,'').split('[')[0].trim();
-      if(oralNivel===1 && reply.includes('[')){
-        var espart=reply.match(/\[([^\]]+)\]/);
-        if(espart)speak(espart[1],0.82,'es-AR');
-        setTimeout(function(){speak(toSpeak,0.82,'en-US');},1800);
-      } else {
-        speak(toSpeak,0.82,'en-US');
-      }
-    }
-    if(btn){btn.disabled=false;btn.textContent='Responder';}
-  })
-  .catch(function(){
-    addOralMsg('❌ Error. Intentá de nuevo.','ai');
-    if(btn){btn.disabled=false;btn.textContent='Responder';}
-  });
-}
-
-function addOralMsg(txt,cls){
-  var box=document.getElementById('oralBox');
-  var d=document.createElement('div');d.className='msg '+cls;
-  d.innerHTML=txt.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>');
-  box.appendChild(d);box.scrollTop=box.scrollHeight;
-}
-
-function toggleMicOral(){
-  if(!('webkitSpeechRecognition' in window||'SpeechRecognition' in window)){
-    document.getElementById('oralMicHint').textContent='⚠️ Usá Chrome para hablar 🎤';return;
-  }
-  if(micOralActive){
-    micOralActive=false;setBtnMic('btnMicOral',false);
-    if(micRecognizer){try{micRecognizer.stop();}catch(e){}}
-    return;
-  }
-  micOralActive=true;setBtnMic('btnMicOral',true);
-  document.getElementById('oralMicHint').textContent='🔴 Escuchando... ¡hablá en inglés!';
-  micRecognizer=createRecognizer('en-US',function(txt){
-    document.getElementById('oralIn').value=txt;
-    micOralActive=false;setBtnMic('btnMicOral',false);
-    document.getElementById('oralMicHint').textContent='✅ Escuché: "'+txt+'"';
-    setTimeout(sendOral,400);
-  },function(){
-    micOralActive=false;setBtnMic('btnMicOral',false);
-    document.getElementById('oralMicHint').textContent='Presioná 🎤 para responder hablando';
-  });
-  try{micRecognizer.start();}catch(e){micOralActive=false;setBtnMic('btnMicOral',false);}
-}
-
-// ──────────────────────────────────────────
-// 🎤 MICRÓFONO FLOTANTE (siempre visible)
-// ──────────────────────────────────────────
-var floatMicActive=false;
-function activateFloatMic(){
-  if(!('webkitSpeechRecognition' in window||'SpeechRecognition' in window)){
-    alert('Tu navegador no soporta micrófono. Usá Google Chrome.');return;
-  }
-  if(floatMicActive){
-    floatMicActive=false;
-    if(micRecognizer){try{micRecognizer.stop();}catch(e){}}
-    document.getElementById('floatMicBtn').style.background='#10b981';
-    document.getElementById('floatMicBtn').textContent='🎤';
-    return;
-  }
-  floatMicActive=true;
-  document.getElementById('floatMicBtn').style.background='#ef4444';
-  document.getElementById('floatMicBtn').textContent='🔴';
-  // Detectar qué sección está activa y enviar ahí
-  var activeTab=document.querySelector('#mAdult .sec.on');
-  var tabId=activeTab?activeTab.id:'t-conv';
-  micRecognizer=createRecognizer('en-US',function(txt){
-    floatMicActive=false;
-    document.getElementById('floatMicBtn').style.background='#10b981';
-    document.getElementById('floatMicBtn').textContent='🎤';
-    // Mandar al input correcto según el tab activo
-    if(tabId==='t-oral'){
-      document.getElementById('oralIn').value=txt;sendOral();
-    } else if(tabId==='t-situaciones'){
-      document.getElementById('sitIn').value=txt;sendSit();
-    } else {
-      document.getElementById('chatIn').value=txt;sendChat();
-    }
-  },function(){
-    floatMicActive=false;
-    document.getElementById('floatMicBtn').style.background='#10b981';
-    document.getElementById('floatMicBtn').textContent='🎤';
-  });
-  try{micRecognizer.start();}catch(e){floatMicActive=false;}
-}
-
-// ─── PANEL PREGUNTÁ AL PROFE ───
-var micAskActive=false;
-var askHist=[];
-
-function toggleAskPanel(){
-  var p=document.getElementById('askTeacherPanel');
-  var vis=p.style.display==='block';
-  p.style.display=vis?'none':'block';
-  if(!vis && askHist.length===0){
-    var bienvenida='¡Hola! Podés preguntarme cualquier cosa sobre inglés — gramática, vocabulario, pronunciación, lo que quieras. ¡Hablar también! 🎤';
-    addAskMsg(bienvenida,'ai');
-    speak(bienvenida,0.82,'es-AR');
-  }
-}
-
-function sendAsk(){
-  var inp=document.getElementById('askIn');
-  var txt=inp.value.trim();if(!txt)return;
-  inp.value='';
-  addAskMsg(txt,'usr');
-  askHist.push({role:'user',content:txt});
-  fetch('/academia/preguntar',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({pregunta:txt,nivel:nivelAlumno})})
-  .then(function(r){return r.json();})
-  .then(function(data){
-    var reply=data.reply||'¡Buena pregunta!';
-    addAskMsg(reply,'ai');
-    askHist.push({role:'assistant',content:reply});
-    speak(reply.split('\n')[0],0.82,'es-AR');
-  })
-  .catch(function(){addAskMsg('❌ Error. Intentá de nuevo.','ai');});
-}
-
-function addAskMsg(txt,cls){
-  var box=document.getElementById('askBox');
-  var d=document.createElement('div');
-  d.style.cssText='max-width:92%;padding:7px 10px;border-radius:10px;font-size:.78rem;line-height:1.4;'+(cls==='ai'?'background:#f0f4ff;align-self:flex-start;border:1px solid #d1c4e9':'background:#6c3fc5;color:#fff;align-self:flex-end;margin-left:auto');
-  d.textContent=txt;
-  box.appendChild(d);box.scrollTop=box.scrollHeight;
-}
-
-function toggleMicAsk(){
-  if(!('webkitSpeechRecognition' in window||'SpeechRecognition' in window))return;
-  if(micAskActive){
-    micAskActive=false;setBtnMic('btnMicAsk',false);
-    if(micRecognizer){try{micRecognizer.stop();}catch(e){}}
-    return;
-  }
-  micAskActive=true;setBtnMic('btnMicAsk',true);
-  micRecognizer=createRecognizer('es-AR',function(txt){
-    document.getElementById('askIn').value=txt;
-    micAskActive=false;setBtnMic('btnMicAsk',false);
-    setTimeout(sendAsk,400);
-  },function(){micAskActive=false;setBtnMic('btnMicAsk',false);});
-  try{micRecognizer.start();}catch(e){micAskActive=false;setBtnMic('btnMicAsk',false);}
-}
-
-
-var _origATab=aTab;
-function aTab(n,el){
-  document.querySelectorAll('#mAdult .sec').forEach(function(s){s.classList.remove('on');});
-  document.getElementById('t-'+n).classList.add('on');
-  document.querySelectorAll('#mAdult .tab').forEach(function(t){t.classList.remove('on');});
-  el.classList.add('on');
-  if(n==='prog')loadProg();
-  if(n==='lecciones')loadLesson();
-  if(n==='situaciones'){setSit(document.querySelector('.sit-chip.on')||document.querySelector('.sit-chip'),'restaurant',true);}
-  if(n==='temario')buildTemario();
-  if(n==='oral'){oralHist=[];document.getElementById('oralBox').innerHTML='';startOral();}
-}
-
-
-  updateStars();startChat();nextPron();loadProg();loadLesson();updateErrorMemUI();
+window.onload=function(){
+  updateStars();startChat();nextPron();loadProg();loadLesson();
 };
 </script>
 </body>
@@ -1534,34 +790,20 @@ function aTab(n,el){
 # ──────────────────────────────────────────────
 #  PROMPTS DE SISTEMA
 # ──────────────────────────────────────────────
-
 SYSTEM_ADULT = """Sos el Profesor de Inglés de la Academia Foschi IA.
 Tu filosofía: si el alumno no aprende, es responsabilidad del docente, no del alumno.
 
-NIVEL DEL ALUMNO: {nivel}
-(1=Básico: explicá TODA regla gramatical en ESPAÑOL claro entre [corchetes]. Usá frases muy cortas. Invitá SIEMPRE a responder con el micrófono.
- 2=Intermedio: solo los errores los explicás en español. El resto en inglés.
- 3=Avanzado: todo en inglés.)
-
-ERRORES FRECUENTES DE ESTE ALUMNO: {error_memory}
-(Si hay errores listados, prestalés atención especial y no avancés hasta que los supere.)
-
 REGLAS ESTRICTAS:
-1. Respondés en inglés. En nivel 1, SIEMPRE agregás traducción/explicación en español entre [corchetes] al final.
-2. En nivel 1, SIEMPRE terminás tu respuesta invitando a hablar: "[🎤 Ahora respondé vos — podés usar el micrófono!]"
-3. Si hay un error gramatical, lo corregís y ponés: [✅ Corrección: decimos "..." no "..." — REGLA en español: ...]
-4. Si hay un error, OBLIGATORIAMENTE emitís: REPEAT_TARGET:"<frase correcta completa>"
-   Ej: REPEAT_TARGET:"I went to work yesterday."
-   Esto hace que el alumno deba repetir esa frase (hablando o escribiendo) antes de continuar.
-5. Si hay error, también emitís: ERROR_TYPE:<categoría>
-   Categorías: past_simple, present_simple, articles, to_be, pronouns, spelling, word_order, vocabulary, plural
-6. Si no hay error, NO emitís REPEAT_TARGET ni ERROR_TYPE.
-7. Hacés UNA pregunta de seguimiento para continuar la práctica. NUNCA dos preguntas.
-8. Sos MUY paciente y motivador. Celebrás el esfuerzo siempre.
-9. Si escribe en español, respondés en inglés y le pedís amablemente que lo intente en inglés.
-10. Al final de tu respuesta escribí exactamente: SCORE:{"score":85}
-    (número 0-100 según el dominio demostrado por el alumno)
-11. En nivel 1, preferís preguntas ORALES simples que el alumno pueda responder hablando.
+1. Siempre respondés en inglés simple y claro.
+2. Si el alumno comete un error gramatical, respondés naturalmente en inglés y DESPUÉS agregás en español entre corchetes: [✅ Corrección: en inglés decimos "..." no "..." — REGLA: ...]
+3. Hacés UNA pregunta de seguimiento para continuar la práctica.
+4. Sos MUY paciente y motivador. Celebrás el esfuerzo siempre.
+5. Si escribe en español, respondés en inglés y le pedís amablemente que lo intente en inglés.
+6. Adaptás la dificultad: si se equivoca mucho → bajás el nivel; si está bien → subís.
+7. NUNCA avanzás hasta que el alumno demuestre comprensión del tema actual.
+8. Siempre terminás con una frase de motivación en inglés.
+9. Al final de tu respuesta escribí exactamente en una línea separada: SCORE:{"score":85}
+   donde el número es 0-100 según el dominio demostrado por el alumno en este intercambio.
 
 Tema actual: {topic}"""
 
@@ -1583,24 +825,7 @@ Tu tarea:
 3. Explicás CADA error en español, de forma didáctica: indicás qué estaba mal, cuál es la regla gramatical y cómo se dice correctamente.
 4. Terminás con motivación y un consejo práctico para no repetir los errores.
 5. Al final escribís exactamente en una línea: SCORE:{"score":85,"has_errors":true}
-   donde score = 0-100 (100 = texto perfecto) y has_errors = true/false.
-6. Si hay un tipo de error dominante, indicalo con: ERROR_TYPE:<categoría>
-   Categorías: past_simple, present_simple, articles, to_be, pronouns, spelling, word_order, vocabulary, plural"""
-
-SYSTEM_SITUATION = """Sos un personaje en una simulación de conversación en inglés real.
-Tu rol: {role}
-Situación: {situation}
-
-REGLAS:
-1. Actuás COMPLETAMENTE como el personaje — no sos un profesor, sos el personaje.
-2. Respondés de forma natural y realista, como en una situación real.
-3. Después de tu respuesta como personaje, añadís una línea separada en español con corrección si hubo error:
-   [✅ Corrección: decimos "..." no "..." — REGLA: ...]
-4. Si el alumno cometió un error, añadís: REPEAT_TARGET:"<frase correcta>"
-5. Si no hay error, añadís solo: SCORE:{"score":90}
-6. En nivel {nivel} (1=básico), SIEMPRE añadís traducción al español de lo que dijiste: [🇪🇸 Español: ...]
-7. En nivel 1, terminás con: [🎤 Respondé con el micrófono!] para animarlos a hablar.
-8. Mantené la conversación realista: pedís lo que un {role} real pediría."""
+   donde score = 0-100 (100 = texto perfecto) y has_errors = true/false."""
 
 
 # ──────────────────────────────────────────────
@@ -1644,14 +869,8 @@ def init_academia_ingles(app):
         data = request.get_json(force=True)
         history = data.get("history", [])
         topic = data.get("topic", "free")
-        nivel = data.get("nivel", 1)
-        error_memory = data.get("error_memory", "")
 
-        system = (SYSTEM_ADULT
-                  .replace("{topic}", topic)
-                  .replace("{nivel}", str(nivel))
-                  .replace("{error_memory}", error_memory or "ninguno"))
-
+        system = SYSTEM_ADULT.replace("{topic}", topic)
         messages = [{"role": m["role"], "content": m["content"]} for m in history[-12:]]
 
         try:
@@ -1659,29 +878,13 @@ def init_academia_ingles(app):
 
             score_val = 70
             correction = None
-            repeat_target = None
-            error_type = None
             reply_text = full
 
-            # Extraer SCORE
             score_match = re.search(r'SCORE:\{"score":(\d+)\}', full)
             if score_match:
                 score_val = int(score_match.group(1))
                 reply_text = full[:score_match.start()].strip()
 
-            # Extraer REPEAT_TARGET
-            repeat_match = re.search(r'REPEAT_TARGET:"([^"]+)"', reply_text)
-            if repeat_match:
-                repeat_target = repeat_match.group(1)
-                reply_text = reply_text[:repeat_match.start()].strip()
-
-            # Extraer ERROR_TYPE
-            error_match = re.search(r'ERROR_TYPE:(\w+)', reply_text)
-            if error_match:
-                error_type = error_match.group(1)
-                reply_text = reply_text[:error_match.start()].strip()
-
-            # Extraer corrección inline
             corr_match = re.search(r'\[✅[^\]]+\]', reply_text)
             if corr_match:
                 correction = corr_match.group(0)
@@ -1689,72 +892,11 @@ def init_academia_ingles(app):
             return jsonify({
                 "reply": reply_text,
                 "correction": correction,
-                "score": score_val,
-                "repeat_target": repeat_target,
-                "error_type": error_type,
+                "score": score_val
             })
 
         except Exception as e:
             return jsonify({"error": str(e), "reply": "Lo siento, hubo un error. Intentá de nuevo."}), 500
-
-    @app.route("/academia/chat-sit", methods=["POST"])
-    def academia_chat_sit():
-        """Endpoint para conversaciones por situación."""
-        data = request.get_json(force=True)
-        history = data.get("history", [])
-        situation = data.get("situation", "restaurant")
-        nivel = data.get("nivel", 1)
-
-        sit_roles = {
-            "restaurant": "Waiter/Waitress at an Italian restaurant",
-            "airport": "Check-in Agent at an international airport",
-            "hotel": "Hotel Receptionist at a 4-star hotel",
-            "doctor": "Doctor at a medical clinic",
-            "interview": "HR Manager conducting a job interview",
-            "police": "Police Officer on a routine stop",
-            "pharmacy": "Pharmacist at a local pharmacy",
-            "bank": "Bank Teller at City Bank",
-        }
-        role = sit_roles.get(situation, "Staff member")
-
-        system = (SYSTEM_SITUATION
-                  .replace("{role}", role)
-                  .replace("{situation}", situation)
-                  .replace("{nivel}", str(nivel)))
-
-        messages = [{"role": m["role"], "content": m["content"]} for m in history[-14:]]
-
-        try:
-            full = call_claude(system, messages)
-
-            score_val = 80
-            correction = None
-            repeat_target = None
-            reply_text = full
-
-            score_match = re.search(r'SCORE:\{"score":(\d+)\}', full)
-            if score_match:
-                score_val = int(score_match.group(1))
-                reply_text = full[:score_match.start()].strip()
-
-            repeat_match = re.search(r'REPEAT_TARGET:"([^"]+)"', reply_text)
-            if repeat_match:
-                repeat_target = repeat_match.group(1)
-                reply_text = reply_text[:repeat_match.start()].strip()
-
-            corr_match = re.search(r'\[✅[^\]]+\]', reply_text)
-            if corr_match:
-                correction = corr_match.group(0)
-
-            return jsonify({
-                "reply": reply_text,
-                "correction": correction,
-                "score": score_val,
-                "repeat_target": repeat_target,
-            })
-
-        except Exception as e:
-            return jsonify({"error": str(e), "reply": "Error. Try again."}), 500
 
     @app.route("/academia/chat-kids", methods=["POST"])
     def academia_chat_kids():
@@ -1769,30 +911,7 @@ def init_academia_ingles(app):
         except Exception as e:
             return jsonify({"error": str(e), "reply": "❌ Error. Intentá de nuevo."}), 500
 
-    @app.route("/academia/preguntar", methods=["POST"])
-    def academia_preguntar():
-        """Endpoint para preguntas libres del alumno en cualquier momento."""
-        data = request.get_json(force=True)
-        pregunta = data.get("pregunta", "").strip()
-        nivel = data.get("nivel", 1)
-        if not pregunta:
-            return jsonify({"reply": "¿Cuál es tu pregunta? Escribila o usá el micrófono."})
-
-        system = """Sos el Profesor de Inglés de la Academia Foschi IA.
-El alumno tiene una pregunta libre sobre inglés. Respondé de forma clara y didáctica.
-NIVEL: {nivel}
-En nivel 1: respondé SIEMPRE en español primero, luego dá el ejemplo en inglés.
-En nivel 2: mezcl español e inglés.
-En nivel 3: respondé en inglés con algún ejemplo.
-Sé conciso, práctico y usa ejemplos reales. No más de 150 palabras.""".replace("{nivel}", str(nivel))
-
-        try:
-            reply = call_claude(system, [{"role": "user", "content": pregunta}], max_tokens=600)
-            return jsonify({"reply": reply or "¡Buena pregunta! Intentalo de nuevo."})
-        except Exception as e:
-            return jsonify({"reply": f"Error: {str(e)}"}), 500
-
-
+    @app.route("/academia/correct", methods=["POST"])
     def academia_correct():
         data = request.get_json(force=True)
         text = data.get("text", "").strip()
@@ -1808,25 +927,13 @@ Sé conciso, práctico y usa ejemplos reales. No más de 150 palabras.""".replac
 
             score_val = 70
             has_errors = True
-            error_type = None
-
             score_match = re.search(r'SCORE:\{"score":(\d+),"has_errors":(true|false)\}', full)
             if score_match:
                 score_val = int(score_match.group(1))
                 has_errors = score_match.group(2) == "true"
                 full = full[:score_match.start()].strip()
 
-            error_match = re.search(r'ERROR_TYPE:(\w+)', full)
-            if error_match:
-                error_type = error_match.group(1)
-                full = full[:error_match.start()].strip()
-
-            return jsonify({
-                "result": full,
-                "score": score_val,
-                "has_errors": has_errors,
-                "error_type": error_type,
-            })
+            return jsonify({"result": full, "score": score_val, "has_errors": has_errors})
 
         except Exception as e:
             return jsonify({"result": f"Error: {str(e)}", "score": 0, "has_errors": True}), 500
