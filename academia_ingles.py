@@ -567,7 +567,7 @@ textarea:focus{border-color:var(--pur);box-shadow:0 0 0 3px rgba(108,63,197,.12)
   color:#fff;font-weight:700;min-height:90px
 }
 .mc:hover:not(.flipped):not(.match){transform:scale(1.06)}
-.mc.flipped{background:#fff;border-color:var(--pur3);color:var(--ink);font-size:1.1rem}
+.mc.flipped{background:#fff;border-color:var(--pur3);color:var(--ink);font-size:2.2rem;line-height:1.1}
 .mc.match{background:var(--grn2);border-color:var(--grn);pointer-events:none;color:#065f46}
 .abc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:5px;margin-bottom:14px}
 .abc-btn{
@@ -621,6 +621,7 @@ textarea:focus{border-color:var(--pur);box-shadow:0 0 0 3px rgba(108,63,197,.12)
   border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle
 }
 @keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 
 /* ── Feedback indicators ── */
 .fb{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:var(--rad-pill);font-size:.75rem;font-weight:700}
@@ -656,7 +657,7 @@ textarea:focus{border-color:var(--pur);box-shadow:0 0 0 3px rgba(108,63,197,.12)
       <div class="cefr-badge" onclick="jumpToLevel('B1',this)">B1</div>
       <div class="cefr-badge" onclick="jumpToLevel('B2',this)">B2</div>
       <div class="cefr-badge" onclick="jumpToLevel('C1C2',this)">C1/C2</div>
-      <a href="/" style="background:rgba(255,255,255,.9);color:#6c3fc5;border-radius:999px;padding:3px 12px;font-size:.72rem;font-weight:800;text-decoration:none;display:inline-flex;align-items:center;gap:4px;margin-left:6px;">⬅ Foschi IA</a>
+      <a href="/" style="background:rgba(255,255,255,.9);color:#6c3fc5;border-radius:999px;padding:3px 12px;font-size:.72rem;font-weight:800;text-decoration:none;display:inline-flex;align-items:center;gap:4px;margin-left:6px;">⬅ Volver a Foschi IA</a>
     </div>
   </div>
 </div>
@@ -729,7 +730,11 @@ textarea:focus{border-color:var(--pur);box-shadow:0 0 0 3px rgba(108,63,197,.12)
       <div class="row">
         <input id="chatIn" placeholder="Escribí en inglés..." onkeydown="if(event.key==='Enter')sendChat()"/>
         <button class="btn" onclick="sendChat()" id="btnSend">Enviar</button>
+        <button class="btn grn" onclick="startVoiceChat()" id="btnVoiceChat" title="Hablar con el profesor">🎤</button>
         <button class="btn ghost" onclick="speakInput()" title="Pronunciar mi texto">🔊</button>
+      </div>
+      <div id="voiceChatStatus" style="display:none;font-size:.75rem;color:var(--pur);font-weight:700;text-align:center;margin-top:4px;animation:pulse 1s infinite">
+        🎤 Escuchando… hablá en inglés
       </div>
     </div>
   </div>
@@ -1597,6 +1602,114 @@ function showPopup(emi, title, msg) {
   document.getElementById('pMsg').textContent = msg;
   p.classList.add('show');
   setTimeout(() => p.classList.remove('show'), 2800);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  MICRÓFONO EN CHAT — hablar con el profesor
+// ═══════════════════════════════════════════════════════════
+function startVoiceChat() {
+  if (!('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
+    addMsg('chatBox', 'ai', '⚠️ Tu navegador no soporta reconocimiento de voz. Usá Chrome.');
+    return;
+  }
+  const btn    = document.getElementById('btnVoiceChat');
+  const status = document.getElementById('voiceChatStatus');
+
+  // Si ya está escuchando, cancelar
+  if (btn._recognizer) {
+    btn._recognizer.stop();
+    btn._recognizer = null;
+    btn.innerHTML = '🎤';
+    btn.classList.remove('red');
+    status.style.display = 'none';
+    return;
+  }
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const r  = new SR();
+  r.lang            = 'en-US';
+  r.interimResults  = false;
+  r.maxAlternatives = 3;
+  r.continuous      = false;
+  r.start();
+
+  btn._recognizer   = r;
+  btn.innerHTML     = '⏹';
+  btn.classList.add('red');
+  status.style.display = 'block';
+  animateSoundBars();
+
+  r.onresult = async (e) => {
+    stopSoundBars();
+    btn._recognizer = null;
+    btn.innerHTML   = '🎤';
+    btn.classList.remove('red');
+    status.style.display = 'none';
+
+    const alternatives = Array.from(e.results[0]).map(a => a.transcript.trim());
+    const said = alternatives[0];
+
+    // Poner el texto en el input y enviarlo
+    const inp = document.getElementById('chatIn');
+    inp.value = said;
+
+    // Pedir al profesor que también corrija la pronunciación
+    const originalHistory = [...ST.history];
+    ST.history.push({ role: 'user', content: said });
+
+    addMsg('chatBox', 'usr',
+      `🎤 <i style="color:var(--pur3);font-size:.75rem">Dijiste:</i> ${escHtml(said)}`);
+
+    const typing = addMsg('chatBox', 'ai', '<span class="spin"></span> el profe está escuchando…');
+
+    // System prompt especial: incluir corrección de pronunciación
+    const voiceSystem = buildAdultSystemPrompt() + `
+
+IMPORTANTE — El alumno acaba de hablar con el micrófono (no escribir). Por eso, además de responder el contenido, analizá brevemente si la pronunciación registrada "${said}" tiene sentido como inglés hablado. Si detectás posibles errores de pronunciación (palabras mal reconocidas, mezcla de idiomas, etc.), mencionálo brevemente con formato: 🎙️ Pronunciación: [comentario corto]. Si suena correcto no menciones nada de pronunciación, seguí la conversación normal.`;
+
+    try {
+      const reply = await callClaude(voiceSystem, [...originalHistory, { role: 'user', content: said }]);
+      typing.remove();
+      processAdaptiveFeedback(said, reply);
+      const c = CHARACTERS[ST.char];
+      addMsg('chatBox', 'ai',
+        `<span class="msg-avatar">${c.emoji}</span>
+         <span class="msg-name">${c.name}</span>
+         ${formatAIMsg(reply)}`);
+      ST.history.push({ role: 'assistant', content: reply });
+      if (ST.activeLesson && ST.adaptive.msgCount % 5 === 0) {
+        ST.lessonsDone.add(ST.activeLesson);
+        renderCurriculum(currentCurrLevel);
+      }
+      speakAIReply(reply);
+    } catch(err) {
+      typing.remove();
+      addMsg('chatBox', 'ai', '❌ Error al conectar con la IA.');
+      ST.history = originalHistory;
+    }
+    inp.value = '';
+  };
+
+  r.onerror = (e) => {
+    stopSoundBars();
+    btn._recognizer = null;
+    btn.innerHTML   = '🎤';
+    btn.classList.remove('red');
+    status.style.display = 'none';
+    if (e.error !== 'aborted') {
+      addMsg('chatBox', 'ai', '❌ No pude escucharte. Intentá de nuevo.');
+    }
+  };
+
+  r.onend = () => {
+    if (btn._recognizer) {  // si no fue limpiado ya por onresult/onerror
+      btn._recognizer = null;
+      btn.innerHTML   = '🎤';
+      btn.classList.remove('red');
+      status.style.display = 'none';
+      stopSoundBars();
+    }
+  };
 }
 
 // Distancia de Levenshtein para comparar pronunciaciones
