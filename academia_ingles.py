@@ -2076,6 +2076,7 @@ def _register_routes(app):
     _cached_html = build_full_html()
 
     @app.route("/academia")
+    @app.route("/ingles")
     def academia_index():
         return _cached_html
 
