@@ -559,16 +559,18 @@ textarea:focus{border-color:var(--pur);box-shadow:0 0 0 3px rgba(108,63,197,.12)
 .opt:hover:not(:disabled){background:var(--kids-bg);border-color:var(--kids-acc);transform:scale(1.02)}
 .opt.ok{background:#d1fae5;border-color:var(--grn);color:#065f46;pointer-events:none}
 .opt.ng{background:var(--red2);border-color:var(--red);color:#7f1d1d;pointer-events:none}
-.memo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.memo-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .mc{
-  aspect-ratio:1;border-radius:14px;background:linear-gradient(135deg,var(--pur),var(--pur2));
-  display:flex;align-items:center;justify-content:center;font-size:2.8rem;
+  aspect-ratio:1;border-radius:12px;background:linear-gradient(135deg,var(--pur),var(--pur2));
+  display:flex;align-items:center;justify-content:center;font-size:2rem;
   cursor:pointer;transition:var(--transition);user-select:none;border:2px solid transparent;
-  color:#fff;font-weight:700;min-height:90px
+  color:#fff;font-weight:700;padding:6px
 }
 .mc:hover:not(.flipped):not(.match){transform:scale(1.06)}
-.mc.flipped{background:#fff;border-color:var(--pur3);color:var(--ink);font-size:2.2rem;line-height:1.1}
+.mc.flipped{background:#fff;border-color:var(--pur3);color:var(--ink);font-size:1.3rem;line-height:1.1}
+.mc.flipped.memo-emoji{font-size:2.4rem}
 .mc.match{background:var(--grn2);border-color:var(--grn);pointer-events:none;color:#065f46}
+.mc.match.memo-emoji{font-size:2.4rem}
 .abc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:5px;margin-bottom:14px}
 .abc-btn{
   padding:8px 4px;border-radius:var(--rad-sm);background:var(--pur4);
@@ -1547,6 +1549,28 @@ function speak(text, lang) {
   const u = new SpeechSynthesisUtterance(text);
   u.lang = lang || 'en-US';
   u.rate = 0.88;
+  // Intentar voz femenina
+  const voices = window.speechSynthesis.getVoices();
+  const female = voices.find(v =>
+    v.lang.startsWith(lang || 'en') &&
+    /female|woman|zira|samantha|karen|victoria|moira|fiona|tessa|google us english|google español/i.test(v.name)
+  ) || voices.find(v => v.lang.startsWith(lang || 'en'));
+  if (female) u.voice = female;
+  window.speechSynthesis.speak(u);
+}
+
+function speakFemale(text, lang, rate) {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = lang || 'en-US';
+  u.rate = rate || 0.88;
+  const voices = window.speechSynthesis.getVoices();
+  const female = voices.find(v =>
+    v.lang.startsWith(lang || 'en') &&
+    /female|woman|zira|samantha|karen|victoria|moira|fiona|tessa|google us english|google español/i.test(v.name)
+  ) || voices.find(v => v.lang.startsWith(lang || 'en'));
+  if (female) u.voice = female;
   window.speechSynthesis.speak(u);
 }
 
@@ -1592,6 +1616,13 @@ function speakAIReply(txt) {
   const englishWords = (clean.match(/\b(the|is|are|you|your|I|my|we|it|this|that|in|a|an|to|do|does|did|have|has|will|can|hello|good|great)\b/gi) || []).length;
   u.lang = englishWords >= spanishWords ? 'en-US' : 'es-ES';
   u.rate = rate;
+  // Voz femenina
+  const voices = window.speechSynthesis.getVoices();
+  const female = voices.find(v =>
+    v.lang.startsWith(u.lang.split('-')[0]) &&
+    /female|woman|zira|samantha|karen|victoria|moira|fiona|tessa|google us english|google español/i.test(v.name)
+  ) || voices.find(v => v.lang.startsWith(u.lang.split('-')[0]));
+  if (female) u.voice = female;
   window.speechSynthesis.speak(u);
 }
 
@@ -1734,6 +1765,41 @@ window.addEventListener('DOMContentLoaded', () => {
   addMsg('chatBox', 'ai',
     `${c.emoji} <b>Hola! Soy ${c.name}</b>, tu profe de inglés 👋<br>
     <small>Elegí un tema arriba y escribime en inglés o en español para empezar. ¡No te preocupes por los errores, para eso estoy yo! 😊</small>`);
+
+  // Saludo de bienvenida con voz femenina: español luego inglés
+  function playWelcome() {
+    if (!window.speechSynthesis) return;
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length === 0) return; // aún no cargaron
+
+    function makeFemaleUtterance(text, lang, rate) {
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = lang;
+      u.rate = rate || 0.88;
+      const female = voices.find(v =>
+        v.lang.startsWith(lang.split('-')[0]) &&
+        /female|woman|zira|samantha|karen|victoria|moira|fiona|tessa|google us english|google español/i.test(v.name)
+      ) || voices.find(v => v.lang.startsWith(lang.split('-')[0]));
+      if (female) u.voice = female;
+      return u;
+    }
+
+    window.speechSynthesis.cancel();
+    const u1 = makeFemaleUtterance('¡Bienvenido a la Academia Foschi IA! Tu profe de inglés está lista.', 'es-ES', 0.85);
+    const u2 = makeFemaleUtterance('Welcome to Foschi IA Academy! Your English teacher is ready. Let\'s start!', 'en-US', 0.85);
+    u1.onend = () => { setTimeout(() => window.speechSynthesis.speak(u2), 300); };
+    window.speechSynthesis.speak(u1);
+  }
+
+  // Las voces pueden no estar listas de inmediato
+  const voices = window.speechSynthesis.getVoices();
+  if (voices.length > 0) {
+    setTimeout(playWelcome, 800);
+  } else {
+    window.speechSynthesis.onvoiceschanged = () => {
+      setTimeout(playWelcome, 400);
+    };
+  }
 });
 </script>
 """
@@ -2033,7 +2099,7 @@ function initMemo() {
   KST.memoMatched = new Set();
 
   document.getElementById('memoGrid').innerHTML = KST.memoCards.map((c, i) =>
-    `<div class="mc" id="mc${i}" onclick="flipMemo(${i})">?</div>`
+    `<div class="mc" id="mc${i}" onclick="flipMemo(${i})">❓</div>`
   ).join('');
 }
 
@@ -2043,6 +2109,7 @@ function flipMemo(i) {
 
   const card = document.getElementById('mc' + i);
   card.classList.add('flipped');
+  if (KST.memoCards[i].type === 'emoji') card.classList.add('memo-emoji');
   card.textContent = KST.memoCards[i].val;
   KST.memoFlipped.push(i);
 
@@ -2052,8 +2119,10 @@ function flipMemo(i) {
     if (ca.match === cb.match && ca.type !== cb.type) {
       // ¡Par!
       setTimeout(() => {
-        document.getElementById('mc'+a).classList.add('match');
-        document.getElementById('mc'+b).classList.add('match');
+        const ela = document.getElementById('mc'+a);
+        const elb = document.getElementById('mc'+b);
+        ela.classList.add('match');
+        elb.classList.add('match');
         KST.memoMatched.add(a);
         KST.memoMatched.add(b);
         KST.memoFlipped = [];
@@ -2068,8 +2137,8 @@ function flipMemo(i) {
       setTimeout(() => {
         [a, b].forEach(idx => {
           const el = document.getElementById('mc' + idx);
-          el.classList.remove('flipped');
-          el.textContent = '?';
+          el.classList.remove('flipped', 'memo-emoji');
+          el.textContent = '❓';
         });
         KST.memoFlipped = [];
       }, 900);
