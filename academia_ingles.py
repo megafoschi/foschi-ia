@@ -559,15 +559,15 @@ textarea:focus{border-color:var(--pur);box-shadow:0 0 0 3px rgba(108,63,197,.12)
 .opt:hover:not(:disabled){background:var(--kids-bg);border-color:var(--kids-acc);transform:scale(1.02)}
 .opt.ok{background:#d1fae5;border-color:var(--grn);color:#065f46;pointer-events:none}
 .opt.ng{background:var(--red2);border-color:var(--red);color:#7f1d1d;pointer-events:none}
-.memo-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.memo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
 .mc{
-  aspect-ratio:1;border-radius:10px;background:linear-gradient(135deg,var(--pur),var(--pur2));
-  display:flex;align-items:center;justify-content:center;font-size:1.5rem;
+  aspect-ratio:1;border-radius:14px;background:linear-gradient(135deg,var(--pur),var(--pur2));
+  display:flex;align-items:center;justify-content:center;font-size:2.8rem;
   cursor:pointer;transition:var(--transition);user-select:none;border:2px solid transparent;
-  color:#fff;font-weight:700
+  color:#fff;font-weight:700;min-height:90px
 }
 .mc:hover:not(.flipped):not(.match){transform:scale(1.06)}
-.mc.flipped{background:#fff;border-color:var(--pur3);color:var(--ink)}
+.mc.flipped{background:#fff;border-color:var(--pur3);color:var(--ink);font-size:1.1rem}
 .mc.match{background:var(--grn2);border-color:var(--grn);pointer-events:none;color:#065f46}
 .abc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:5px;margin-bottom:14px}
 .abc-btn{
@@ -632,7 +632,7 @@ textarea:focus{border-color:var(--pur);box-shadow:0 0 0 3px rgba(108,63,197,.12)
 @media(max-width:600px){
   .header h1{font-size:1.2rem}
   .opts{grid-template-columns:1fr}
-  .memo-grid{grid-template-columns:repeat(3,1fr)}
+  .memo-grid{grid-template-columns:repeat(2,1fr)}
   .mbtn{max-width:100%;width:100%}
   .mode-bar{flex-direction:column;align-items:center}
   .char-grid{grid-template-columns:repeat(auto-fill,minmax(100px,1fr))}
@@ -698,6 +698,7 @@ textarea:focus{border-color:var(--pur);box-shadow:0 0 0 3px rgba(108,63,197,.12)
       <div class="card-hd">
         <span>💬 Conversación con tu Profe</span>
         <span class="level-pill" id="convLevelPill">🌱 A0</span>
+        <button id="btnTTS" onclick="toggleTTS()" class="btn ghost sm" style="margin-left:auto" title="Activar/desactivar voz del profesor">🔊 Voz ON</button>
       </div>
 
       <!-- Selector de personaje -->
@@ -967,6 +968,7 @@ const ST = {
   },
   pronIdx: 0,             // índice en lista de pronunciación
   currentWord: null,      // palabra actual en pronunciación
+  ttsEnabled: true,       // profesor lee en voz alta
 };
 
 // Currículum completo inyectado desde Python
@@ -1183,6 +1185,8 @@ async function sendChat() {
       ST.lessonsDone.add(ST.activeLesson);
       renderCurriculum(currentCurrLevel);
     }
+    // Profesor lee la respuesta en voz alta
+    speakAIReply(reply);
   } catch(e) {
     typing.remove();
     addMsg('chatBox', 'ai', '❌ Error al conectar con la IA. Revisá tu API key.');
@@ -1496,6 +1500,8 @@ async function sendAI(prompt, asSystem) {
        ${formatAIMsg(reply)}`);
     ST.history.push({ role: 'user', content: prompt });
     ST.history.push({ role: 'assistant', content: reply });
+    // Profesor lee la respuesta en voz alta
+    speakAIReply(reply);
   } catch(e) {
     typing.remove();
     addMsg('chatBox', 'ai', '❌ Error de conexión. Verificá el servidor.');
@@ -1536,6 +1542,51 @@ function speak(text, lang) {
   const u = new SpeechSynthesisUtterance(text);
   u.lang = lang || 'en-US';
   u.rate = 0.88;
+  window.speechSynthesis.speak(u);
+}
+
+function toggleTTS() {
+  ST.ttsEnabled = !ST.ttsEnabled;
+  const btn = document.getElementById('btnTTS');
+  if (ST.ttsEnabled) {
+    btn.innerHTML = '🔊 Voz ON';
+    btn.classList.remove('red');
+  } else {
+    btn.innerHTML = '🔇 Voz OFF';
+    btn.classList.add('red');
+    window.speechSynthesis.cancel();
+  }
+}
+
+// Lee la respuesta del profesor en voz alta.
+// Extrae primero las líneas en inglés (entre comillas o líneas sin español),
+// y omite las explicaciones en español para no confundir al alumno.
+function speakAIReply(txt) {
+  if (!window.speechSynthesis) return;
+  if (!ST.ttsEnabled) return;
+
+  // Quitar emojis de feedback, markdown, HTML
+  let clean = txt
+    .replace(/🟢|🟡|🔴/g, '')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/<[^>]+>/g, '')
+    .trim();
+
+  // Si el nivel es A0/A1 leer todo despacio (mezcla español/inglés esperada)
+  const slowLevels = ['A0','A1'];
+  const rate = slowLevels.includes(ST.level) ? 0.75 : 0.88;
+
+  // Limitar a primeras 300 chars para no leer parrafones enteros
+  if (clean.length > 300) clean = clean.substring(0, 300) + '…';
+
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(clean);
+  // Detectar si hay más inglés que español para elegir el idioma de síntesis
+  const spanishWords = (clean.match(/\b(que|es|de|en|un|una|con|para|por|el|la|los|las|si|no|yo|vos|sos|tenés|hola|bien|gracias)\b/gi) || []).length;
+  const englishWords = (clean.match(/\b(the|is|are|you|your|I|my|we|it|this|that|in|a|an|to|do|does|did|have|has|will|can|hello|good|great)\b/gi) || []).length;
+  u.lang = englishWords >= spanishWords ? 'en-US' : 'es-ES';
+  u.rate = rate;
   window.speechSynthesis.speak(u);
 }
 
