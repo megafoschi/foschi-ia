@@ -648,7 +648,6 @@ textarea:focus{border-color:var(--pur);box-shadow:0 0 0 3px rgba(108,63,197,.12)
   <div class="header-inner">
     <div>
       <h1>🎓 Academia Foschi IA</h1>
-      <div class="header-sub">Método Cambridge · A0 → C2 · 250+ lecciones</div>
     </div>
     <div class="header-cefr" id="cefrNav">
       <div class="cefr-badge on" onclick="jumpToLevel('A0',this)">A0</div>
@@ -657,6 +656,7 @@ textarea:focus{border-color:var(--pur);box-shadow:0 0 0 3px rgba(108,63,197,.12)
       <div class="cefr-badge" onclick="jumpToLevel('B1',this)">B1</div>
       <div class="cefr-badge" onclick="jumpToLevel('B2',this)">B2</div>
       <div class="cefr-badge" onclick="jumpToLevel('C1C2',this)">C1/C2</div>
+      <a href="/" style="background:rgba(255,255,255,.9);color:#6c3fc5;border-radius:999px;padding:3px 12px;font-size:.72rem;font-weight:800;text-decoration:none;display:inline-flex;align-items:center;gap:4px;margin-left:6px;">⬅ Foschi IA</a>
     </div>
   </div>
 </div>
@@ -1592,6 +1592,9 @@ academia_ingles_parte_3.py — Academia Foschi IA  ▸ VERSIÓN 2.0
 ═══════════════════════════════════════════════════════════
 """
 
+import json
+import os
+
 # ─────────────────────────────────────────────────────────────
 #  JAVASCRIPT — MODO NIÑOS + INICIALIZACIÓN FINAL
 # ─────────────────────────────────────────────────────────────
@@ -2004,75 +2007,104 @@ Usás muchos emojis de animales, estrellas y corazones.`;
 
 
 # ─────────────────────────────────────────────────────────────
-#  IMPORTS NECESARIOS (sólo cuando se usa como módulo o standalone)
-# ─────────────────────────────────────────────────────────────
-import json as _json
-import os as _os
-
-try:
-    import anthropic as _anthropic
-    _ANTHROPIC_OK = True
-except ImportError:
-    _ANTHROPIC_OK = False
-
-try:
-    from flask import Flask as _Flask, request as _request, jsonify as _jsonify
-    _FLASK_OK = True
-except ImportError:
-    _FLASK_OK = False
-
-
-# ─────────────────────────────────────────────────────────────
-#  ENSAMBLADO HTML — todo en un solo archivo, sin imports externos
+#  ENSAMBLADO HTML — autónomo, sin imports externos
 # ─────────────────────────────────────────────────────────────
 
 def build_full_html():
-    """
-    Genera el HTML completo de la academia inyectando todos los datos
-    Python como JSON embebido. Completamente autónomo: no requiere
-    archivos externos parte1/parte2/parte3.
-    """
-    curriculum_json = _json.dumps(CURRICULUM,  ensure_ascii=False)
-    characters_json = _json.dumps(CHARACTERS,  ensure_ascii=False)
-    pron_words_json = _json.dumps(PRON_WORDS,  ensure_ascii=False)
-    vocab_kids_json = _json.dumps(VOCAB_KIDS,  ensure_ascii=False)
-    abc_data_json   = _json.dumps(ABC_DATA,    ensure_ascii=False)
-    badges_json     = _json.dumps(BADGES,      ensure_ascii=False)
+    """Genera el HTML completo inyectando todos los datos como JSON embebido."""
+    curriculum_json = json.dumps(CURRICULUM,  ensure_ascii=False)
+    characters_json = json.dumps(CHARACTERS,  ensure_ascii=False)
+    pron_words_json = json.dumps(PRON_WORDS,  ensure_ascii=False)
+    vocab_kids_json = json.dumps(VOCAB_KIDS,  ensure_ascii=False)
+    abc_data_json   = json.dumps(ABC_DATA,    ensure_ascii=False)
+    badges_json     = json.dumps(BADGES,      ensure_ascii=False)
 
-    # Inyectar placeholders en JS de adultos (con o sin comillas)
+    # Inyectar placeholders JS adultos (con o sin comillas)
     js2 = ACADEMIA_JS_PART2
     for _old, _new in [
-        ('"CURRICULUM_PLACEHOLDER"', curriculum_json),
-        ('CURRICULUM_PLACEHOLDER',     curriculum_json),
-        ('"CHARACTERS_PLACEHOLDER"', characters_json),
-        ('CHARACTERS_PLACEHOLDER',     characters_json),
-        ('"PRON_WORDS_PLACEHOLDER"', pron_words_json),
-        ('PRON_WORDS_PLACEHOLDER',     pron_words_json),
+        ('"CURRICULUM_PLACEHOLDER"',  curriculum_json),
+        ('CURRICULUM_PLACEHOLDER',    curriculum_json),
+        ('"CHARACTERS_PLACEHOLDER"',  characters_json),
+        ('CHARACTERS_PLACEHOLDER',    characters_json),
+        ('"PRON_WORDS_PLACEHOLDER"',  pron_words_json),
+        ('PRON_WORDS_PLACEHOLDER',    pron_words_json),
     ]:
         js2 = js2.replace(_old, _new)
 
-    # Inyectar placeholders en JS de niños
+    # Inyectar placeholders JS niños
     js3 = (ACADEMIA_JS_PART3
            .replace('VOCAB_KIDS_PLACEHOLDER', vocab_kids_json)
            .replace('ABC_DATA_PLACEHOLDER',   abc_data_json)
            .replace('BADGES_PLACEHOLDER',     badges_json))
 
-    # Insertar los dos bloques de JS antes del </body>
-    html = ACADEMIA_HTML.replace('</body>', js2 + '\n' + js3 + '\n</body>')
-    return html
+    return ACADEMIA_HTML.replace('</body>', js2 + '\n' + js3 + '\n</body>')
 
 
 # ─────────────────────────────────────────────────────────────
-#  RUTAS FLASK — chat y health para la academia
+#  FLASK BACKEND — OpenAI
+# ─────────────────────────────────────────────────────────────
+
+def create_flask_app():
+    from flask import Flask, request, jsonify
+    from openai import OpenAI, AuthenticationError, RateLimitError
+
+    app   = Flask(__name__)
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+
+    @app.route("/")
+    def index():
+        return build_full_html()
+
+    @app.route("/api/chat", methods=["POST"])
+    def api_chat():
+        data     = request.get_json(force=True)
+        system   = data.get("system", "Sos un profesor de inglés.")
+        messages = data.get("messages", [])
+        max_tok  = int(data.get("max_tokens", 900))
+
+        if len(messages) > 20:
+            messages = messages[-20:]
+
+        # Construir mensajes para OpenAI (system va primero)
+        oai_messages = [{"role": "system", "content": system}] + messages
+
+        try:
+            resp = client.chat.completions.create(
+                model="gpt-4o-mini",
+                max_tokens=max_tok,
+                messages=oai_messages,
+            )
+            content = resp.choices[0].message.content or ""
+            return jsonify({"content": content})
+        except AuthenticationError:
+            return jsonify({"error": "API key inválida. Revisá OPENAI_API_KEY."}), 401
+        except RateLimitError:
+            return jsonify({"error": "Límite de uso alcanzado. Esperá un momento."}), 429
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/health")
+    def health():
+        return jsonify({"status": "ok", "version": "2.0"})
+
+    return app
+
+
+# ─────────────────────────────────────────────────────────────
+#  INTEGRACIÓN CON FOSCHI IA — init_academia_ingles(app)
 # ─────────────────────────────────────────────────────────────
 
 def _register_routes(app):
-    """Registra las rutas /academia, /api/chat_ingles y /api/health_academia en la app Flask dada."""
+    from flask import request, jsonify, redirect
+    from openai import OpenAI, AuthenticationError, RateLimitError
 
-    if not _ANTHROPIC_OK:
-        raise ImportError("Instalá anthropic: pip install anthropic")
+    _client_holder = [None]
 
-    _client = _anthropic.Anthropic(api_key=_os.environ.get("ANTHROPIC_API_KEY", ""))
+    def _get_client():
+        if _client_holder[0] is None:
+            _client_holder[0] = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+        return _client_holder[0]
+
     _cached_html = build_full_html()
 
     @app.route("/academia")
@@ -2082,82 +2114,60 @@ def _register_routes(app):
 
     @app.route("/api/chat_ingles", methods=["POST"])
     def academia_chat():
-        data     = _request.get_json(force=True)
+        data     = request.get_json(force=True)
         system   = data.get("system", "Sos un profesor de inglés.")
         messages = data.get("messages", [])
         max_tok  = int(data.get("max_tokens", 900))
-        # Limitar historial para no exceder contexto
+
         if len(messages) > 20:
             messages = messages[-20:]
+
+        oai_messages = [{"role": "system", "content": system}] + messages
+
         try:
-            resp = _client.messages.create(
-                model="claude-sonnet-4-6",
+            resp = _get_client().chat.completions.create(
+                model="gpt-4o-mini",
                 max_tokens=max_tok,
-                system=system,
-                messages=messages,
+                messages=oai_messages,
             )
-            content = resp.content[0].text if resp.content else ""
-            return _jsonify({"content": content})
-        except _anthropic.AuthenticationError:
-            return _jsonify({"error": "API key inválida. Revisá ANTHROPIC_API_KEY."}), 401
-        except _anthropic.RateLimitError:
-            return _jsonify({"error": "Límite de uso alcanzado. Esperá un momento."}), 429
+            content = resp.choices[0].message.content or ""
+            return jsonify({"content": content})
+        except AuthenticationError:
+            return jsonify({"error": "API key inválida. Revisá OPENAI_API_KEY."}), 401
+        except RateLimitError:
+            return jsonify({"error": "Límite de uso alcanzado. Esperá un momento."}), 429
         except Exception as e:
-            return _jsonify({"error": str(e)}), 500
+            return jsonify({"error": str(e)}), 500
 
     @app.route("/api/health_academia")
     def academia_health():
-        return _jsonify({"status": "ok", "version": "2.0"})
+        return jsonify({"status": "ok", "version": "2.0"})
 
-
-# ─────────────────────────────────────────────────────────────
-#  FUNCIÓN PÚBLICA — llamada desde FOSCHI_IA_PRO14.py
-# ─────────────────────────────────────────────────────────────
 
 def init_academia_ingles(app):
     """
-    Punto de entrada para integrar la academia en una app Flask existente.
-    Registra /academia, /api/chat_ingles y /api/health_academia.
-
-    Uso en FOSCHI_IA_PRO14.py:
-        from academia_ingles import init_academia_ingles
-        init_academia_ingles(app)
+    Integra la Academia de Inglés en la app Flask de Foschi IA.
+    Registra /ingles, /academia, /api/chat_ingles y /api/health_academia.
+    Requiere: OPENAI_API_KEY en variables de entorno.
     """
     _register_routes(app)
 
 
 # ─────────────────────────────────────────────────────────────
-#  MODO STANDALONE — python academia_ingles.py
+#  PUNTO DE ENTRADA STANDALONE
 # ─────────────────────────────────────────────────────────────
 
-def create_flask_app():
-    """Crea una app Flask standalone sólo con la academia (sin Foschi IA)."""
-    if not _FLASK_OK:
-        raise ImportError("Instalá flask: pip install flask")
-    app = _Flask(__name__)
-    _register_routes(app)
-
-    # En modo standalone también sirve la raíz "/"
-    @app.route("/")
-    def _root():
-        from flask import redirect
-        return redirect("/academia")
-
-    return app
-
-
 if __name__ == "__main__":
-    _app  = create_flask_app()
-    _port = int(_os.environ.get("PORT", 5000))
-    _dbg  = _os.environ.get("FLASK_DEBUG", "0") == "1"
-    _key  = bool(_os.environ.get("ANTHROPIC_API_KEY"))
+    app   = create_flask_app()
+    port  = int(os.environ.get("PORT", 5000))
+    debug = os.environ.get("FLASK_DEBUG", "0") == "1"
+    key   = bool(os.environ.get("OPENAI_API_KEY"))
     print(f"""
 ╔══════════════════════════════════════════════════╗
-║      🎓  Academia Foschi IA  —  v2.0             ║
-║      Método Cambridge · A0 → C2 · 250+ lecciones ║
+║         🎓  Academia Foschi IA  —  v2.0          ║
 ╠══════════════════════════════════════════════════╣
-║  http://localhost:{_port:<4}/academia                    ║
-║  API key: {"✅ Configurada" if _key else "❌ Falta ANTHROPIC_API_KEY":<37} ║
+║  http://localhost:{port:<4}                            ║
+║  API key: {"✅ Configurada" if key else "❌ Falta OPENAI_API_KEY":<37} ║
 ╚══════════════════════════════════════════════════╝
 """)
-    _app.run(host="0.0.0.0", port=_port, debug=_dbg)
+    app.run(host="0.0.0.0", port=port, debug=debug)
