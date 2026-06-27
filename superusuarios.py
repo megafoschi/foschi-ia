@@ -50,12 +50,12 @@ SUPERUSUARIOS = {
     },
     "foschiagustina3@gmail.com": {
         "rol": "admin",
-        "nombre": "Javo",
+        "nombre": "Agustina",
         "nivel": 80
     },
-    "libre3@gmail.com": {
+    "mlauraaraujo40@gmail.com": {
         "rol": "admin",
-        "nombre": "Mariano",
+        "nombre": "Laura",
         "nivel": 80
     },
     "mlauraaraujo40@gmail.com": {
