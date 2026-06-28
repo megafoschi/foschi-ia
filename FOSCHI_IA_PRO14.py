@@ -88,6 +88,54 @@ app.secret_key = "FoschiWebKey"
 app.config["SESSION_TYPE"] = "filesystem"
 Session(app)
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  DECORADOR CENTRALIZADO DE ACCESO PREMIUM
+#  Aplica sobre CUALQUIER ruta que requiera suscripción activa.
+#
+#  Capas de verificación (en orden):
+#    1. Usuario logueado       → session["user_email"] presente
+#    2. Sesión válida          → email con formato mínimo correcto
+#    3. Superusuario           → siempre autorizado sin importar suscripción
+#    4. Suscripción Premium    → usuario_premium(email) == True
+#
+#  Comportamiento al fallar:
+#    - Petición HTML  → redirect a /?accion=login  o  /?accion=premium
+#    - Petición JSON  → 401/403 con {"error": "...", "msg": "..."}
+# ─────────────────────────────────────────────────────────────────────────────
+def requiere_premium(f):
+    @wraps(f)
+    def _verificar(*args, **kwargs):
+        # 1. Login
+        email = session.get("user_email")
+        if not email:
+            if request.is_json or request.method == "POST":
+                return jsonify({"error": "no_login",
+                                "msg": "Debés iniciar sesión para usar esta función."}), 401
+            return redirect("/?accion=login&msg=Iniciá+sesión+para+acceder+a+esta+función")
+
+        # 2. Sesión válida
+        if "@" not in email or len(email) < 5:
+            session.pop("user_email", None)
+            if request.is_json or request.method == "POST":
+                return jsonify({"error": "sesion_invalida",
+                                "msg": "Sesión inválida. Volvé a iniciar sesión."}), 401
+            return redirect("/?accion=login&msg=Sesión+inválida,+volvé+a+iniciar+sesión")
+
+        # 3. Superusuario → siempre pasa
+        if es_superusuario(email):
+            return f(*args, **kwargs)
+
+        # 4. Premium activo
+        if not usuario_premium(email):
+            if request.is_json or request.method == "POST":
+                return jsonify({"error": "no_premium",
+                                "msg": "Esta función es exclusiva de usuarios Premium. Suscribite en Foschi IA."}), 403
+            return redirect("/?accion=premium&msg=Esta+función+requiere+una+suscripción+Premium")
+
+        return f(*args, **kwargs)
+    return _verificar
+
+
 # ---------------- PROFESOR DE INGLÉS ----------------
 init_academia_ingles(app)
 
@@ -362,6 +410,7 @@ def learn_from_message(usuario, mensaje, respuesta):
 
 # ---------------- DICTADO A WORD ----------------
 @app.route("/dictado_word", methods=["POST"])
+@requiere_premium
 def dictado_word():
 
     data = request.get_json(silent=True) or {}
@@ -3746,6 +3795,7 @@ def admin_pagos():
 from werkzeug.utils import secure_filename
 
 @app.route("/upload_audio", methods=["POST"])
+@requiere_premium
 def upload_audio():
     if "audio" not in request.files:
         return "No se envió archivo", 400
@@ -3849,6 +3899,7 @@ def extract_text_from_docx(path):
     return text
 
 @app.route("/upload_doc", methods=["POST"])
+@requiere_premium
 def upload_doc():
     """Recibe PDF o DOCX, extrae texto y guarda temporalmente. Devuelve doc_id que luego se usa para pedir resumen."""
     if "archivo" not in request.files:
@@ -3902,6 +3953,7 @@ def upload_doc():
     return jsonify({"doc_id": doc_id, "name": filename, "snippet": snippet})
 
 @app.route("/resumir_doc", methods=["POST"])
+@requiere_premium
 def resumir_doc():
 
     data = request.get_json()
@@ -4388,6 +4440,7 @@ def _procesar_presentacion_job(job_id, contenido_base, tema, titulo_pres, num_sl
 
 
 @app.route("/generar_presentacion", methods=["POST"])
+@requiere_premium
 def generar_presentacion():
     """
     Inicia en segundo plano la generación de una presentación (.pptx) a partir
@@ -4467,6 +4520,7 @@ def generar_presentacion():
 
 
 @app.route("/estado_presentacion/<job_id>")
+@requiere_premium
 def estado_presentacion(job_id):
     with PRESENTACIONES_LOCK:
         job = PRESENTACIONES_JOBS.get(job_id)
@@ -4482,6 +4536,7 @@ def estado_presentacion(job_id):
 
 
 @app.route("/descargar_presentacion/<job_id>")
+@requiere_premium
 def descargar_presentacion(job_id):
     with PRESENTACIONES_LOCK:
         job = PRESENTACIONES_JOBS.get(job_id)

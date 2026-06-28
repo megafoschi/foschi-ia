@@ -2328,8 +2328,51 @@ def create_flask_app():
 # ─────────────────────────────────────────────────────────────
 
 def _register_routes(app):
-    from flask import request, jsonify, redirect
+    from flask import request, jsonify, redirect, session
     from openai import OpenAI, AuthenticationError, RateLimitError
+    from functools import wraps
+
+    # ─────────────────────────────────────────────────────────────
+    #  DECORADOR PREMIUM CENTRALIZADO
+    #  Verifica: login → sesión válida → suscripción activa → superusuario
+    #  Usar en TODAS las rutas Premium de la academia.
+    # ─────────────────────────────────────────────────────────────
+    def _requiere_premium(f):
+        @wraps(f)
+        def _wrapper(*args, **kwargs):
+            try:
+                from suscripciones import usuario_premium
+                from superusuarios import es_superusuario
+            except ImportError:
+                # Si los módulos no están disponibles (modo standalone), deja pasar
+                return f(*args, **kwargs)
+
+            # ✅ 1. Usuario logueado
+            email = session.get("user_email")
+            if not email:
+                if request.is_json:
+                    return jsonify({"error": "no_login", "msg": "Debés iniciar sesión para usar la Academia."}), 401
+                return redirect("/?accion=login&msg=Iniciá+sesión+para+acceder+a+la+Academia+de+Inglés")
+
+            # ✅ 2. Sesión válida (el email tiene formato mínimo)
+            if "@" not in email or len(email) < 5:
+                session.pop("user_email", None)
+                if request.is_json:
+                    return jsonify({"error": "sesion_invalida", "msg": "Sesión inválida. Volvé a iniciar sesión."}), 401
+                return redirect("/?accion=login&msg=Sesión+inválida")
+
+            # ✅ 3. Superusuario siempre autorizado (sin importar suscripción)
+            if es_superusuario(email):
+                return f(*args, **kwargs)
+
+            # ✅ 4. Suscripción Premium activa
+            if not usuario_premium(email):
+                if request.is_json:
+                    return jsonify({"error": "no_premium", "msg": "Esta función es Premium. Suscribite en Foschi IA para acceder."}), 403
+                return redirect("/?accion=premium&msg=La+Academia+de+Inglés+es+una+función+Premium")
+
+            return f(*args, **kwargs)
+        return _wrapper
 
     _client_holder = [None]
 
@@ -2340,12 +2383,16 @@ def _register_routes(app):
 
     _cached_html = build_full_html()
 
+    # ── Rutas protegidas con @_requiere_premium ──
+
     @app.route("/academia")
     @app.route("/ingles")
+    @_requiere_premium
     def academia_index():
         return _cached_html
 
     @app.route("/api/chat_ingles", methods=["POST"])
+    @_requiere_premium
     def academia_chat():
         data     = request.get_json(force=True)
         system   = data.get("system", "Sos un profesor de inglés.")
@@ -2363,8 +2410,8 @@ def _register_routes(app):
                 max_tokens=max_tok,
                 messages=oai_messages,
             )
-            content = resp.choices[0].message.content or ""
-            return jsonify({"content": content})
+            reply = resp.choices[0].message.content or ""
+            return jsonify({"content": reply})
         except AuthenticationError:
             return jsonify({"error": "API key inválida. Revisá OPENAI_API_KEY."}), 401
         except RateLimitError:
@@ -2380,8 +2427,25 @@ def _register_routes(app):
 def init_academia_ingles(app):
     """
     Integra la Academia de Inglés en la app Flask de Foschi IA.
-    Registra /ingles, /academia, /api/chat_ingles y /api/health_academia.
+
+    Rutas registradas (PROTEGIDAS con @_requiere_premium):
+      GET  /ingles              → app principal de la academia
+      GET  /academia            → alias de /ingles
+      POST /api/chat_ingles     → endpoint de IA para el chat del profesor
+      GET  /api/health_academia → health-check (público)
+
+    Control de acceso por capa:
+      1. Usuario logueado      → session["user_email"] presente
+      2. Sesión válida         → email con formato correcto
+      3. Superusuario          → siempre autorizado (es_superusuario)
+      4. Suscripción Premium   → usuario_premium(email) == True
+
+    Si falla cualquier capa:
+      - Requests HTML  → redirect a /?accion=login  o  /?accion=premium
+      - Requests JSON  → 401/403 con {"error": "...", "msg": "..."}
+
     Requiere: OPENAI_API_KEY en variables de entorno.
+    Depende de: suscripciones.usuario_premium · superusuarios.es_superusuario
     """
     _register_routes(app)
 
